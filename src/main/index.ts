@@ -2,9 +2,15 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
+import { closeDb, getDb } from './storage/db'
 import { logger } from './logger'
 
 const isMac = process.platform === 'darwin'
+
+// —— E2E 测试隔离：ONE_USER_DATA env 覆盖 userData 目录（每测试独立 SQLite + vault）——
+if (process.env.ONE_USER_DATA) {
+  app.setPath('userData', process.env.ONE_USER_DATA)
+}
 
 // —— 全局错误兜底（§11.5）：不静默退出 ——
 process.on('uncaughtException', (error) => {
@@ -68,6 +74,7 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    getDb() // 初始化 SQLite（WAL + 迁移 + integrity_check，§11.4）
     registerIpcHandlers()
     createMainWindow()
 
@@ -82,5 +89,10 @@ if (!gotLock) {
     if (!isMac) {
       app.quit()
     }
+  })
+
+  // —— 退出前关闭 DB 连接，防写一半断电 ——
+  app.on('before-quit', () => {
+    closeDb()
   })
 }

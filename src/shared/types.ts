@@ -117,3 +117,130 @@ export interface RunResult {
   output: string
 }
 
+// ============================================================================
+// 存储实体契约（§5.2 + §四迁移映射）—— 主/渲染唯一契约源
+// 配置类（capability/agent/skill/model/persona）存 JSON 文件；
+// 会话/任务/记忆存 SQLite（见 storage/db.ts schema）。
+// ============================================================================
+
+/** 模型配置（原 models.json → userData/models.json） */
+export interface ModelConfig {
+  id: string
+  /** 模型标识，如 claude-sonnet-5 */
+  modelId: string
+  /** 显示名 */
+  name: string
+  /** 中转/官方 endpoint；空走官方 */
+  baseUrl?: string
+  /** 关联 vault 里的 key id（不裸持明文） */
+  keyId?: string
+  /** 是否默认模型 */
+  isDefault?: boolean
+  /** max_tokens 缺省（铁律8：缺省 16384） */
+  maxTokens?: number
+  temperature?: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** 角色（可编排的多个 agent 单元） */
+export interface Agent {
+  id: string
+  name: string
+  description?: string
+  /** system prompt */
+  instructions: string
+  /** 绑定的技能 id 列表 */
+  skillIds?: string[]
+  /** 默认模型 id */
+  modelId?: string
+  temperature?: number
+  maxTokens?: number
+  /** 输出约束（"≤N字"等） */
+  outputConstraints?: string
+  source?: 'builtin' | 'custom'
+  createdAt: number
+  updatedAt: number
+}
+
+/** 技能（ContextProvider，§铁律22） */
+export interface Skill {
+  id: string
+  name: string
+  description?: string
+  /** SKILL.md 内容（inline 成 <skill> XML 块，限长 24000 字） */
+  content: string
+  /** 输出纪律段 */
+  discipline?: string
+  /** 脚本路径（async 执行，§铁律23） */
+  scriptPath?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** 能力（编排图，对应 WorkflowGraph 持久化） */
+export interface Capability {
+  id: string
+  name: string
+  description?: string
+  graph: WorkflowGraph
+  createdAt: number
+  updatedAt: number
+}
+
+/** 首页主助手人设（独立于角色，固定人格） */
+export interface Persona {
+  id: string // 固定 'home'
+  name: string
+  instructions: string
+  modelId?: string
+  /** L0 个人档案（称呼/角色/偏好语种） */
+  profile?: {
+    alias?: string
+    role?: string
+    preferredLanguage?: 'zh-CN' | 'en'
+  }
+  updatedAt: number
+}
+
+/** 会话（SQLite） */
+export interface Session {
+  id: string
+  userId: string // 默认 'local'，不做隔离（§5.2.2）
+  title: string
+  capabilityId?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** 消息（SQLite） */
+export interface SessionMessage {
+  id: string
+  sessionId: string
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  meta?: unknown
+  createdAt: number
+}
+
+/** 任务历史（SQLite） */
+export interface TaskRecord {
+  id: string
+  userId: string
+  sessionId?: string
+  capabilityId?: string
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
+  graph?: WorkflowGraph
+  result?: unknown
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** LLM key 配置（经 vault 加密存盘，渲染层只见 keyId） */
+export interface LLMConfig {
+  baseUrl?: string
+  apiKey?: string // 经主进程加密存盘；getLLMConfig 解密返回
+  defaultModel?: string
+}
+

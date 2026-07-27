@@ -1,0 +1,108 @@
+import { randomUUID } from 'node:crypto'
+import { getDb } from './db'
+import type { Session, SessionMessage } from '@shared/types'
+
+// —— 会话/消息 SQLite CRUD（§5.2.3 schema）——
+
+export function createSession(input: {
+  title: string
+  userId?: string
+  capabilityId?: string
+}): Session {
+  const now = Date.now()
+  const session: Session = {
+    id: randomUUID(),
+    userId: input.userId ?? 'local',
+    title: input.title,
+    capabilityId: input.capabilityId,
+    createdAt: now,
+    updatedAt: now,
+  }
+  getDb()
+    .prepare(
+      `INSERT INTO sessions (id, user_id, title, capability_id, created_at, updated_at)
+       VALUES (@id, @userId, @title, @capabilityId, @createdAt, @updatedAt)`,
+    )
+    .run(session)
+  return session
+}
+
+export function listSessions(userId = 'local'): Session[] {
+  return getDb()
+    .prepare(
+      `SELECT id, user_id as userId, title, capability_id as capabilityId,
+              created_at as createdAt, updated_at as updatedAt
+       FROM sessions WHERE user_id = ? ORDER BY updated_at DESC`,
+    )
+    .all(userId) as Session[]
+}
+
+export function getSession(id: string): Session | null {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT id, user_id as userId, title, capability_id as capabilityId,
+                created_at as createdAt, updated_at as updatedAt
+         FROM sessions WHERE id = ?`,
+      )
+      .get(id) as Session | undefined) ?? null
+  )
+}
+
+export function renameSession(id: string, title: string): void {
+  getDb().prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?').run(
+    title,
+    Date.now(),
+    id,
+  )
+}
+
+export function removeSession(id: string): void {
+  getDb().prepare('DELETE FROM sessions WHERE id = ?').run(id)
+}
+
+export function touchSession(id: string): void {
+  getDb().prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), id)
+}
+
+// —— 消息 ——
+
+export function addMessage(input: {
+  sessionId: string
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  meta?: unknown
+}): SessionMessage {
+  const msg: SessionMessage = {
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    role: input.role,
+    content: input.content,
+    meta: input.meta,
+    createdAt: Date.now(),
+  }
+  getDb()
+    .prepare(
+      `INSERT INTO messages (id, session_id, role, content, meta, created_at)
+       VALUES (@id, @sessionId, @role, @content, @meta, @createdAt)`,
+    )
+    .run({ ...msg, meta: msg.meta ? JSON.stringify(msg.meta) : null })
+  touchSession(input.sessionId)
+  return msg
+}
+
+export function listMessages(sessionId: string): SessionMessage[] {
+  return getDb()
+    .prepare(
+      `SELECT id, session_id as sessionId, role, content, meta, created_at as createdAt
+       FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
+    )
+    .all(sessionId)
+    .map((r) => {
+      const row = r as SessionMessage & { meta: string | null }
+      return {
+        ...row,
+        meta: row.meta ? JSON.parse(row.meta) : undefined,
+      }
+    }) as SessionMessage[]
+}
