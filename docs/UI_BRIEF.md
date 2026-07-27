@@ -20,12 +20,13 @@
 ## §0.1 布局骨架（贯穿所有屏幕）
 
 实现为 `App.tsx` 的根布局：
+- 最上 `TitleBar`（40px 固定磨砂玻璃横栏，作为窗口标题栏缓冲带与全局顶部信息层；左侧为页面标题/应用名，右侧可放 `CommandPalette` 入口或轻量动作）。
 - 最左 `IconRail`（56px 固定磨砂玻璃竖栏，竖排图标：首页/画布/角色/技能/模型/任务/设置，激活项 `brand-500` 左条 + `bg-3` 高亮）。
 - 紧邻 `SideList`（220px 可折叠会话/能力列表，仅"首页聊天"态展开，画布/管理/设置/任务态均隐藏收回空间）。
 - 主工作区 `MainArea`（占满剩余，承载聊天流/画布/列表/设置，按路由切换）。
 - 右侧 `Inspector`（浮动磨砂玻璃面板，仅画布选中节点时从右滑入 420px；不选中即收起，不占固定空间）。
-- 顶部无固定栏；`CommandPalette`（⌘K 悬浮磨砂玻璃居中弹层）作为统一导航/搜索/动作入口。
-- **窗口标题栏**：macOS 用 `titleBarStyle: 'hiddenInset'` 保留红绿黄按钮但不占标题栏高度，拖动区设在 `IconRail` 顶部 + `MainArea` 顶部边缘（`-webkit-app-region: drag`，可拖动；按钮/输入区 `no-drag`）。Windows/Linux 用 `titleBarStyle: 'default'` 或自定义 `frame: false` + 自绘最小化/关闭按钮。详见 REWRITE_PLAN §六。
+- `CommandPalette`（⌘K 悬浮磨砂玻璃居中弹层）作为统一导航/搜索/动作入口。
+- **窗口标题栏**：macOS 用 `titleBarStyle: 'hiddenInset'`，红黄绿按钮落在最顶 `TitleBar` 这一行；`TitleBar` 整体为 `-webkit-app-region: drag`，按钮/输入区 `no-drag`，并在左侧预留 traffic light 空间，避免压住标题。Windows/Linux 可继续用默认标题栏，或在 `TitleBar` 右侧自绘最小化/最大化/关闭按钮。详见 REWRITE_PLAN §六。
 
 ---
 
@@ -102,4 +103,4 @@
 3. **新组件在纯白/暖白/夜色三套预设下都校准对比度**（DESIGN.md §2.3 + §十二），不依赖单一主题。
 4. 节点标签作为 i18n 资源：zh-CN 用中文（序/并/群聊），en 用英文（SEQ/PAR/GROUP），跟随 UI 语种切换（见 REWRITE_PLAN §十二.2），不写死。
 5. 流式生成用光标、无抖动；动效在 `prefers-reduced-motion` 下关闭。
-6. 布局骨架（`IconRail` + `SideList` + `MainArea` + `Inspector` + `CommandPalette`）在 `App.tsx` 根布局统一实现，各屏幕只填 `MainArea` 内容。
+6. 布局骨架（`TitleBar` + `IconRail` + `SideList` + `MainArea` + `Inspector` + `CommandPalette`）在 `App.tsx` 根布局统一实现，各屏幕只填 `MainArea` 内容。

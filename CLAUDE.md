@@ -56,12 +56,12 @@ one/
 > 待脚手架（electron-vite）就绪后填写。预计：
 >
 > ```bash
-> pnpm install
-> pnpm dev          # electron-vite 主/preload/渲染一体化热更
-> pnpm build        # tsc + vite build（主/preload/渲染）
-> pnpm package      # electron-builder 打包
-> pnpm typecheck    # tsc --noEmit
-> pnpm test         # vitest（编排引擎/记忆/重试单测）
+> npm install
+> npm run dev          # electron-vite 主/preload/渲染一体化热更
+> npm run build        # vite build（主/preload/渲染）
+> npm run package      # electron-builder 打包
+> npm run typecheck    # tsc --noEmit
+> npm test             # vitest（编排引擎/记忆/重试单测）
 > ```
 
 ## 当前阶段
@@ -74,11 +74,23 @@ one/
 
 ### 安全边界
 
-1. **渲染进程零 Node 特权**：`nodeIntegration: false`，`contextIsolation: true`。所有能力经 preload `contextBridge` 白名单暴露为 `window.one.*`，渲染层绝不直接 `require`/`import` Node 模块。
+1. **渲染进程零 Node 特权**：`nodeIntegration: false`，`contextIsolation: true`，`sandbox: true`。所有能力经 preload `contextBridge` 白名单暴露为 `window.one.*`，渲染层绝不直接 `require`/`import` Node 模块。
+   - **sandbox 与 preload 产出的硬约束**：`sandbox: true` 下 preload 跑在受限环境，**没有 ESM loader，必须产出 CJS**（用 `require`，不能用 `import`）。electron-vite 配 `preload.build.rollupOptions.output = { format: 'cjs', entryFileNames: 'index.cjs' }`，主进程 `webPreferences.preload` 指向 `out/preload/index.cjs`。产出 `.mjs`（ESM）preload 在 sandbox 下会静默不加载 → `window.one` undefined → React 白屏，已踩过。
+   - preload 启动时 `existsSync` 校验产物存在，缺失提示先 `npm run build`，避免 preload 静默断导致渲染层裸暴露。
 2. **IPC 收口**：渲染层只调 `window.one.*`，不裸用 `ipcRenderer`。新增能力 = preload 加白名单 + 主进程加 `ipcMain.handle`，二者成对。
+   - **主进程侧统一经 `withHandler` 包装**（§11.3）：所有 `ipcMain.handle` 用 `main/ipc` 的 `withHandler(channel, fn)` 注册，自动 try/catch 返回判别联合 `IpcResult<T>`（成功 `{ok:true,data}` / 失败 `{ok:false,code,message,retryable}`），不抛未捕获异常。渲染层用 `isIpcFailure()` 解包，`retryable:true` 自动重试一次。`window.one.*` 返回类型一律 `Promise<IpcResult<T>>`，在 `preload/index.ts` 的 `OneApi` 接口里声明。
+   - **JSON 配置原子写盘**（§11.4）：`writeJsonAtomic` 临时文件 + rename，防覆盖中途崩溃留半截状态。IPC handler 写 userData JSON 一律走它。
 3. **密钥不入渲染进程**：LLM key / 中转地址等敏感配置一律只在主进程使用，主进程用 `crypto` 加密存 `userData`；渲染层经 `window.one.secrets.*` 读写，绝不裸持明文 key。
 4. **存储路径**：用 `app.getPath('userData')`，不要硬编码 `~/.eclaw/` 或其它路径。
 5. **路由用 hashRouter**：`file://` 兼容，不要用 BrowserRouter。
+
+### 主题与 i18n（横切，从一开始做）
+
+> 详见 docs/DESIGN.md §十二 + docs/REWRITE_PLAN.md §十二。后期 retrofit 贵 10 倍，骨架阶段就立规矩。
+
+T1. **点缀色派生走 OKLCH，不走 RGB 位移**（DESIGN §12.5）：用户给主色 hex（`accent`），前端 `lib/color.ts` 的 `deriveBrandScale()` 用 OKLCH 色空间派生 `brand-300/400/600`（L ±12%/±6%）。RGB 三通道等量位移会让薄荷绿发灰发浊、色相漂移，违背"清透少年感"。新增派生色一律走 `hexToOklch`/`oklchToHex`，单测在 `lib/color.test.ts`。
+T2. **i18n key 不硬编码中文**（§十二）：UI 文案一律 `useTranslation()` + key，禁止 JSX 里裸写中文字符串。资源按 namespace 分文件 `public/locales/{zh-CN,en}/{common,home,editor,settings,errors}.json`，经 `i18next-http-backend` 懒加载（`loadPath: './locales/{{lng}}/{{ns}}.json'`，file:// 兼容）。`window.one.*` 返回的错误一律带 i18n key（`errors.*`），渲染层翻译，主进程不硬编码中文报错。
+T3. **防首屏闪白**：React 挂载前 `bootstrap-theme.ts` 同步从 localStorage 缓存应用明暗 + 点缀色（theme 存主进程 userData，首屏无法同步 IPC 读，故渲染层 load 后回写缓存）。主题 store load 成功后 `writeThemeCache()` 回写，下次启动 bootstrap 同步应用。
 
 ### 编排引擎（自研 @one/orchestrator）
 

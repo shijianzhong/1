@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg-0: #fcfcfd;
+  --color-bg-1: #ffffff;
+  --color-bg-2: #f4f6f8;
+  --color-bg-3: #ebeef2;
+  --color-border: rgba(120, 130, 145, 0.16);
+  --color-border-strong: rgba(120, 130, 145, 0.28);
+  --color-fg-1: #1f2329;
+  --color-fg-2: #8a9099;
+  --color-fg-3: #bcc2cb;
+  --color-brand-300: #7fe3d9;
+  --color-brand-400: #4ecdc4;
+  --color-brand-500: #3bb5ac;
+  --color-brand-600: #2e9b93;
+  --color-success: #4caf7d;
+  --color-warning: #e0a93c;
+  --color-danger: #e15f5f;
+  --color-info: #5ba8e8;
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-border-top: rgba(255, 255, 255, 0.95);
+  --glass-border-bottom: rgba(120, 130, 145, 0.12);
+  --glass-shadow: 0 6px 20px rgba(90, 100, 120, 0.06);
+  --glass-blur: 16px;
+  --glass-blur-strong: 24px;
+  --overlay-bg: rgba(90, 100, 120, 0.1);
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.2);
+  --shadow-2: 0 4px 12px oklch(0 0 0 / 0.25);
+  --shadow-3: 0 12px 32px oklch(0 0 0 / 0.35);
+  --density-scale: 1;
+  --font-scale: 1;
+  /* —— 背景图层（§12.6.1）：默认无背景图 —— */
+  --bg-image: none;
+  --bg-blur: 0px;
+  --bg-dim: 0;
+}
+
+:root.dark {
+  --color-bg-0: #0e1116;
+  --color-bg-1: #15181f;
+  --color-bg-2: #0f1115;
+  --color-bg-3: #1c2029;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-fg-1: #e8ecef;
+  --color-fg-2: #9ba1aa;
+  --color-fg-3: #5e6470;
+  --glass-bg: rgba(20, 22, 28, 0.6);
+  --glass-bg-strong: rgba(20, 22, 28, 0.8);
+  --glass-border-top: rgba(255, 255, 255, 0.08);
+  --glass-border-bottom: rgba(0, 0, 0, 0.4);
+  --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(0, 0, 0, 0.45);
+}
+
+:root.warm {
+  --color-bg-0: #fbf8f1;
+  --color-bg-1: #fffdf8;
+  --color-bg-2: #f4efe4;
+  --color-bg-3: #ebe3d6;
+}
+
+@theme inline {
+  --color-bg-0: var(--color-bg-0);
+  --color-bg-1: var(--color-bg-1);
+  --color-bg-2: var(--color-bg-2);
+  --color-bg-3: var(--color-bg-3);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-fg-1: var(--color-fg-1);
+  --color-fg-2: var(--color-fg-2);
+  --color-fg-3: var(--color-fg-3);
+  --color-brand-300: var(--color-brand-300);
+  --color-brand-400: var(--color-brand-400);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-600: var(--color-brand-600);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
+}
+
+html {
+  font-size: calc(16px * var(--font-scale));
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-bg-0);
+  color: var(--color-fg-1);
+  font-family: "PingFang SC", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  position: relative;
+}
+
+/* —— 背景图层（§12.6.1）：用户背景图铺在画布底层，可调模糊/压暗 —— */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  /* 压暗叠层保证文字对比（dimAmount 0~0.6） */
+  background-color: rgba(0, 0, 0, var(--bg-dim));
+  /* --bg-blur 默认 0px，blur(0) 无可见效果 */
+  filter: blur(var(--bg-blur));
+  pointer-events: none;
+}
+
+#root {
+  min-height: 100vh;
+}

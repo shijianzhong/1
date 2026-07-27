@@ -1,0 +1,1 @@
+{"appearance": {"title": "Appearance", "subtitle": "Stage 0 wires preset switching, glass params, and local persistence.", "presets": {"pureWhite": "Pure white", "warm": "Warm white", "dark": "Dark"}, "presetHint": "Writes to main-process theme config on click."}}

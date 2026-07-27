@@ -1,0 +1,1 @@
+{"appearance": {"title": "外观", "subtitle": "阶段 0 先接通预设切换、玻璃参数和本地持久化。", "presets": {"pureWhite": "纯白", "warm": "暖白", "dark": "夜色"}, "presetHint": "点击后立即写入主进程主题配置。"}}

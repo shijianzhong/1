@@ -791,7 +791,7 @@ contextBridge.exposeInMainWorld('one', {
 | 通知 | `Notification`（任务完成提醒） | 编排结束 |
 | 深色模式跟随 | `nativeTheme` | 系统切换 |
 | 应用内日志查看 | `electron-log` + 设置页查看 | 设置 |
-| 窗口标题栏 | macOS `titleBarStyle: 'hiddenInset'`（保留红绿黄、不占标题栏高度）+ `-webkit-app-region: drag` 设拖动区（`IconRail` 顶部 + `MainArea` 顶部边缘，按钮/输入区 `no-drag`）；Win/Linux `frame: false` + 自绘最小化/关闭按钮或用默认标题栏 | 启动（平台分支） |
+| 窗口标题栏 | macOS `titleBarStyle: 'hiddenInset'` + 顶部单独 `TitleBar`（40px）承接红绿黄按钮与拖动区；`TitleBar` 整体 `-webkit-app-region: drag`，按钮/输入区 `no-drag`，左侧预留 traffic light 空间。Win/Linux 可保留默认标题栏，或在 `TitleBar` 右侧自绘最小化/最大化/关闭按钮 | 启动（平台分支） |
 
 ---
 
@@ -887,7 +887,7 @@ one/
 - [ ] tsconfig + electron-builder.yml（先 mac 本地）
 - [ ] 主进程最小窗口 + preload 白名单 + 一个 hello IPC 通路
 - [ ] Tailwind v4 + ShadCN UI 基础接入，主题 token（纯白通透/夜色）+ 品牌色（薄荷绿）+ 玻璃配方变量
-- [ ] react-router v7 hashRouter 壳 + 全局布局骨架（`IconRail` + `SideList` + `MainArea` + `Inspector` 浮动槽位 + `CommandPalette` 槽位，见 UI_BRIEF §0.1）
+- [ ] react-router v7 hashRouter 壳 + 全局布局骨架（`TitleBar` + `IconRail` + `SideList` + `MainArea` + `Inspector` 浮动槽位 + `CommandPalette` 槽位，见 UI_BRIEF §0.1）
 - [ ] Zustand + TanStack Query 接入
 - [ ] `electron-log` 接入
 - [ ] 测试脚手架：vitest（主进程单测）+ Playwright Electron（E2E）配置就绪（见 §十）
