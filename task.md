@@ -25,20 +25,22 @@
 
 ---
 
-## 阶段 1：存储与配置（M1）
+## 阶段 1：存储与配置（M1）✅
 
 里程碑：模型配置、角色、技能、能力列表页能用（只读 + 增删改）。
 
-- [ ] 1.1 `better-sqlite3` 接入 + electron-rebuild 集成到构建（prebuild 二进制）
-- [ ] 1.2 `storage/db.ts`：连接 + WAL 模式 + schema 迁移 + `integrity_check` 启动校验 + 损坏备份恢复
-- [ ] 1.3 SQLite schema：sessions / messages / tasks / memory_l1 / memory_l2 / memory_l3
-- [ ] 1.4 `config.ts`（Zod schema）+ models.json 迁到 userData
-- [ ] 1.5 `secrets/vault.ts`：Node crypto 对称加密 LLM key（AES-256-GCM），存 userData
-- [ ] 1.6 存储 CRUD：models / capabilities / agents（角色）/ skills / persona（首页主助手人设，独立于角色）
-- [ ] 1.7 IPC 暴露（withHandler 注册）+ preload `OneApi` 扩展 + 渲染层 `api/` 薄封装（TanStack Query）
-- [ ] 1.8 管理后台列表页打通：模型 / 角色 / 技能 / 能力（只读 + 增删改）
-- [ ] 1.9 集成测试：IPC + 真实 SQLite + vault 加解密一致性（§10.3）
-- [ ] 1.10 typecheck + build + 单测全绿
+- [x] 1.1 `better-sqlite3` 接入 + electron-rebuild 集成（postinstall 钩子）`c11bdb5`
+- [x] 1.2 `storage/db.ts`：WAL + schema 迁移（版本表）+ `integrity_check` 启动校验 + 损坏备份恢复 `c11bdb5`
+- [x] 1.3 SQLite schema：sessions / messages / tasks / memory_l1 / memory_l2 / memory_l3 `c11bdb5`
+- [x] 1.4 `config.ts`（Zod schema，与 shared 接口手工对齐）+ models.json 迁 userData `c11bdb5`
+- [x] 1.5 `secrets/vault.ts`：Electron safeStorage 加密 LLM key（明文不出主进程）`c11bdb5`
+- [x] 1.6 存储 CRUD：models/capabilities/agents/skills/persona/sessions/tasks `c11bdb5`
+- [x] 1.7 IPC 全量 channel（8 namespace）+ preload `OneApi` + 渲染层 `api/` TanStack Query `c11bdb5`
+- [x] 1.8 管理后台列表页接真实数据（加载/空/错误态 + 新建/删除）`c11bdb5`
+- [x] 1.9 集成测试：E2E agents CRUD 落盘 + vault roundtrip + smoke（独立 userData 隔离）`c11bdb5`
+- [x] 1.10 typecheck + build + 5 单测 + 3 E2E 全绿 `c11bdb5`
+
+> 实施说明：native 模块（better-sqlite3 / safeStorage）走 E2E 而非 vitest（ABI 匹配）；E2E 串行执行 + `ONE_USER_DATA` env 隔离 userData，避免单例锁与 SQLite 并发冲突。
 
 ---
 
