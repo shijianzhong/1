@@ -61,7 +61,8 @@ export function saveModel(input: unknown): ModelConfig {
     modelId: parsed.modelId,
     name: parsed.name,
     baseUrl: parsed.baseUrl || undefined,
-    keyId: parsed.keyId,
+    // 新建模型自动生成 keyId（绑定 vault key，无则空）
+    keyId: existing?.keyId ?? parsed.keyId ?? generateId('key_'),
     isDefault: parsed.isDefault,
     maxTokens: parsed.maxTokens ?? 16384, // 铁律8 缺省
     temperature: parsed.temperature,
@@ -211,4 +212,45 @@ export function savePersona(input: unknown): Persona {
   }
   personaStore.write(next)
   return next
+}
+
+// —— 预置默认模型（首次启动无模型时 seed Claude Code）——
+const PRESET_MODELS: Array<Omit<ModelConfig, 'createdAt' | 'updatedAt'>> = [
+  {
+    id: 'preset_claude_sonnet',
+    modelId: 'claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    baseUrl: undefined, // 官方 endpoint
+    keyId: 'preset_key_claude_sonnet',
+    isDefault: true,
+    maxTokens: 16384,
+  },
+  {
+    id: 'preset_claude_opus',
+    modelId: 'claude-opus-5',
+    name: 'Claude Opus 5',
+    baseUrl: undefined,
+    keyId: 'preset_key_claude_opus',
+    isDefault: false,
+    maxTokens: 16384,
+  },
+  {
+    id: 'preset_claude_fable',
+    modelId: 'claude-fable-5',
+    name: 'Claude Fable 5',
+    baseUrl: undefined,
+    keyId: 'preset_key_claude_fable',
+    isDefault: false,
+    maxTokens: 16384,
+  },
+]
+
+/** 首次启动无模型时 seed 预置（Claude Code 系列） */
+export function seedDefaultModels(): void {
+  const existing = listModels()
+  if (existing.length > 0) return
+  const now = Date.now()
+  modelsStore.write(
+    PRESET_MODELS.map((m) => ({ ...m, createdAt: now, updatedAt: now }) as ModelConfig),
+  )
 }

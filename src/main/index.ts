@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
 import { closeDb, getDb } from './storage/db'
+import { seedDefaultModels } from './storage/models'
 import { registerMemoryTools } from './tools/builtin/memory'
 import { createTray, destroyTray } from './tray'
 import {
@@ -96,6 +97,7 @@ if (!gotLock) {
     }
 
     getDb() // 初始化 SQLite（WAL + 迁移 + integrity_check，§11.4）
+    seedDefaultModels() // 首次启动 seed Claude Code 预置模型
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerIpcHandlers()
     createMainWindow()
