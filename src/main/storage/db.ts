@@ -184,12 +184,42 @@ export function getDb(): Database.Database {
   backupCurrentDb()
 
   dbInstance = db
+  startPeriodicBackup()
   return db
+}
+
+const BACKUP_INTERVAL_MS = 30 * 60 * 1000 // 30min 周期备份
+let backupTimer: NodeJS.Timeout | null = null
+
+/** 周期备份（§11.4：损坏恢复从 .bak 恢复） */
+function startPeriodicBackup(): void {
+  if (backupTimer) clearInterval(backupTimer)
+  backupTimer = setInterval(() => {
+    if (dbInstance) {
+      try {
+        const dbPath = getDbPath()
+        if (existsSync(dbPath)) copyFileSync(dbPath, getDbBackupPath())
+      } catch (error) {
+        logger.warn('[db] 周期备份失败', error)
+      }
+    }
+  }, BACKUP_INTERVAL_MS)
 }
 
 /** 关闭连接（app before-quit 调用） */
 export function closeDb(): void {
+  if (backupTimer) {
+    clearInterval(backupTimer)
+    backupTimer = null
+  }
   if (dbInstance) {
+    // 退出前再备份一次
+    try {
+      const dbPath = getDbPath()
+      if (existsSync(dbPath)) copyFileSync(dbPath, getDbBackupPath())
+    } catch (error) {
+      logger.warn('[db] 退出备份失败', error)
+    }
     dbInstance.close()
     dbInstance = null
   }

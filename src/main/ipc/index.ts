@@ -2,7 +2,7 @@ import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/pr
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, extname, join } from 'node:path'
-import { app, dialog } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import {
   DEFAULT_THEME,
   type SystemPingResponse,
@@ -21,6 +21,7 @@ import { registerTasksHandlers } from './tasks'
 import { registerSecretsHandlers } from './secrets'
 import { registerHomeHandlers } from './home'
 import { registerOrchestrateHandlers } from './orchestrate'
+import { registerNativeHandlers } from './native'
 
 const THEME_FILE = 'theme.json'
 
@@ -156,4 +157,5 @@ export function registerIpcHandlers(): void {
   registerSecretsHandlers()
   registerHomeHandlers()
   registerOrchestrateHandlers()
+  registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
 }

@@ -4,6 +4,19 @@ import { app, BrowserWindow } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
 import { closeDb, getDb } from './storage/db'
 import { registerMemoryTools } from './tools/builtin/memory'
+import { createTray, destroyTray } from './tray'
+import {
+  registerGlobalShortcut,
+  setupNativeMenu,
+  unregisterGlobalShortcut,
+} from './native-menu'
+import { setupAutoUpdater, stopAutoUpdater } from './updater'
+import {
+  clearRunning,
+  hadCrashedLastRun,
+  listDrafts,
+  markRunning,
+} from './crash-recovery'
 import { logger } from './logger'
 
 const isMac = process.platform === 'darwin'
@@ -75,10 +88,39 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // —— 崩溃恢复（§11.5/.7）：启动检测上次崩溃 + 写哨兵 ——
+    const crashed = hadCrashedLastRun()
+    markRunning()
+    if (crashed) {
+      logger.warn('[crash] 检测到上次异常退出，草稿可恢复')
+    }
+
     getDb() // 初始化 SQLite（WAL + 迁移 + integrity_check，§11.4）
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerIpcHandlers()
     createMainWindow()
+
+    // 上次崩溃 → 推渲染层提示恢复草稿
+    if (crashed) {
+      const win = BrowserWindow.getAllWindows()[0]
+      win?.webContents.once('did-finish-load', () =>
+        win.webContents.send('app:crashRecovery', { drafts: listDrafts() }),
+      )
+    }
+
+    // —— 原生能力（§六）——
+    // 测试环境（NODE_ENV=test）跳过托盘/菜单/快捷键（无显示环境会抛错卡住）
+    const isTest = process.env.NODE_ENV === 'test'
+    if (!isTest) {
+      try {
+        setupNativeMenu(getMainWindow)
+        createTray(getMainWindow)
+        registerGlobalShortcut(getMainWindow)
+      } catch (error) {
+        logger.warn('[main] 原生能力初始化失败（可能无显示环境）', error)
+      }
+      setupAutoUpdater(getMainWindow)
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -87,14 +129,22 @@ if (!gotLock) {
     })
   })
 
+  function getMainWindow(): BrowserWindow | null {
+    return BrowserWindow.getAllWindows()[0] ?? null
+  }
+
   app.on('window-all-closed', () => {
     if (!isMac) {
       app.quit()
     }
   })
 
-  // —— 退出前关闭 DB 连接，防写一半断电 ——
+  // —— 退出前关闭 DB 连接 + 清理托盘/快捷键，防写一半断电 ——
   app.on('before-quit', () => {
+    clearRunning()
+    unregisterGlobalShortcut()
+    destroyTray()
+    stopAutoUpdater()
     closeDb()
   })
 }

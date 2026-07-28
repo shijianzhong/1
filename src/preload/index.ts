@@ -90,6 +90,13 @@ export interface OneApi {
     onStream: (cb: (e: import('@shared/types').StreamEvent) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
   }
+  app: {
+    setAutoLaunch: (on: boolean) => Promise<IpcResult<boolean>>
+    getAutoLaunch: () => Promise<IpcResult<boolean>>
+    notify: (input: { title: string; body: string }) => Promise<IpcResult<void>>
+    getSystemColorMode: () => Promise<IpcResult<'light' | 'dark' | 'system'>>
+    show: () => Promise<IpcResult<void>>
+  }
   // 编排（M4 接入）
   // orchestrate: { run, onStream, cancel }
 }
@@ -171,6 +178,13 @@ const api: OneApi = {
       return () => ipcRenderer.off('orchestrate:stream', handler)
     },
     cancel: () => ipcRenderer.invoke('orchestrate:cancel'),
+  },
+  app: {
+    setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', on),
+    getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
+    notify: (input) => ipcRenderer.invoke('app:notify', input),
+    getSystemColorMode: () => ipcRenderer.invoke('app:getSystemColorMode'),
+    show: () => ipcRenderer.invoke('app:show'),
   },
 }
 
