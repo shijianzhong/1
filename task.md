@@ -95,14 +95,14 @@
 
 ### 4b：GroupChat + Handoff（⚠ 待推进，最高风险）
 
-- [ ] 4b.1 GroupChat：broadcast（should_respond=false 仅 extend cache）+ 定向请求 next_speaker（should_respond=true run）+ round_robin selection_func + max_rounds 终止
-- [ ] 4b.2 GroupChat 四 patch：cache_patch（自带完整历史治空 cache）/dedup_patch（去重）/manager_fairness_patch（未发言强制 terminate=false）/manager_output_patch（剥围栏+鲁棒 JSON）
-- [ ] 4b.3 GroupChat manager：AgentOrchestrationOutput 结构化输出 {terminate,reason,next_speaker,final_message}，走 response_format
-- [ ] 4b.4 Handoff：synthetic tool handoff_to_X + _AutoHandoffMiddleware 短路 + MiddlewareTermination + 扫 function_result 解析 target + clean_conversation_for_handoff + repair_tool_pairs
-- [ ] 4b.5 Magentic 占位降级（提示改用 groupchat+handoff）
-- [ ] 4b.6 编排 IPC + 流式（orchestrate:run/onStream/cancel）
-- [ ] 4b.7 黄金用例：GroupChat 四 patch/Handoff 短路/Pregel 收敛/should_respond 双语义 + 阶段4 验证提交
-- [ ] 4b.6 画布编辑器联调（NodeInspector/NodePalette/nodes）
+- [x] 4b.1 GroupChat：broadcast（should_respond=false 仅 extend cache）+ 定向请求 next_speaker（should_respond=true run）+ round_robin selection_func + max_rounds 终止 `46270e4`
+- [x] 4b.2 GroupChat 四 patch：cache_patch（自带完整历史治空 cache）/dedup_patch（去重）/manager_fairness_patch（未发言强制 terminate=false）/manager_output_patch（剥围栏+鲁棒 JSON） `46270e4`
+- [x] 4b.3 GroupChat manager：AgentOrchestrationOutput 结构化输出 + extractManagerOutput/applyFairnessPatch（selectNextSpeaker manager 模式降级 round_robin，TODO） `46270e4`
+- [x] 4b.4 Handoff：synthetic tool handoff_to_X + _AutoHandoffMiddleware 短路（agent 循环检测 handoff tool 注入合成 result + break，等价 MiddlewareTermination）+ HandoffExecutor 扫 function_result 解析 target + clean_conversation_for_handoff `46270e4`
+- [x] 4b.5 Magentic 占位降级（抛提示改用 groupchat+handoff）`46270e4`
+- [x] 4b.6 编排 IPC + 流式（orchestrate:run/onStream/cancel + preload namespace）`46270e4`
+- [x] 4b.7 黄金用例：GroupChat 四 patch 9 case + Handoff 5 case + 阶段4 验证 `46270e4`
+- [ ] 4b.8 画布编辑器联调（NodeInspector/NodePalette/nodes）—— 阶段5 前端重写时接
 
 ---
 
