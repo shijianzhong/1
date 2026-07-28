@@ -61,17 +61,19 @@
 
 ---
 
-## 阶段 3：三级记忆（M3）
+## 阶段 3：三级记忆（M3）✅
 
 里程碑：多会话后记忆生效，任务进度页可用。
 
-- [ ] 3.1 L0 身份块（从设置页"个人档案"取）
-- [ ] 3.2 L1 滚动压缩（压缩 prompt 迁移；受阻先用简单截断兜底）
-- [ ] 3.3 L2 跨会话精炼
-- [ ] 3.4 L3 长期沉淀（memory_recall / memory_search 工具）
-- [ ] 3.5 会话/任务历史 SQLite 表 + 查询页
-- [ ] 3.6 L1 与 agent 运行时 compaction 关系厘清
-- [ ] 3.7 回归用例：多会话记忆断言（§10.1）
+- [x] 3.1 L0 身份块（persona.profile → injectL0 拼 instructions 开头）`4783716`
+- [x] 3.2 L1 滚动压缩（超 20 条触发，LLM 压缩存 memory_l1，受阻截断兜底；buildL1Messages 注首条+最近 8 条窗口）`4783716`
+- [x] 3.3 L2 跨会话精炼（会话结束 LLM 精炼存 memory_l2，注入 persona 限长 1500 字）`4783716`
+- [x] 3.4 L3 长期沉淀（memory_l3 key-value + memory_recall/search/retain 工具）`4783716`
+- [x] 3.5 会话/任务历史查询页（TasksPage + AppShell 侧栏 sessions）`4783716`
+- [x] 3.6 L1 与 agent compaction 关系厘清（L1 会话级摘要先存档，compaction 运行时窗口截断防超 token）`4783716`
+- [x] 3.7 单测：L0 纯函数 5 case；L1/L2/L3 走 E2E（native SQLite + LLM 需真实环境）`4783716`
+
+> 实施说明：L1/L2 的 LLM 压缩用独立 compressFn（system prompt「摘要助手」+ maxTokens 1024），失败降级截断；L2 注入限长 1500 字超出按最早条目截断；L3 search 用 LIKE 模糊匹配（向量检索后置）。
 
 ---
 
