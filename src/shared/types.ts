@@ -118,6 +118,51 @@ export interface RunResult {
 }
 
 // ============================================================================
+// Pregel 运行时契约（§三 D + §三之三 E + 铁律7/15）——
+// Executor = workflow 节点；should_respond 双语义（true run / false 仅 extend cache）；
+// 消息 N emit / N+1 deliver；同 superstep 内所有收到消息的 executor 并发。
+// ============================================================================
+
+/** Executor cache 中的消息（含 author 用于 GroupChat 发言者识别） */
+export interface OrchMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  author?: string // executor_id（GroupChat 发言者/Sequential 上游标识）
+  content: string
+  /** 关联的 tool_use id（tool_result 配对用，铁律18） */
+  toolUseId?: string
+  /** 是否为 function_result（孤儿 tool_use 修复用，§K#1） */
+  isFunctionResult?: boolean
+}
+
+/** Executor 请求（铁律15：should_respond 双语义） */
+export interface ExecutorRequest {
+  /** 待投递到本 executor cache 的消息 */
+  messages: OrchMessage[]
+  /** true=触发 run，false=仅 extend cache（broadcast 模式，§三 D） */
+  shouldRespond: boolean
+}
+
+/** 消息投递信封（runner 内部，N emit / N+1 deliver） */
+export interface MessageEnvelope {
+  source: string | null // null = 初始输入
+  target: string // executor_id
+  message: OrchMessage
+  /** 是否定向（true=只投 target，false=fan-out 给所有下游） */
+  targeted: boolean
+}
+
+/**
+ * WorkflowContext（Pregel 运行时，§三 D）。
+ * Executor 通过它与 runner 交互：发消息、产出输出、发自定义事件。
+ */
+export interface WorkflowContext {
+  send_message(data: unknown, target_id?: string): Promise<void>
+  yield_output(data: unknown): Promise<void>
+  add_event(e: StreamEvent): Promise<void>
+  get_source_executor_id(): string
+}
+
+// ============================================================================
 // LLM 契约（§5.3 + §三之三 I）—— 主进程 client/agent 用，部分经流式事件到渲染层
 // ============================================================================
 
