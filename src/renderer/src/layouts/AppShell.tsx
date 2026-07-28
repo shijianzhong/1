@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   Bot,
   Boxes,
@@ -8,7 +9,7 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useSessions } from '@renderer/api/hooks'
 
@@ -25,10 +26,14 @@ const navItems = [
 export function AppShell() {
   const { t } = useTranslation(['common', 'editor', 'home'])
   const location = useLocation()
+  const navigate = useNavigate()
   const [commandOpen, setCommandOpen] = useState(false)
+  const [commandQuery, setCommandQuery] = useState('')
+  const [commandIndex, setCommandIndex] = useState(0)
 
   const showSideList = location.pathname === '/'
-  const showInspector = location.pathname.startsWith('/editor')
+  // EditorPage 自带 Inspector + NodePalette，AppShell 不再重复显示
+  const showInspector = false
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
   const sessionsQ = useSessions()
   const recentItems = useMemo(
@@ -121,25 +126,86 @@ export function AppShell() {
       </div>
 
       {commandOpen ? (
-        <div className="command-overlay" onClick={() => setCommandOpen(false)}>
+        <motion.div
+          className="command-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          onClick={() => setCommandOpen(false)}
+        >
           <div className="glass-panel command-panel" onClick={(event) => event.stopPropagation()}>
-            <input className="command-input" autoFocus placeholder={t('common.command.title')} />
+            <input
+              className="command-input"
+              autoFocus
+              placeholder={t('common.command.title')}
+              value={commandQuery}
+              onChange={(e) => {
+                setCommandQuery(e.target.value)
+                setCommandIndex(0)
+              }}
+              onKeyDown={(e) => {
+                const filtered = filteredNav(navItems, commandQuery, t)
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setCommandIndex((i) => (i + 1) % Math.max(filtered.length, 1))
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setCommandIndex((i) => (i - 1 + Math.max(filtered.length, 1)) % Math.max(filtered.length, 1))
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  const target = filtered[commandIndex]
+                  if (target) {
+                    void navigate(target.to)
+                    setCommandOpen(false)
+                    setCommandQuery('')
+                  }
+                }
+              }}
+            />
             <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
-              {navItems.map((item) => (
-                <NavLink
+              {filteredNav(navItems, commandQuery, t).map((item, i) => (
+                <button
                   key={`command-${item.to}`}
+                  type="button"
                   className="route-link"
-                  to={item.to}
-                  onClick={() => setCommandOpen(false)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    background:
+                      i === commandIndex ? 'var(--color-bg-3)' : 'transparent',
+                    borderLeft:
+                      i === commandIndex ? '2px solid var(--color-brand-500)' : '2px solid transparent',
+                  }}
+                  onMouseEnter={() => setCommandIndex(i)}
+                  onClick={() => {
+                    void navigate(item.to)
+                    setCommandOpen(false)
+                    setCommandQuery('')
+                  }}
                 >
                   <span>{t(`common.pages.${item.key}`)}</span>
                   <span style={{ color: 'var(--color-fg-2)' }}>{t('common.command.hint')}</span>
-                </NavLink>
+                </button>
               ))}
             </div>
           </div>
-        </div>
+        </motion.div>
       ) : null}
     </>
+  )
+}
+
+/** 命令面板搜索过滤（按 i18n 标题匹配） */
+function filteredNav(
+  items: ReadonlyArray<(typeof navItems)[number]>,
+  query: string,
+  t: (key: string) => string,
+): Array<(typeof navItems)[number]> {
+  const q = query.trim().toLowerCase()
+  if (!q) return [...items]
+  return items.filter((item) =>
+    t(`common.pages.${item.key}`).toLowerCase().includes(q),
   )
 }

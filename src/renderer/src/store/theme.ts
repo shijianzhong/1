@@ -12,12 +12,26 @@ import { writeThemeCache } from '@renderer/bootstrap-theme'
 function unwrap<T>(result: IpcResult<T>, fallback: T): T {
   if (isIpcFailure(result)) {
     // eslint-disable-next-line no-console
-    console.error(
-      `[theme] ipc 失败 ${result.code}: ${result.message}`,
-    )
+    console.error(`[theme] ipc 失败 ${result.code}: ${result.message}`)
     return fallback
   }
   return result.data
+}
+
+/** 预取背景图 dataUrl（applyThemeToDom 用） */
+async function fetchBgDataUrl(theme: ThemeConfig): Promise<Record<string, string>> {
+  const map: Record<string, string> = {}
+  if (theme.background?.type === 'image' && theme.background.imageId) {
+    try {
+      const result = await window.one.theme.loadBackground(theme.background)
+      if (!isIpcFailure(result) && result.data.dataUrl) {
+        map[theme.background.imageId] = result.data.dataUrl
+      }
+    } catch {
+      // 静默
+    }
+  }
+  return map
 }
 
 interface ThemeState {
@@ -36,19 +50,20 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   load: async () => {
     const result = await window.one.theme.get()
     const theme = unwrap(result, DEFAULT_THEME)
-    applyThemeToDom(theme)
+    const dataUrls = await fetchBgDataUrl(theme)
+    applyThemeToDom(theme, dataUrls)
     writeThemeCache(theme)
     set({ theme, isLoaded: true })
   },
   save: async (theme) => {
     const result = await window.one.theme.set(theme)
     const nextTheme = unwrap(result, { ...DEFAULT_THEME, ...theme })
-    applyThemeToDom(nextTheme)
+    const dataUrls = await fetchBgDataUrl(nextTheme)
+    applyThemeToDom(nextTheme, dataUrls)
     writeThemeCache(nextTheme)
     set({ theme: nextTheme, isLoaded: true })
   },
   subscribeSystemMode: () => {
-    // mode='system' 时跟随系统明暗：matchMedia change → 重新应用 DOM
     if (systemModeUnsub) return systemModeUnsub
     const mql = window.matchMedia('(prefers-color-scheme: dark)')
     const onChange = (): void => {

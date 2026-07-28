@@ -27,7 +27,10 @@ export interface OneApi {
   theme: {
     get: () => Promise<IpcResult<ThemeConfig>>
     set: (theme: ThemeConfig) => Promise<IpcResult<ThemeConfig>>
-    // M6: pickBackground/importBackground/loadBackground/removeBackground
+    pickBackground: () => Promise<IpcResult<{ filePath: string } | null>>
+    importBackground: (filePath: string) => Promise<IpcResult<{ imageId: string }>>
+    loadBackground: (bg: import('@shared/types').ThemeBackgroundConfig) => Promise<IpcResult<{ dataUrl: string | null; stale?: boolean }>>
+    removeBackground: (imageId?: string) => Promise<IpcResult<void>>
   }
   capabilities: {
     list: () => Promise<IpcResult<Capability[]>>
@@ -98,6 +101,10 @@ const api: OneApi = {
   theme: {
     get: () => ipcRenderer.invoke('theme:get'),
     set: (theme) => ipcRenderer.invoke('theme:set', theme),
+    pickBackground: () => ipcRenderer.invoke('theme:pickBackground'),
+    importBackground: (filePath) => ipcRenderer.invoke('theme:importBackground', filePath),
+    loadBackground: (bg) => ipcRenderer.invoke('theme:loadBackground', bg),
+    removeBackground: (imageId) => ipcRenderer.invoke('theme:removeBackground', imageId),
   },
   capabilities: {
     list: () => ipcRenderer.invoke('capabilities:list'),

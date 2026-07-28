@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Sparkles } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { unwrap } from '@renderer/api/client'
 import { IpcError } from '@renderer/api/client'
+import { Markdown } from '@renderer/components/Markdown'
 
 interface ChatMessage {
   id: string
@@ -71,17 +73,23 @@ export function HomePage() {
       ) : null}
 
       {messages.map((m) => (
-        <div key={m.id} className={`message ${m.role === 'user' ? 'message--user' : ''}`}>
+        <motion.div
+          key={m.id}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className={`message ${m.role === 'user' ? 'message--user' : ''}`}
+        >
           {m.role === 'assistant' ? (
             <div className="message__avatar">
               <Sparkles size={16} />
             </div>
           ) : null}
           <div className={`message__bubble message__bubble--${m.role}`}>
-            {m.text}
+            {m.role === 'assistant' ? <Markdown>{m.text}</Markdown> : m.text}
             {m.streaming ? <span className="stream-cursor">▋</span> : null}
           </div>
-        </div>
+        </motion.div>
       ))}
 
       <div className="glass-panel composer">

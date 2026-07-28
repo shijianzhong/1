@@ -1,1 +1,1 @@
-{"nodes": {"agent": "单 Agent 节点骨架", "sequential": "顺序编排容器占位", "groupchat": "群聊容器与运行态高亮将在下一阶段接入"}, "inspector": {"title": "Inspector", "subtitle": "节点配置 / 工具 / 运行日志将在后续阶段补全。"}}
+{"palette": {"title": "节点面板"}, "run": "运行", "running": "运行中…", "runPrompt": "输入编排起始消息：", "inspector": {"title": "Inspector", "hint": "拖拽节点到画布建图，连线后点击运行。运行态高亮在此显示。"}, "nodes": {"agent": "单 Agent 节点", "sequential": "顺序编排容器", "groupchat": "群聊容器"}, "labels": {"seq": "序", "par": "并", "group": "群聊", "handoff": "转交", "magentic": "MVP"}}

@@ -1,12 +1,16 @@
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { app } from 'electron'
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { basename, dirname, extname, join } from 'node:path'
+import { app, dialog } from 'electron'
 import {
   DEFAULT_THEME,
   type SystemPingResponse,
+  type ThemeBackgroundConfig,
   type ThemeConfig,
 } from '@shared/types'
 import { withHandler } from './handler'
+import { getBackgroundDir } from '../storage/paths'
 import { registerCapabilitiesHandlers } from './capabilities'
 import { registerAgentsHandlers } from './agents'
 import { registerSkillsHandlers } from './skills'
@@ -59,6 +63,57 @@ async function saveTheme(theme: ThemeConfig): Promise<ThemeConfig> {
   return nextTheme
 }
 
+// —— 背景图管理（§12.6.1）——
+async function importBackground(filePath: string): Promise<{ imageId: string }> {
+  const ext = extname(filePath).toLowerCase() || '.png'
+  const imageId = randomUUID()
+  const dir = getBackgroundDir()
+  await mkdir(dir, { recursive: true })
+  const dest = join(dir, `${imageId}${ext}`)
+  await copyFile(filePath, dest)
+  return { imageId }
+}
+
+async function loadBackgroundDataUrl(
+  bg: ThemeBackgroundConfig,
+): Promise<{ dataUrl: string | null; stale?: boolean }> {
+  if (bg.type !== 'image' || !bg.imageId) return { dataUrl: null }
+  // 在 bg 目录找匹配 imageId 的文件
+  const dir = getBackgroundDir()
+  const { readdir } = await import('node:fs/promises')
+  let found: string | null = null
+  try {
+    const files = await readdir(dir)
+    found = files.find((f) => f.startsWith(bg.imageId!)) ?? null
+    if (found) found = join(dir, found)
+  } catch {
+    // bg 目录不存在
+  }
+  if (!found || !existsSync(found)) {
+    // path 失效（用户删了原图）→ stale
+    return { dataUrl: null, stale: true }
+  }
+  const buf = await readFile(found)
+  const ext = extname(found).slice(1) || 'png'
+  return { dataUrl: `data:image/${ext};base64,${buf.toString('base64')}` }
+}
+
+async function removeBackgroundFile(imageId?: string): Promise<void> {
+  if (!imageId) return
+  const dir = getBackgroundDir()
+  const { readdir } = await import('node:fs/promises')
+  try {
+    const files = await readdir(dir)
+    for (const f of files) {
+      if (f.startsWith(imageId)) {
+        await unlink(join(dir, f)).catch(() => {})
+      }
+    }
+  } catch {
+    // 无目录
+  }
+}
+
 export function registerIpcHandlers(): void {
   // —— system + theme ——
   withHandler<SystemPingResponse>('system:ping', (): SystemPingResponse => ({
@@ -69,6 +124,25 @@ export function registerIpcHandlers(): void {
   withHandler<ThemeConfig>('theme:get', async () => loadTheme())
   withHandler<ThemeConfig>('theme:set', async (_event, themeRaw) =>
     saveTheme(themeRaw as ThemeConfig),
+  )
+  withHandler<{ filePath: string } | null>('theme:pickBackground', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return { filePath: result.filePaths[0] }
+  })
+  withHandler<{ imageId: string }>('theme:importBackground', async (_e, filePathRaw) => {
+    const filePath = filePathRaw as string
+    return importBackground(filePath)
+  })
+  withHandler<{ dataUrl: string | null; stale?: boolean }>(
+    'theme:loadBackground',
+    async (_e, bgRaw) => loadBackgroundDataUrl(bgRaw as ThemeBackgroundConfig),
+  )
+  withHandler<void>('theme:removeBackground', async (_e, imageIdRaw) =>
+    removeBackgroundFile(imageIdRaw as string | undefined),
   )
 
   // —— 阶段1 实体 CRUD ——
