@@ -81,18 +81,27 @@
 
 里程碑：画布编排能跑 Sequential/Concurrent/GroupChat/Handoff；Magentic 降级提示。
 
-- [ ] 4a.1 `orchestrator/models.ts`：6 节点类型 + 边 + 图模型
-- [ ] 4a.2 `builder.ts`：JSON 图 → RuntimeWorkflow，环检测，配边（不做静态排序）
-- [ ] 4a.3 Sequential builder + Agent 叶子（wake_on_upstream / strip_tool_blocks_filter）
-- [ ] 4a.4 Concurrent builder（fan-out + fan-in 聚合）
-- [ ] 4a.5 `runner.ts`：Pregel superstep 主循环（非递归）+ Promise.all 并发 deliver + 收敛
-- [ ] 4a.6 条件边 `contains:` 谓词 + add_switch_case_edge_group
-- [ ] 4a.7 黄金用例：Sequential/Concurrent/Agent 叶子（对照原 builder.py）
-- [ ] 4b.1 GroupChat：broadcast（should_respond=false）+ 定向请求 + manager 结构化输出
-- [ ] 4b.2 GroupChat 四 patch（cache/dedup/fairness/output）
-- [ ] 4b.3 Handoff：synthetic tool + _AutoHandoffMiddleware 短路 + repair_tool_pairs
-- [ ] 4b.4 clean_conversation_for_handoff 广播前剥 tool 块
+### 4a：Sequential + Concurrent + Agent 叶子（✅ 第一批）
+
+- [x] 4a.1 `orchestrator/models.ts`：Executor/ExecutorRequest/WorkflowContext/RuntimeWorkflow 抽象 + shared 补 OrchMessage/MessageEnvelope（铁律7/15）`914ca5e`
+- [x] 4a.2 `runner.ts`：Pregel superstep 主循环（非递归，单 pending buffer）+ Promise.all 并发 deliver + 收敛 + MAX_SUPERSTEPS 兜底 `914ca5e`
+- [x] 4a.3 `builder.ts`：JSON 图→RuntimeWorkflow，环检测（DFS 三色），按 type 分发，无静态排序 `914ca5e`
+- [x] 4a.4 Sequential + Agent 叶子（wake_on_upstream 治复述 / strip_tool_blocks_filter 治 2013）`914ca5e`
+- [x] 4a.5 Concurrent fan-out/fan-in（ConcurrentExecutor 协调）`914ca5e`
+- [x] 4a.6 条件边 `contains:` 谓词 + 恒真（runner evaluatePredicate）`914ca5e`
+- [x] 4a.7 黄金用例：Sequential 4 case（接力/单 agent/wake/strip）+ Concurrent 2 case（fan-out/should_respond=false）`914ca5e`
+
+> 4a 修复：Pregel 单 pending buffer（原双 buffer nextPending 导致下轮误判收敛，B 永不 deliver）。
+
+### 4b：GroupChat + Handoff（⚠ 待推进，最高风险）
+
+- [ ] 4b.1 GroupChat：broadcast（should_respond=false 仅 extend cache）+ 定向请求 next_speaker（should_respond=true run）+ round_robin selection_func + max_rounds 终止
+- [ ] 4b.2 GroupChat 四 patch：cache_patch（自带完整历史治空 cache）/dedup_patch（去重）/manager_fairness_patch（未发言强制 terminate=false）/manager_output_patch（剥围栏+鲁棒 JSON）
+- [ ] 4b.3 GroupChat manager：AgentOrchestrationOutput 结构化输出 {terminate,reason,next_speaker,final_message}，走 response_format
+- [ ] 4b.4 Handoff：synthetic tool handoff_to_X + _AutoHandoffMiddleware 短路 + MiddlewareTermination + 扫 function_result 解析 target + clean_conversation_for_handoff + repair_tool_pairs
 - [ ] 4b.5 Magentic 占位降级（提示改用 groupchat+handoff）
+- [ ] 4b.6 编排 IPC + 流式（orchestrate:run/onStream/cancel）
+- [ ] 4b.7 黄金用例：GroupChat 四 patch/Handoff 短路/Pregel 收敛/should_respond 双语义 + 阶段4 验证提交
 - [ ] 4b.6 画布编辑器联调（NodeInspector/NodePalette/nodes）
 
 ---
