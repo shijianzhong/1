@@ -179,6 +179,17 @@ html[data-platform='darwin'] .titlebar__inner {
   gap: 24px;
   max-width: 760px;
   margin: 0 auto;
+  height: 100%;
+  min-height: 0; /* 撑满 main-content，让内部消息区滚动 + composer 置底 */
+}
+
+.chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .message {

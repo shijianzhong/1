@@ -61,36 +61,38 @@ export function HomePage() {
 
   return (
     <div className="chat-shell">
-      <section className="glass-panel placeholder-card" style={{ borderRadius: 28, padding: 24 }}>
-        <p className="section-title">{t('home:welcome')}</p>
-        <p className="section-subtitle">{t('home:description')}</p>
-      </section>
+      <div className="chat-messages">
+        <section className="glass-panel placeholder-card" style={{ borderRadius: 28, padding: 24 }}>
+          <p className="section-title">{t('home:welcome')}</p>
+          <p className="section-subtitle">{t('home:description')}</p>
+        </section>
 
-      {error ? (
-        <div className="message__bubble message__bubble--assistant" style={{ color: 'var(--color-danger)' }}>
-          {error}
-        </div>
-      ) : null}
-
-      {messages.map((m) => (
-        <motion.div
-          key={m.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className={`message ${m.role === 'user' ? 'message--user' : ''}`}
-        >
-          {m.role === 'assistant' ? (
-            <div className="message__avatar">
-              <Sparkles size={16} />
-            </div>
-          ) : null}
-          <div className={`message__bubble message__bubble--${m.role}`}>
-            {m.role === 'assistant' ? <Markdown>{m.text}</Markdown> : m.text}
-            {m.streaming ? <span className="stream-cursor">▋</span> : null}
+        {error ? (
+          <div className="message__bubble message__bubble--assistant" style={{ color: 'var(--color-danger)' }}>
+            {error}
           </div>
-        </motion.div>
-      ))}
+        ) : null}
+
+        {messages.map((m) => (
+          <motion.div
+            key={m.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className={`message ${m.role === 'user' ? 'message--user' : ''}`}
+          >
+            {m.role === 'assistant' ? (
+              <div className="message__avatar">
+                <Sparkles size={16} />
+              </div>
+            ) : null}
+            <div className={`message__bubble message__bubble--${m.role}`}>
+              {m.role === 'assistant' ? <Markdown>{m.text}</Markdown> : m.text}
+              {m.streaming ? <span className="stream-cursor">▋</span> : null}
+            </div>
+          </motion.div>
+        ))}
+      </div>
 
       <div className="glass-panel composer">
         <input

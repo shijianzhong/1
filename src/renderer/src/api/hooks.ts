@@ -161,3 +161,12 @@ export function useRemoveSession() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })
 }
+
+// —— 单个能力（画布加载/存图用）——
+export function useCapability(id?: string) {
+  return useQuery({
+    queryKey: ['capability', id],
+    queryFn: () => thenUnwrap(window.one.capabilities.get(id!)),
+    enabled: !!id,
+  })
+}

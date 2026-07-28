@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import {
   Background,
   Controls,
@@ -15,9 +16,10 @@ import '@xyflow/react/dist/style.css'
 import { Bot, Boxes, Cable, GitBranch, Users, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { unwrap } from '@renderer/api/client'
+import { useCapability, useSaveCapability } from '@renderer/api/hooks'
 import { Button } from '@renderer/components/ui/Button'
 import { Badge } from '@renderer/components/ui/Badge'
-import type { NodeType, StreamEvent, WorkflowGraph } from '@shared/types'
+import type { Capability, NodeType, StreamEvent, WorkflowGraph } from '@shared/types'
 
 // —— 能力编排画布（§2 + §5.4）——
 // 6 类节点视觉 + 拖拽建图 + 运行态高亮（接 orchestrate:run/onStream）。
@@ -45,11 +47,66 @@ export function EditorPage() {
 
 function EditorCanvas() {
   const { t } = useTranslation(['editor', 'common'])
+  const { capabilityId } = useParams<{ capabilityId: string }>()
+  const capQ = useCapability(capabilityId)
+  const saveCap = useSaveCapability()
   const [nodes, setNodes] = useState<Node[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
   const [running, setRunning] = useState(false)
   const [activeNode, setActiveNode] = useState<string | null>(null)
   const [output, setOutput] = useState('')
+
+  // 加载已有能力图
+  useEffect(() => {
+    const cap = capQ.data as Capability | undefined
+    if (!cap?.graph) return
+    setNodes(
+      cap.graph.nodes.map((n) => ({
+        id: n.id,
+        type: 'default',
+        position: n.position,
+        data: { kind: n.type, ...n.data, label: n.id },
+      })),
+    )
+    setEdges(
+      cap.graph.edges.map((e) => ({
+        id: `${e.source}-${e.target}`,
+        source: e.source,
+        target: e.target,
+        animated: false,
+        data: { condition: e.condition } as Record<string, unknown>,
+      })),
+    )
+  }, [capQ.data])
+
+  // debounce 存图（节点/边变化后 800ms 落盘）
+  useEffect(() => {
+    if (!capabilityId || nodes.length === 0 && edges.length === 0) return
+    const timer = setTimeout(() => {
+      const graph: WorkflowGraph = {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: (n.data as { kind: NodeType }).kind ?? 'agent',
+          data: n.data as Record<string, unknown>,
+          position: n.position,
+        })),
+        edges: edges.map((e) => ({
+          source: e.source,
+          target: e.target,
+          condition: (e.data as { condition?: string })?.condition,
+        })),
+      }
+      const cap = capQ.data as Capability | undefined
+      void saveCap.mutateAsync({
+        id: capabilityId,
+        name: cap?.name ?? '未命名',
+        description: cap?.description,
+        graph,
+      })
+    }, 800)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, capabilityId])
 
   const onNodesChange = useCallback(
     (changes: Parameters<typeof applyNodeChanges>[0]) =>
