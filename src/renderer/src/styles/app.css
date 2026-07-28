@@ -272,3 +272,14 @@ html[data-platform='darwin'] .titlebar__inner {
 .route-link:hover {
   background: var(--color-bg-3);
 }
+
+.stream-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--color-brand-500);
+  animation: stream-blink 1s steps(2, start) infinite;
+}
+
+@keyframes stream-blink {
+  to { opacity: 0; }
+}

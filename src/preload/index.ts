@@ -77,6 +77,11 @@ export interface OneApi {
     removeKey: (keyId: string) => Promise<IpcResult<void>>
     testLLM: (modelId: string) => Promise<IpcResult<{ ok: boolean; error?: string }>>
   }
+  home: {
+    chat: (input: { message: string; sessionId?: string }) => Promise<IpcResult<{ runId: string }>>
+    onStream: (cb: (delta: import('@shared/types').LlmDelta) => void) => () => void
+    cancel: () => Promise<IpcResult<void>>
+  }
   // 编排（M4 接入）
   // orchestrate: { run, onStream, cancel }
 }
@@ -136,6 +141,15 @@ const api: OneApi = {
     setLLMConfig: (cfg) => ipcRenderer.invoke('secrets:setLLMConfig', cfg),
     removeKey: (keyId) => ipcRenderer.invoke('secrets:removeKey', keyId),
     testLLM: (modelId) => ipcRenderer.invoke('secrets:testLLM', modelId),
+  },
+  home: {
+    chat: (input) => ipcRenderer.invoke('home:chat', input),
+    onStream: (cb) => {
+      const handler = (_e: unknown, delta: import('@shared/types').LlmDelta) => cb(delta)
+      ipcRenderer.on('home:stream', handler)
+      return () => ipcRenderer.off('home:stream', handler)
+    },
+    cancel: () => ipcRenderer.invoke('home:cancel'),
   },
 }
 

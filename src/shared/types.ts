@@ -118,6 +118,66 @@ export interface RunResult {
 }
 
 // ============================================================================
+// LLM 契约（§5.3 + §三之三 I）—— 主进程 client/agent 用，部分经流式事件到渲染层
+// ============================================================================
+
+/** LLM 消息角色（Anthropic 原生 role 子集；system 抽顶层不进 messages，铁律9） */
+export type LlmRole = 'user' | 'assistant'
+
+/** LLM 消息内容块（与 Anthropic content block 对齐） */
+export type LlmContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | {
+      type: 'tool_result'
+      tool_use_id: string
+      content: string
+      is_error?: boolean
+    }
+
+export interface LlmMessage {
+  role: LlmRole
+  content: string | LlmContentBlock[]
+}
+
+/** 流式增量（client.stream 产出，agent 聚合成 StreamEvent 推渲染层） */
+export type LlmDelta =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use_start'; id: string; name: string }
+  | { type: 'tool_use_delta'; id: string; partial_json: string }
+  | { type: 'tool_use_stop'; id: string }
+  | { type: 'message_stop'; stop_reason: string | null }
+  | { type: 'error'; error: string }
+
+/** Agent 运行请求（铁律9：maxTokens 从 defaultOptions 取） */
+export interface LlmRequest {
+  model: string
+  system?: string
+  messages: LlmMessage[]
+  /** 工具定义（显式 JSON Schema，§J） */
+  tools?: LlmToolDef[]
+  maxTokens: number // 必传，Anthropic 强制；缺省 16384（铁律8）
+  temperature?: number
+  /** 流式增量回调 */
+  onDelta?: (delta: LlmDelta) => void
+  signal?: AbortSignal
+}
+
+export interface LlmToolDef {
+  name: string
+  description: string
+  input_schema: Record<string, unknown>
+}
+
+/** Agent 一轮响应（tool_use 循环判定依据） */
+export interface LlmResponse {
+  stopReason: string | null
+  /** assistant 产出的内容块 */
+  content: LlmContentBlock[]
+}
+
+
+// ============================================================================
 // 存储实体契约（§5.2 + §四迁移映射）—— 主/渲染唯一契约源
 // 配置类（capability/agent/skill/model/persona）存 JSON 文件；
 // 会话/任务/记忆存 SQLite（见 storage/db.ts schema）。
@@ -244,3 +304,47 @@ export interface LLMConfig {
   defaultModel?: string
 }
 
+
+
+// ============================================================================
+// Agent 执行单元契约（§5.1.4 + §三之三 D + 铁律6/8）——
+// Agent 管 context，tool-use 循环借力 SDK（铁律6）；maxTokens 从 defaultOptions 取（铁律8）
+// ============================================================================
+
+/** Agent 默认选项（对应原框架 default_options，max_tokens 只从这里读，铁律8） */
+export interface AgentDefaultOptions {
+  maxTokens: number // 缺省 16384，防 Anthropic 默认 1024 硬截断
+  temperature?: number
+}
+
+export interface AgentConfig {
+  /** name 三合一：executor_id == agent name == ReactFlow 节点 id（铁律20） */
+  name: string
+  description?: string
+  instructions: string // system prompt（含 L0 身份块 / skill / 约束，§D 拼装顺序）
+  modelId: string
+  tools?: LlmToolDef[]
+  /** 工具名列表（运行时从 registry 取） */
+  toolNames?: string[]
+  defaultOptions: AgentDefaultOptions // 铁律8
+}
+
+export interface AgentRunInput {
+  /** 已有 messages（多轮续写） */
+  messages: LlmMessage[]
+  runId?: string
+  signal?: AbortSignal
+}
+
+/** Agent 流式回调 */
+export interface AgentRunCallbacks {
+  onText?: (text: string) => void
+  onToolCall?: (tool: string, args: unknown) => void
+  onToolResult?: (tool: string, result: unknown) => void
+}
+
+/** Agent 终止条件（§D） */
+export interface AgentLimits {
+  maxIterations?: number // tool-use 循环最大轮数，默认 10
+  maxFunctionCalls?: number // 总工具调用预算
+}

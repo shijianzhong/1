@@ -1,0 +1,318 @@
+[2026-07-28 08:57:43.320] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:57:43.820] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:57:44.820] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:57:43.339] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:65:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:59:19.616] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:59:20.116] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:59:21.116] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 08:59:19.629] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:65:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:04:33.806] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:04:34.306] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:04:35.306] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:04:33.819] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:65:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:05:29.580] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:05:30.080] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:05:31.080] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:41:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:05:29.592] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:65:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:06.502] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:07.002] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:08.002] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:06.517] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:64:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:06.503] [warn]  [llm] 重试 1/3，延迟 956ms 429 {}
+[2026-07-28 09:07:07.459] [warn]  [llm] 重试 2/3，延迟 1768ms 429 {}
+[2026-07-28 09:07:06.538] [warn]  [llm] 重试 1/3，延迟 850ms 503 {}
+[2026-07-28 09:07:13.298] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:13.798] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:14.798] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:13.312] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:64:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:07:13.298] [warn]  [llm] 重试 1/3，延迟 1000ms 429 {}
+[2026-07-28 09:07:14.298] [warn]  [llm] 重试 2/3，延迟 2094ms 429 {}
+[2026-07-28 09:07:13.333] [warn]  [llm] 重试 1/3，延迟 847ms 503 {}
+[2026-07-28 09:08:26.046] [warn]  [tool:flaky] 重试 1 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:08:26.546] [warn]  [tool:flaky] 重试 2 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:08:27.546] [warn]  [tool:flaky] 重试 3 Error: boom
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:40:47
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:08:26.062] [warn]  [tool:retry_ok] 重试 1 Error: transient
+    at /Users/shijianzhong/sking/one/src/main/tools/registry.test.ts:64:30
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///Users/shijianzhong/sking/one/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+[2026-07-28 09:08:26.045] [warn]  [llm] 重试 1/3，延迟 930ms 429 {}
+[2026-07-28 09:08:26.975] [warn]  [llm] 重试 2/3，延迟 2207ms 429 {}
+[2026-07-28 09:08:26.082] [warn]  [llm] 重试 1/3，延迟 800ms 503 {}
+[2026-07-28 09:08:26.084] [warn]  [llm] 重试 1/3，延迟 1174ms fetch failed: network error

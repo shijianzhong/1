@@ -15,6 +15,7 @@ import { registerPersonaHandlers } from './persona'
 import { registerSessionsHandlers } from './sessions'
 import { registerTasksHandlers } from './tasks'
 import { registerSecretsHandlers } from './secrets'
+import { registerHomeHandlers } from './home'
 
 const THEME_FILE = 'theme.json'
 
@@ -78,4 +79,5 @@ export function registerIpcHandlers(): void {
   registerSessionsHandlers()
   registerTasksHandlers()
   registerSecretsHandlers()
+  registerHomeHandlers()
 }
