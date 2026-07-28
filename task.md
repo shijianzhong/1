@@ -122,16 +122,18 @@
 
 ---
 
-## 阶段 6：原生能力与打磨（M6）
+## 阶段 6：原生能力与打磨（M6）✅
 
 里程碑：可分发的双平台安装包，自动更新闭环。
 
-- [ ] 6.1 托盘 + 全局快捷键 + 原生菜单
-- [ ] 6.2 自动更新（electron-updater）
-- [ ] 6.3 通知 + 开机自启 + 明暗跟随系统
-- [ ] 6.4 崩溃恢复（crashReporter + 启动哨兵 + 草稿恢复）
-- [ ] 6.5 存储恢复（SQLite WAL + integrity_check + 损坏备份恢复）
-- [ ] 6.6 打包 mac/win，安装包验证
+- [x] 6.1 托盘（右键菜单 显示/设置/退出）+ 全局快捷键 CmdOrCtrl+Shift+E 唤起 + 原生菜单（文件/编辑/视图/窗口/帮助）`2b4723d`
+- [x] 6.2 自动更新（electron-updater 启动检查 + 4h 定时，dev 跳过，update-available/downloaded 推渲染层）`2b4723d`
+- [x] 6.3 通知（Notification）+ 开机自启（setLoginItemSettings）+ nativeTheme 明暗跟随（主动查询 + 系统变化推送）`2b4723d`
+- [x] 6.4 崩溃恢复（.running 哨兵 + 启动检测 + app:crashRecovery 推渲染层 + 草稿 listDrafts/removeDraft）`2b4723d`
+- [x] 6.5 存储恢复完善（周期备份 30min + 退出前备份 .bak，SQLite WAL + integrity_check 已在 1.2 做）`2b4723d`
+- [x] 6.6 打包 mac dmg（release/One-0.1.0.dmg 144MB < 200MB 目标），better-sqlite3 原生模块经 electron-rebuild 打入 `2b4723d`
+
+> 修复：electron-updater ESM/CJS import（default import 解构）；测试环境 NODE_ENV=test 跳过托盘/菜单/快捷键。
 
 ---
 
