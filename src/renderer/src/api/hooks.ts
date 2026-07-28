@@ -137,3 +137,27 @@ export function useSavePersona() {
 }
 
 export type { Agent, Capability, ModelConfig, Persona, Skill }
+
+// —— 任务历史 ——
+export function useTasks() {
+  return useQuery({
+    queryKey: ['tasks'],
+    queryFn: () => thenUnwrap(window.one.tasks.list()),
+  })
+}
+
+// —— 会话历史 ——
+export function useSessions() {
+  return useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => thenUnwrap(window.one.sessions.list()),
+  })
+}
+
+export function useRemoveSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.sessions.remove(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+}

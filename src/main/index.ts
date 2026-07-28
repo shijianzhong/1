@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
 import { closeDb, getDb } from './storage/db'
+import { registerMemoryTools } from './tools/builtin/memory'
 import { logger } from './logger'
 
 const isMac = process.platform === 'darwin'
@@ -75,6 +76,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     getDb() // 初始化 SQLite（WAL + 迁移 + integrity_check，§11.4）
+    registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerIpcHandlers()
     createMainWindow()
 

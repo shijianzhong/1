@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useSessions } from '@renderer/api/hooks'
 
 const navItems = [
   { to: '/', key: 'home', icon: Sparkles },
@@ -29,13 +30,10 @@ export function AppShell() {
   const showSideList = location.pathname === '/'
   const showInspector = location.pathname.startsWith('/editor')
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
+  const sessionsQ = useSessions()
   const recentItems = useMemo(
-    () => [
-      t('home:recent.item1', '阶段 0 桌面壳初始化'),
-      t('home:recent.item2', '主题系统接线'),
-      t('home:recent.item3', '编排画布骨架'),
-    ],
-    [t],
+    () => (sessionsQ.data ?? []).map((s) => s.title).slice(0, 5),
+    [sessionsQ.data],
   )
 
   useEffect(() => {

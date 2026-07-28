@@ -348,3 +348,48 @@ export interface AgentLimits {
   maxIterations?: number // tool-use 循环最大轮数，默认 10
   maxFunctionCalls?: number // 总工具调用预算
 }
+
+
+// ============================================================================
+// 三级记忆实体契约（§5.2.2 + §三之三 D + 铁律21）——
+// L1 会话内摘要存 SQLite memory_l1；L2 跨会话摘要存 memory_l2；
+// L3 长期沉淀存 memory_l3，走 memory_recall/memory_search 工具按需检索（不硬塞 prompt）。
+// 不做用户隔离：user_id 默认 'local'（§5.2.2）。
+// ============================================================================
+
+/** L1 会话内滚动摘要（单会话级，存 SQLite） */
+export interface L1Summary {
+  sessionId: string
+  summary: string
+  /** 已压缩到哪条消息 id（下次只压 summarizedUpTo 之后） */
+  summarizedUpTo?: string
+  ts: number
+}
+
+/** L2 跨会话摘要（注入 persona，限长 1500 字） */
+export interface L2Digest {
+  userId: string
+  sessionId?: string
+  digest: string
+  ts: number
+}
+
+/** L3 长期沉淀（key-value，按需检索） */
+export interface L3Fact {
+  userId: string
+  key: string
+  value: string
+  ts: number
+}
+
+/** memory_recall/memory_search 工具入参 */
+export interface MemoryRecallInput {
+  query: string
+  limit?: number
+}
+
+/** memory_retain 工具入参（写入 L3） */
+export interface MemoryRetainInput {
+  key: string
+  value: string
+}

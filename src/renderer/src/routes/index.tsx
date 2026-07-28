@@ -4,6 +4,7 @@ import { EditorPage } from '@renderer/pages/EditorPage'
 import { HomePage } from '@renderer/pages/HomePage'
 import { ListPage } from '@renderer/pages/ListPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
+import { TasksPage } from '@renderer/pages/TasksPage'
 
 export function AppRoutes() {
   return (
@@ -27,7 +28,7 @@ export function AppRoutes() {
         />
         <Route
           path="/tasks"
-          element={<ListPage i18nKey="tasks" />}
+          element={<TasksPage />}
         />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

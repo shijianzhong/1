@@ -13,7 +13,7 @@ import {
 
 interface ListPageProps {
   /** i18n key 前缀 + 数据源选择 */
-  i18nKey: 'agents' | 'skills' | 'models' | 'tasks'
+  i18nKey: 'agents' | 'skills' | 'models'
 }
 
 type ListItem = { id: string; name: string; description?: string }
@@ -22,15 +22,6 @@ export function ListPage({ i18nKey }: ListPageProps) {
   const { t } = useTranslation(['common'])
   const title = t(`common:list.${i18nKey}.title`)
   const description = t(`common:list.${i18nKey}.description`)
-
-  // tasks 路由暂未接 hooks（阶段3任务历史），用空态占位
-  if (i18nKey === 'tasks') {
-    return (
-      <ListShell title={title} description={description} onNew={() => {}}>
-        <EmptyState text={t('common:empty.comingSoon')} />
-      </ListShell>
-    )
-  }
 
   return <DataList i18nKey={i18nKey} title={title} description={description} />
 }
