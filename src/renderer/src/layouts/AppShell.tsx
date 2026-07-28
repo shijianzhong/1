@@ -33,6 +33,7 @@ export function AppShell() {
 
   const showSideList = location.pathname === '/'
   const isEditor = location.pathname.startsWith('/editor')
+  // EditorPage 自带 Inspector + NodePalette，AppShell 不再显示
   const showInspector = false
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
   const sessionsQ = useSessions()
@@ -63,8 +64,7 @@ export function AppShell() {
         <header className="titlebar glass-panel">
           <div className="titlebar__inner">
             <div className="titlebar__meta">
-              <p className="section-title">{t(`common.pages.${currentPage.key}`)}</p>
-              <p className="section-subtitle">{t('common.appName')}</p>
+              <p className="section-title">One</p>
             </div>
             <button type="button" className="nav-button titlebar__command" onClick={() => setCommandOpen(true)}>
               <Command size={18} />
