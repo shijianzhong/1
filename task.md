@@ -44,18 +44,20 @@
 
 ---
 
-## 阶段 2：LLM 与单 Agent 聊天（M2）
+## 阶段 2：LLM 与单 Agent 聊天（M2）✅
 
 里程碑：首页能跟主助手多轮对话，流式输出 + 工具调用。
 
-- [ ] 2.1 `llm/client.ts`：Anthropic TS SDK 封装，`beta.messages.stream()`，system 抽顶层，role/content 映射
-- [ ] 2.2 `llm/retry.ts`：指数退避 1/2/4s + ±20% jitter，429/5xx/网络重试，401/400 不重试，包在 `LLMClient.stream()` 外层（铁律10）
-- [ ] 2.3 `max_tokens` 走 defaultOptions（铁律8，缺省 16384）
-- [ ] 2.4 `tools/registry.ts`：显式 JSON Schema，失败返回错误 JSON 不抛异常 + 重试 3 次（铁律11/§J）
-- [ ] 2.5 单 Agent 执行单元（tool-use 循环借力 SDK）
-- [ ] 2.6 流式 token 经 `webContents.send` → 渲染层渲染
-- [ ] 2.7 首页主助手聊天页打通（不含记忆）
-- [ ] 2.8 单测：重试策略 / tool-use 循环 / 流式解析（mock LLM）
+- [x] 2.1 `llm/client.ts`：Anthropic TS SDK 封装，`beta.messages.stream()`，system 抽顶层，role/content 映射 `6bcbdf3`
+- [x] 2.2 `llm/retry.ts`：指数退避 1/2/4s + ±20% jitter，429/5xx/网络/中转关键词重试，401/400 不重试，包 `LLMClient.stream()` 外层（铁律10），client 按 modelId 缓存 `6bcbdf3`
+- [x] 2.3 `max_tokens` 走 defaultOptions（铁律8，缺省 16384）`6bcbdf3`
+- [x] 2.4 `tools/registry.ts`：Zod 显式 JSON Schema，失败重试 3 次返回错误 JSON 不抛（铁律11/§J）`6bcbdf3`
+- [x] 2.5 单 Agent 执行单元（tool-use 循环借力 SDK，铁律6）`6bcbdf3`
+- [x] 2.6 流式 token 经 `webContents.send('home:stream')` → 渲染层 onStream `6bcbdf3`
+- [x] 2.7 首页主助手聊天页打通（不含记忆）`6bcbdf3`
+- [x] 2.8 单测：重试策略（6 case）+ 工具注册表（5 case），mock LLM `6bcbdf3`
+
+> 实施说明：RetryingClient 用 duck-type 接受 mock 注入（instanceof 在测试 mock 失效）；中转代理用 `defaultHeaders` 注 Authorization Bearer（fetchOptions.headers 类型 NotAny 包装不可用）；zod v4 用 `_def.type` 字符串标识替代 v3 的 `typeName`。
 
 ---
 
