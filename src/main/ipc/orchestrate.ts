@@ -10,9 +10,7 @@ import type {
 import { withHandler } from './handler'
 import { buildWorkflow, type BuildDeps } from '../orchestrator/builder'
 import { runWorkflow } from '../orchestrator/runner'
-import { getAgent } from '../storage/models'
-import { getDefaultModel } from '../storage/models'
-import { getKey } from '../secrets/vault'
+import { getAgent, getDefaultModel, resolveModelCredentials } from '../storage/models'
 import { listToolDefs } from '../tools/registry'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -66,9 +64,9 @@ export function registerOrchestrateHandlers(): void {
 
       const model = getDefaultModel()
       if (!model) throw new Error('未配置模型')
-      const apiKey = model.keyId ? getKey(model.keyId) ?? undefined : undefined
+      const { apiKey, baseURL } = resolveModelCredentials(model)
       const deps: BuildDeps = {
-        resolveAgent: makeResolveAgent(model.modelId, apiKey, model.baseUrl),
+        resolveAgent: makeResolveAgent(model.modelId, apiKey, baseURL),
       }
 
       const wf = buildWorkflow(graph, deps)

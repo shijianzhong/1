@@ -235,15 +235,32 @@ export interface ModelConfig {
   modelId: string
   /** 显示名 */
   name: string
-  /** 中转/官方 endpoint；空走官方 */
+  /** 关联的 provider（baseUrl + key 在 provider 级共享）；旧数据可能为空 */
+  providerId?: string
+  /** 中转/官方 endpoint（旧字段，迁移期保留；新数据走 providerId） */
   baseUrl?: string
-  /** 关联 vault 里的 key id（不裸持明文） */
+  /** vault key id（旧字段，迁移期保留；新数据走 provider.keyId） */
   keyId?: string
   /** 是否默认模型 */
   isDefault?: boolean
+  /** 用途标签（思考/知识库/快答/...），agent 可按用途选模型 */
+  tags?: string[]
   /** max_tokens 缺省（铁律8：缺省 16384） */
   maxTokens?: number
   temperature?: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** 服务商（baseUrl + key 共享，多个模型挂同一 provider） */
+export interface Provider {
+  id: string
+  /** 显示名，如 Anthropic / 中转 A */
+  name: string
+  /** 中转/官方 endpoint；空走官方 */
+  baseUrl?: string
+  /** vault key id（key 在 provider 级，多个模型共享） */
+  keyId?: string
   createdAt: number
   updatedAt: number
 }

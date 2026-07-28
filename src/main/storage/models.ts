@@ -7,6 +7,8 @@ import {
   ModelConfigSchema,
   PersonaInputSchema,
   PersonaSchema,
+  ProviderInputSchema,
+  ProviderSchema,
   SkillInputSchema,
   SkillSchema,
 } from '../config'
@@ -15,6 +17,7 @@ import {
   getCapabilitiesDir,
   getModelsPath,
   getPersonaPath,
+  getProvidersPath,
   getSkillsPath,
 } from './paths'
 import {
@@ -22,7 +25,8 @@ import {
   JsonSingleton,
   generateId,
 } from './json-store'
-import type { Agent, Capability, ModelConfig, Persona, Skill } from '@shared/types'
+import { getKey } from '../secrets/vault'
+import type { Agent, Capability, ModelConfig, Persona, Provider, Skill } from '@shared/types'
 
 // —— models：单文件存储（userData/config/models.json）——
 const modelsStore = new JsonSingleton<ModelConfig[]>(
@@ -56,14 +60,20 @@ export function saveModel(input: unknown): ModelConfig {
   // 新建或更新
   const existing = parsed.id ? models.find((m) => m.id === parsed.id) : null
   const isDefault = parsed.isDefault
+  // keyId 逻辑：挂 provider 的模型不自带 keyId（key 在 provider 级）；
+  // 旧式独立模型（无 providerId）保留 keyId 自动生成。
+  const keyId = parsed.providerId
+    ? existing?.keyId ?? parsed.keyId
+    : existing?.keyId ?? parsed.keyId ?? generateId('key_')
   const next: ModelConfig = {
     id: existing?.id ?? generateId('mdl_'),
     modelId: parsed.modelId,
     name: parsed.name,
+    providerId: parsed.providerId,
     baseUrl: parsed.baseUrl || undefined,
-    // 新建模型自动生成 keyId（绑定 vault key，无则空）
-    keyId: existing?.keyId ?? parsed.keyId ?? generateId('key_'),
+    keyId,
     isDefault: parsed.isDefault,
+    tags: parsed.tags,
     maxTokens: parsed.maxTokens ?? 16384, // 铁律8 缺省
     temperature: parsed.temperature,
     createdAt: existing?.createdAt ?? now,
@@ -214,43 +224,114 @@ export function savePersona(input: unknown): Persona {
   return next
 }
 
-// —— 预置默认模型（首次启动无模型时 seed Claude Code）——
+// —— 预置：首次启动 seed 一个 Anthropic provider + 三个 Claude 模型挂上去 ——
+const PRESET_PROVIDER: Omit<Provider, 'createdAt' | 'updatedAt'> = {
+  id: 'preset_anthropic',
+  name: 'Anthropic',
+  baseUrl: undefined, // 官方 endpoint
+  keyId: 'preset_key_anthropic',
+}
+
 const PRESET_MODELS: Array<Omit<ModelConfig, 'createdAt' | 'updatedAt'>> = [
   {
     id: 'preset_claude_sonnet',
     modelId: 'claude-sonnet-5',
     name: 'Claude Sonnet 5',
-    baseUrl: undefined, // 官方 endpoint
-    keyId: 'preset_key_claude_sonnet',
+    providerId: 'preset_anthropic',
     isDefault: true,
+    tags: ['默认', '快答'],
     maxTokens: 16384,
   },
   {
     id: 'preset_claude_opus',
     modelId: 'claude-opus-5',
     name: 'Claude Opus 5',
-    baseUrl: undefined,
-    keyId: 'preset_key_claude_opus',
+    providerId: 'preset_anthropic',
     isDefault: false,
+    tags: ['思考'],
     maxTokens: 16384,
   },
   {
     id: 'preset_claude_fable',
     modelId: 'claude-fable-5',
     name: 'Claude Fable 5',
-    baseUrl: undefined,
-    keyId: 'preset_key_claude_fable',
+    providerId: 'preset_anthropic',
     isDefault: false,
+    tags: ['知识库'],
     maxTokens: 16384,
   },
 ]
 
-/** 首次启动无模型时 seed 预置（Claude Code 系列） */
+/** 首次启动无 provider/模型时 seed 预置（Anthropic provider + Claude 系列） */
 export function seedDefaultModels(): void {
-  const existing = listModels()
-  if (existing.length > 0) return
   const now = Date.now()
-  modelsStore.write(
-    PRESET_MODELS.map((m) => ({ ...m, createdAt: now, updatedAt: now }) as ModelConfig),
+  if (listProviders().length === 0) {
+    providersStore.write([{ ...PRESET_PROVIDER, createdAt: now, updatedAt: now } as Provider])
+  }
+  if (listModels().length === 0) {
+    modelsStore.write(
+      PRESET_MODELS.map((m) => ({ ...m, createdAt: now, updatedAt: now }) as ModelConfig),
+    )
+  }
+}
+
+// —— providers：单文件存储（userData/config/providers.json）——
+const providersStore = new JsonSingleton<Provider[]>(
+  getProvidersPath(),
+  [],
+  (raw) => {
+    const arr = Array.isArray(raw) ? raw : []
+    return arr
+      .map((r) => ProviderSchema.safeParse(r))
+      .filter((r) => r.success)
+      .map((r) => r.data)
+  },
+)
+
+export function listProviders(): Provider[] {
+  return providersStore.read()
+}
+
+export function getProvider(id: string): Provider | null {
+  return listProviders().find((p) => p.id === id) ?? null
+}
+
+export function saveProvider(input: unknown): Provider {
+  const parsed = ProviderInputSchema.parse(input)
+  const now = Date.now()
+  const existing = parsed.id ? getProvider(parsed.id) : null
+  const next: Provider = {
+    id: existing?.id ?? generateId('prv_'),
+    name: parsed.name,
+    baseUrl: parsed.baseUrl || undefined,
+    keyId: existing?.keyId ?? parsed.keyId ?? generateId('key_'),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  const list = listProviders()
+  providersStore.write(
+    existing
+      ? list.map((p) => (p.id === next.id ? next : p))
+      : [...list.filter((p) => p.id !== next.id), next],
   )
+  return next
+}
+
+export function removeProvider(id: string): void {
+  providersStore.write(listProviders().filter((p) => p.id !== id))
+}
+
+/**
+ * 解析模型凭据：优先用 provider 的 keyId/baseUrl（共享），回退到模型自带。
+ * @returns { apiKey?, baseURL? }（apiKey 解密后明文，仅主进程用，铁律3）
+ */
+export function resolveModelCredentials(model: ModelConfig): {
+  apiKey?: string
+  baseURL?: string
+} {
+  const provider = model.providerId ? getProvider(model.providerId) : null
+  const keyId = provider?.keyId ?? model.keyId
+  const baseURL = provider?.baseUrl ?? model.baseUrl
+  const apiKey = keyId ? getKey(keyId) ?? undefined : undefined
+  return { apiKey, baseURL }
 }

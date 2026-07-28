@@ -170,3 +170,36 @@ export function useCapability(id?: string) {
     enabled: !!id,
   })
 }
+
+// —— Provider（同一服务商多模型共享 key+baseUrl）——
+export function useProviders() {
+  return useQuery({
+    queryKey: ['providers'],
+    queryFn: () => thenUnwrap(window.one.providers.list()),
+  })
+}
+
+export function useSaveProvider() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.providers.save>[0]) =>
+      thenUnwrap(window.one.providers.save(input)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['providers'] })
+      qc.invalidateQueries({ queryKey: ['models'] })
+    },
+  })
+}
+
+export function useRemoveProvider() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.providers.remove(id)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['providers'] })
+      qc.invalidateQueries({ queryKey: ['models'] })
+    },
+  })
+}
+
+export type { Provider } from '@shared/types'

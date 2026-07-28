@@ -22,6 +22,7 @@ import { registerSecretsHandlers } from './secrets'
 import { registerHomeHandlers } from './home'
 import { registerOrchestrateHandlers } from './orchestrate'
 import { registerNativeHandlers } from './native'
+import { registerProvidersHandlers } from './providers'
 
 const THEME_FILE = 'theme.json'
 
@@ -157,5 +158,6 @@ export function registerIpcHandlers(): void {
   registerSecretsHandlers()
   registerHomeHandlers()
   registerOrchestrateHandlers()
+  registerProvidersHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
 }

@@ -56,6 +56,12 @@ export interface OneApi {
     save: (input: Partial<ModelConfig> & { name: string; modelId: string }) => Promise<IpcResult<ModelConfig>>
     remove: (id: string) => Promise<IpcResult<void>>
   }
+  providers: {
+    list: () => Promise<IpcResult<import('@shared/types').Provider[]>>
+    get: (id: string) => Promise<IpcResult<import('@shared/types').Provider | null>>
+    save: (input: Partial<import('@shared/types').Provider> & { name: string }) => Promise<IpcResult<import('@shared/types').Provider>>
+    remove: (id: string) => Promise<IpcResult<void>>
+  }
   persona: {
     get: () => Promise<IpcResult<Persona | null>>
     save: (input: { name: string; instructions: string; modelId?: string }) => Promise<IpcResult<Persona>>
@@ -136,6 +142,12 @@ const api: OneApi = {
     get: (id) => ipcRenderer.invoke('models:get', id),
     save: (input) => ipcRenderer.invoke('models:save', input),
     remove: (id) => ipcRenderer.invoke('models:remove', id),
+  },
+  providers: {
+    list: () => ipcRenderer.invoke('providers:list'),
+    get: (id) => ipcRenderer.invoke('providers:get', id),
+    save: (input) => ipcRenderer.invoke('providers:save', input),
+    remove: (id) => ipcRenderer.invoke('providers:remove', id),
   },
   persona: {
     get: () => ipcRenderer.invoke('persona:get'),

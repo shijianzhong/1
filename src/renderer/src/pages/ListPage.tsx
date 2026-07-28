@@ -4,11 +4,13 @@ import { Plus, Trash2, Pencil } from 'lucide-react'
 import {
   useAgents,
   useModels,
+  useProviders,
   useRemoveAgent,
   useRemoveModel,
   useRemoveSkill,
   useSaveAgent,
   useSaveModel,
+  useSaveProvider,
   useSaveSkill,
   useSkills,
 } from '@renderer/api/hooks'
@@ -29,7 +31,7 @@ import {
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
-import type { Agent, ModelConfig, Skill } from '@shared/types'
+import type { Agent, ModelConfig, Provider, Skill } from '@shared/types'
 
 // —— 管理后台列表（§3 + §5.5）——
 // 顶部工具条 + Table + Drawer 编辑抽屉（按实体类型给对应表单字段）。
@@ -48,8 +50,12 @@ interface Draft {
   instructions: string
   // model
   modelId: string
-  baseUrl: string
+  providerId: string // 关联 provider（key+baseUrl 共享）；空=新建独立 provider
+  newProviderName: string // 新建 provider 名
+  newProviderBaseUrl: string // 新建 provider baseUrl
+  baseUrl: string // 模型自带（旧/独立）
   key: string
+  tags: string // 逗号分隔
   isDefault: boolean
   // skill
   content: string
@@ -59,8 +65,12 @@ const EMPTY_DRAFT: Draft = {
   name: '',
   instructions: '',
   modelId: '',
+  providerId: '',
+  newProviderName: '',
+  newProviderBaseUrl: '',
   baseUrl: '',
   key: '',
+  tags: '',
   isDefault: false,
   content: '',
 }
@@ -81,6 +91,8 @@ export function ListPage({ i18nKey }: ListPageProps) {
   const removeAgent = useRemoveAgent()
   const removeSkill = useRemoveSkill()
   const removeModel = useRemoveModel()
+  const providersQ = useProviders()
+  const saveProvider = useSaveProvider()
 
   const [draft, setDraft] = useState<Draft | null>(null)
   const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({})
@@ -106,38 +118,30 @@ export function ListPage({ i18nKey }: ListPageProps) {
     if (i18nKey === 'agents') {
       const a = item as Agent
       setDraft({
+        ...EMPTY_DRAFT,
         id: a.id,
         name: a.name,
         instructions: a.instructions,
-        modelId: '',
-        baseUrl: '',
-        key: '',
-        isDefault: false,
-        content: '',
       })
     } else if (i18nKey === 'skills') {
       const s = item as Skill
       setDraft({
+        ...EMPTY_DRAFT,
         id: s.id,
         name: s.name,
-        instructions: '',
-        modelId: '',
-        baseUrl: '',
-        key: '',
-        isDefault: false,
         content: s.content,
       })
     } else {
       const m = item as ModelConfig
       setDraft({
+        ...EMPTY_DRAFT,
         id: m.id,
         name: m.name,
-        instructions: '',
         modelId: m.modelId,
+        providerId: m.providerId ?? '',
         baseUrl: m.baseUrl ?? '',
-        key: '',
+        tags: (m.tags ?? []).join(', '),
         isDefault: m.isDefault ?? false,
-        content: '',
       })
     }
   }
@@ -160,17 +164,46 @@ export function ListPage({ i18nKey }: ListPageProps) {
         content: draft.content || existing?.content || '',
       })
     } else {
-      // 模型：保存 + key 存 vault
+      // 模型：先处理 provider（选已有 / 新建），再保存模型挂 providerId + tags
+      let providerId = draft.providerId
+      let keyForVault: string | undefined
+      if (draft.providerId === '__new__' && draft.newProviderName.trim()) {
+        // 新建 provider
+        const provider = await saveProvider.mutateAsync({
+          name: draft.newProviderName.trim(),
+          baseUrl: draft.newProviderBaseUrl.trim() || undefined,
+        })
+        providerId = provider.id
+        keyForVault = draft.key || undefined
+      } else if (draft.providerId) {
+        // 已有 provider：若填了 key 则更新 provider 的 key
+        keyForVault = draft.key || undefined
+      } else {
+        // 无 provider（旧式独立模型）：key 用模型自带 keyId
+        keyForVault = draft.key || undefined
+      }
+      const tags = draft.tags
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
       const saved = await saveModel.mutateAsync({
         id: draft.id,
         name: draft.name,
         modelId: draft.modelId,
+        providerId: providerId || undefined,
         baseUrl: draft.baseUrl || undefined,
         isDefault: draft.isDefault,
+        tags: tags.length ? tags : undefined,
       })
-      if (saved.keyId && draft.key) {
+      // key 存 vault：挂 provider 的用 provider.keyId，独立的用 saved.keyId
+      const keyId = providerId
+        ? (await window.one.providers.list().then(unwrap).then(
+            (ps) => ps.find((p) => p.id === providerId)?.keyId,
+          )) ?? saved.keyId
+        : saved.keyId
+      if (keyId && keyForVault) {
         await window.one.secrets
-          .setLLMConfig({ keyId: saved.keyId, apiKey: draft.key })
+          .setLLMConfig({ keyId, apiKey: keyForVault })
           .then(unwrap)
           .catch(() => {})
         setKeyStatus((s) => ({ ...s, [saved.id]: true }))
@@ -239,7 +272,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
                       ? (item as Agent).description ?? ''
                       : i18nKey === 'skills'
                         ? (item as Skill).description ?? ''
-                        : `${(item as ModelConfig).modelId}${(item as ModelConfig).baseUrl ? ' · ' + (item as ModelConfig).baseUrl : ''}`}
+                        : <ModelMeta model={item as ModelConfig} providers={providersQ.data ?? []} />}
                   </TableCell>
                   <TableCell>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -317,23 +350,91 @@ export function ListPage({ i18nKey }: ListPageProps) {
                       placeholder="claude-sonnet-5"
                     />
                   </Field>
-                  <Field label={t('common:columns.baseUrl')}>
-                    <Input
-                      value={draft.baseUrl}
-                      onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
-                      placeholder={t('common:columns.baseUrlPh')}
-                    />
+                  <Field label={t('common:columns.provider')}>
+                    <select
+                      value={draft.providerId}
+                      onChange={(e) => setDraft({ ...draft, providerId: e.target.value })}
+                      style={{
+                        height: 36, borderRadius: 12, border: '1px solid var(--color-border)',
+                        background: 'var(--color-bg-1)', color: 'var(--color-fg-1)', padding: '0 10px', width: '100%',
+                      }}
+                    >
+                      <option value="">{t('common:columns.noProvider')}</option>
+                      <option value="__new__">+ {t('common:columns.newProvider')}</option>
+                      {(providersQ.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}{p.baseUrl ? ` · ${p.baseUrl}` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
-                  <Field label={t('common:columns.apiKey')}>
+                  {draft.providerId === '__new__' ? (
+                    <>
+                      <Field label={t('common:columns.providerName')}>
+                        <Input
+                          value={draft.newProviderName}
+                          onChange={(e) => setDraft({ ...draft, newProviderName: e.target.value })}
+                          placeholder="Anthropic / 中转 A"
+                        />
+                      </Field>
+                      <Field label={t('common:columns.baseUrl')}>
+                        <Input
+                          value={draft.newProviderBaseUrl}
+                          onChange={(e) => setDraft({ ...draft, newProviderBaseUrl: e.target.value })}
+                          placeholder={t('common:columns.baseUrlPh')}
+                        />
+                      </Field>
+                      <Field label={t('common:columns.apiKey')}>
+                        <Input
+                          type="password"
+                          value={draft.key}
+                          onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+                          placeholder={t('common:columns.apiKeyPh')}
+                        />
+                      </Field>
+                    </>
+                  ) : draft.providerId ? (
+                    <Field label={t('common:columns.apiKey')}>
+                      <Input
+                        type="password"
+                        value={draft.key}
+                        onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+                        placeholder={
+                          keyStatusForProvider(draft.providerId, providersQ.data ?? [])
+                            ? '••••••••（已配置，留空不改）'
+                            : t('common:columns.apiKeyPh')
+                        }
+                      />
+                    </Field>
+                  ) : (
+                    // 无 provider（旧式独立模型）
+                    <>
+                      <Field label={t('common:columns.baseUrl')}>
+                        <Input
+                          value={draft.baseUrl}
+                          onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
+                          placeholder={t('common:columns.baseUrlPh')}
+                        />
+                      </Field>
+                      <Field label={t('common:columns.apiKey')}>
+                        <Input
+                          type="password"
+                          value={draft.key}
+                          onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+                          placeholder={
+                            draft.id && keyStatus[draft.id]
+                              ? '••••••••（已配置，留空不改）'
+                              : t('common:columns.apiKeyPh')
+                          }
+                        />
+                      </Field>
+                    </>
+                  )}
+                  <Field label={t('common:columns.tags')}>
                     <Input
-                      type="password"
-                      value={draft.key}
-                      onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-                      placeholder={
-                        draft.id && keyStatus[draft.id]
-                          ? '••••••••（已配置，留空不改）'
-                          : t('common:columns.apiKeyPh')
-                      }
+                      value={draft.tags}
+                      onChange={(e) => setDraft({ ...draft, tags: e.target.value })}
+                      placeholder={t('common:columns.tagsPh')}
                     />
                   </Field>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: 'var(--color-fg-2)' }}>
@@ -389,4 +490,20 @@ function EmptyState({ text, danger }: { text: string; danger?: boolean }): React
       {text}
     </div>
   )
+}
+
+/** 查 provider 是否已配 key（getLLMConfig 查 provider.keyId） */
+function keyStatusForProvider(providerId: string, providers: Provider[]): boolean {
+  // 渲染层不缓存 provider key 状态，简化：假设有 keyId 即未配
+  return false
+}
+
+/** 模型行 meta：modelId + provider + tags */
+function ModelMeta({ model, providers }: { model: ModelConfig; providers: Provider[] }) {
+  const provider = model.providerId ? providers.find((p) => p.id === model.providerId) : null
+  const parts: string[] = [model.modelId]
+  if (provider) parts.push(provider.name)
+  else if (model.baseUrl) parts.push(model.baseUrl)
+  if (model.tags?.length) parts.push(model.tags.join('/'))
+  return <span>{parts.join(' · ')}</span>
 }

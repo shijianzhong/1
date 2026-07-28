@@ -12,11 +12,22 @@ export const ModelConfigSchema = z.object({
   id,
   modelId: z.string().min(1),
   name: z.string().min(1),
+  providerId: z.string().optional(),
   baseUrl: z.string().url().optional().or(z.literal('')),
   keyId: z.string().optional(),
   isDefault: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
   maxTokens: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
+  createdAt: ts,
+  updatedAt: ts,
+})
+
+export const ProviderSchema = z.object({
+  id,
+  name: z.string().min(1),
+  baseUrl: z.string().url().optional().or(z.literal('')),
+  keyId: z.string().optional(),
   createdAt: ts,
   updatedAt: ts,
 })
@@ -79,6 +90,9 @@ export const PersonaSchema = z.object({
 /** 渲染层入参（save 时不带服务端生成的 ts/id 字段）的宽松 schema */
 export const ModelConfigInputSchema = ModelConfigSchema.omit({ createdAt: true, updatedAt: true }).extend({
   id: z.string().optional(), // 新建时无 id
+})
+export const ProviderInputSchema = ProviderSchema.omit({ createdAt: true, updatedAt: true }).extend({
+  id: z.string().optional(),
 })
 export const AgentInputSchema = AgentSchema.omit({ createdAt: true, updatedAt: true }).extend({
   id: z.string().optional(),

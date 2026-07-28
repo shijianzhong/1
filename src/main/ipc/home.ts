@@ -1,10 +1,9 @@
 import { BrowserWindow } from 'electron'
 import type { AgentConfig, LlmDelta, LlmMessage, Persona } from '@shared/types'
 import { withHandler } from './handler'
-import { getDefaultModel } from '../storage/models'
+import { getDefaultModel, resolveModelCredentials } from '../storage/models'
 import { getPersona } from '../storage/models'
 import { addMessage, createSession, listMessages } from '../storage/sessions'
-import { getKey } from '../secrets/vault'
 import { Agent } from '../orchestrator/agent'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
@@ -62,8 +61,8 @@ export function registerHomeHandlers(): void {
     const model = getDefaultModel()
     if (!model) throw new Error('未配置模型，请先在设置页添加模型')
 
-    const apiKey = model.keyId ? getKey(model.keyId) ?? undefined : undefined
-    const compressFn = makeCompressFn(model.modelId, apiKey, model.baseUrl)
+    const { apiKey, baseURL } = resolveModelCredentials(model)
+    const compressFn = makeCompressFn(model.modelId, apiKey, baseURL)
 
     // 3. 历史 + 当前消息
     const history = listMessages(sid)
@@ -105,7 +104,7 @@ export function registerHomeHandlers(): void {
         defaultOptions: { maxTokens: 16384 },
       },
       {
-        llmOpts: { apiKey, baseURL: model.baseUrl },
+        llmOpts: { apiKey, baseURL },
         toolCtx: { sessionId: sid },
       },
     )

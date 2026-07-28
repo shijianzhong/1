@@ -35,6 +35,10 @@ export function getModelsPath(): string {
   return join(getConfigDir(), 'models.json')
 }
 
+export function getProvidersPath(): string {
+  return join(getConfigDir(), 'providers.json')
+}
+
 export function getCapabilitiesDir(): string {
   return join(getConfigDir(), 'capabilities')
 }
