@@ -372,6 +372,8 @@ export interface AgentConfig {
   /** 工具名列表（运行时从 registry 取） */
   toolNames?: string[]
   defaultOptions: AgentDefaultOptions // 铁律8
+  /** 输出约束（"≤N字"等，§D 拼装顺序第 4 步） */
+  outputConstraints?: string
 }
 
 export interface AgentRunInput {
@@ -437,4 +439,49 @@ export interface MemoryRecallInput {
 export interface MemoryRetainInput {
   key: string
   value: string
+}
+
+
+// ============================================================================
+// 编排模式配置（§三之三 B + §三 D）—— GroupChat/Handoff/Magentic
+// ============================================================================
+
+/** GroupChat 发言者选择模式 */
+export type GroupChatSelectorMode = 'round_robin' | 'manager'
+
+/** GroupChat 容器配置 */
+export interface GroupChatConfig {
+  participants: string[]
+  selectorMode: GroupChatSelectorMode
+  maxRounds: number // 默认 6
+}
+
+/** Handoff 边（§三之三 B） */
+export interface HandoffEdge {
+  source: string
+  targets: string[]
+}
+
+/** Handoff 容器配置 */
+export interface HandoffConfig {
+  participants: string[]
+  handoffs: HandoffEdge[]
+  startAgent: string
+}
+
+/** Magentic 配置（MVP 跳过） */
+export interface MagenticConfig {
+  manager: string
+  workers: string[]
+}
+
+/**
+ * GroupChat manager 结构化输出（§三之三 G + 铁律19）。
+ * 走 response_format 结构化输出。
+ */
+export interface AgentOrchestrationOutput {
+  terminate: boolean
+  reason: string
+  next_speaker: string
+  final_message: string
 }

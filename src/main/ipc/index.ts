@@ -16,6 +16,7 @@ import { registerSessionsHandlers } from './sessions'
 import { registerTasksHandlers } from './tasks'
 import { registerSecretsHandlers } from './secrets'
 import { registerHomeHandlers } from './home'
+import { registerOrchestrateHandlers } from './orchestrate'
 
 const THEME_FILE = 'theme.json'
 
@@ -80,4 +81,5 @@ export function registerIpcHandlers(): void {
   registerTasksHandlers()
   registerSecretsHandlers()
   registerHomeHandlers()
+  registerOrchestrateHandlers()
 }

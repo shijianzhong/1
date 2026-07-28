@@ -6,6 +6,9 @@ import type {
 } from './models'
 import { buildSequential } from './patterns/sequential'
 import { buildConcurrent } from './patterns/concurrent'
+import { buildGroupChat } from './patterns/groupchat'
+import { buildHandoff } from './patterns/handoff'
+import { buildMagentic } from './patterns/magentic'
 import { AgentExecutor } from './patterns/agent'
 import type { AgentExecutorOptions } from './patterns/agent'
 import { logger } from '../logger'
@@ -103,13 +106,30 @@ function buildNode(
       buildConcurrent(node, participantOpts, aggregator, bctx)
       return
     }
-    case 'groupchat':
-    case 'handoff':
-      // 4b 阶段实现
-      logger.warn(`[builder] ${node.type} 待 4b 阶段实现`)
+    case 'groupchat': {
+      const participantOpts = (data.participants ?? [])
+        .map((id) => deps.resolveAgent(id))
+        .filter((o): o is AgentExecutorOptions => !!o)
+      if (participantOpts.length === 0) {
+        logger.warn(`[builder] groupchat ${node.id} 缺 participant`)
+        return
+      }
+      buildGroupChat(node, participantOpts, bctx)
       return
+    }
+    case 'handoff': {
+      const participantOpts = (data.participants ?? [])
+        .map((id) => deps.resolveAgent(id))
+        .filter((o): o is AgentExecutorOptions => !!o)
+      if (participantOpts.length === 0) {
+        logger.warn(`[builder] handoff ${node.id} 缺 participant`)
+        return
+      }
+      buildHandoff(node, participantOpts, bctx)
+      return
+    }
     case 'magentic':
-      logger.warn(`[builder] magentic MVP 跳过，请用 groupchat+handoff 覆盖`)
+      buildMagentic(node, bctx)
       return
   }
 }

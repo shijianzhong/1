@@ -11,6 +11,7 @@ import type {
 import { executeTool, getToolDefs } from '../tools/registry'
 import { getClient } from '../llm/retry'
 import type { LLMClientOptions } from '../llm/client'
+import { isHandoffTool, parseHandoffTarget } from './patterns/handoff'
 import { logger } from '../logger'
 
 // —— 单 Agent 执行单元（§5.1.4 + §三之三 D + 铁律6）——
@@ -91,9 +92,24 @@ export class Agent {
       }
 
       const toolResults: LlmContentBlock[] = []
+      let handoffTarget: string | null = null
       for (const tu of toolUses) {
         functionCallCount++
         callbacks.onToolCall?.(tu.name, tu.input)
+
+        // —— Handoff 短路（铁律12）：handoff_to_X tool 不真执行 ——
+        // 注入合成 result + 标记 target + 终止循环（MiddlewareTermination 等价）
+        if (isHandoffTool(tu.name)) {
+          handoffTarget = parseHandoffTarget(tu.name)
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: tu.id,
+            content: JSON.stringify({ handoff_to: handoffTarget }),
+            is_error: false,
+          })
+          continue // 不 executeTool，短路
+        }
+
         const result = await executeTool(
           tu.name,
           tu.input,
@@ -113,6 +129,13 @@ export class Agent {
       }
 
       messages.push({ role: 'user', content: toolResults })
+
+      // —— Handoff 短路（铁律12）：handoff_to_X 触发后终止循环 ——
+      // finalText 设为合成 result JSON，供 HandoffExecutor 解析路由
+      if (handoffTarget) {
+        finalText = JSON.stringify({ handoff_to: handoffTarget })
+        break
+      }
     }
 
     return { messages, finalText }

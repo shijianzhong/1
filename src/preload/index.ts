@@ -82,6 +82,11 @@ export interface OneApi {
     onStream: (cb: (delta: import('@shared/types').LlmDelta) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
   }
+  orchestrate: {
+    run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string }) => Promise<IpcResult<{ runId: string; output: string }>>
+    onStream: (cb: (e: import('@shared/types').StreamEvent) => void) => () => void
+    cancel: () => Promise<IpcResult<void>>
+  }
   // 编排（M4 接入）
   // orchestrate: { run, onStream, cancel }
 }
@@ -150,6 +155,15 @@ const api: OneApi = {
       return () => ipcRenderer.off('home:stream', handler)
     },
     cancel: () => ipcRenderer.invoke('home:cancel'),
+  },
+  orchestrate: {
+    run: (input) => ipcRenderer.invoke('orchestrate:run', input),
+    onStream: (cb) => {
+      const handler = (_e: unknown, event: import('@shared/types').StreamEvent) => cb(event)
+      ipcRenderer.on('orchestrate:stream', handler)
+      return () => ipcRenderer.off('orchestrate:stream', handler)
+    },
+    cancel: () => ipcRenderer.invoke('orchestrate:cancel'),
   },
 }
 
