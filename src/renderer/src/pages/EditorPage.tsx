@@ -148,7 +148,7 @@ function EditorCanvas() {
   }, [nodes, edges, running, t])
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 88px)', gap: 12 }}>
+    <div style={{ display: 'flex', height: '100%', gap: 12 }}>
       {/* NodePalette */}
       <aside
         className="glass-panel"

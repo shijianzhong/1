@@ -32,7 +32,7 @@ export function AppShell() {
   const [commandIndex, setCommandIndex] = useState(0)
 
   const showSideList = location.pathname === '/'
-  // EditorPage 自带 Inspector + NodePalette，AppShell 不再重复显示
+  const isEditor = location.pathname.startsWith('/editor')
   const showInspector = false
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
   const sessionsQ = useSessions()
@@ -110,7 +110,7 @@ export function AppShell() {
           ) : null}
 
           <main className="main-area">
-            <div className="main-content">
+            <div className={`main-content${isEditor ? ' main-content--canvas' : ''}`}>
               <Outlet />
             </div>
             <aside className={`inspector ${showInspector ? 'inspector--open' : ''}`}>

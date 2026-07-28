@@ -1,12 +1,14 @@
 .app-frame {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden; /* titlebar/icon-rail 固定，只有主内容区滚动 */
 }
 
 .titlebar {
   position: relative;
   z-index: 10;
+  flex: 0 0 auto; /* 标题栏固定不被压缩 */
   min-height: 40px;
   border-left: 0;
   border-right: 0;
@@ -43,7 +45,9 @@ html[data-platform='darwin'] .titlebar__inner {
 .app-shell {
   display: grid;
   grid-template-columns: 56px minmax(0, 220px) minmax(0, 1fr);
-  min-height: calc(100vh - 40px);
+  flex: 1 1 auto;
+  min-height: 0; /* flex 子项默认 min-height:auto 会撑开父容器，置 0 才能触发子级 overflow */
+  overflow: hidden;
 }
 
 .icon-rail {
@@ -101,13 +105,22 @@ html[data-platform='darwin'] .titlebar__inner {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: calc(100vh - 40px);
+  min-height: 0; /* 让子级 main-content 滚动而非撑开父级 */
+  overflow: hidden;
 }
 
 .main-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   padding: 28px;
+  overflow-y: auto; /* 仅主内容区滚动，titlebar/icon-rail 固定 */
+}
+
+/* 画布态：去 padding，画布自管视口，不滚动 */
+.main-content--canvas {
+  padding: 0;
+  overflow: hidden;
 }
 
 .inspector {
