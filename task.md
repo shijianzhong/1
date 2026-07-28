@@ -106,19 +106,19 @@
 
 ---
 
-## 阶段 5：前端 UI 重写（并行，M5）
+## 阶段 5：前端 UI 重写（并行，M5）✅
 
 里程碑：核心页面视觉与交互重写完成，主题系统可用。
 
-- [ ] 5.1 设计令牌 + ShadCN 基础组件定制（Button/Input/Dialog/Drawer/Toast/Tabs/Table）
-- [ ] 5.2 主题系统全量（预设/明暗/点缀色/背景图/玻璃参数/密度/字号/对比度兜底）
-- [ ] 5.3 首页主助手聊天（消息流/流式光标/Markdown/代码块/工具卡片/停止重发）
-- [ ] 5.4 能力编排画布（6 类节点视觉/NodeInspector/NodePalette/连线条件边/运行态高亮）
-- [ ] 5.5 管理后台统一表格+表单范式（空态/加载态/错误态）
-- [ ] 5.6 设置页（个人档案/外观/LLM/快捷键/自启/日志）
-- [ ] 5.7 CommandPalette（⌘K）全局导航/搜索/动作
-- [ ] 5.8 i18n 全量（home/editor/settings/errors namespace + 日期 Intl）
-- [ ] 5.9 微动效（Framer Motion）
+- [x] 5.1 设计令牌 + ShadCN 基础组件（Button/Input/Dialog/Drawer/Toast/Tabs/Table/Switch/Badge + cn utils）`d485ef0`
+- [x] 5.2 主题系统全量（预设/明暗/点缀色色板/背景图导入/玻璃参数/密度/字号 + 主题 IPC pickBackground/importBackground/loadBackground/removeBackground）`d485ef0`
+- [x] 5.3 首页主助手聊天（Markdown 渲染 remark-gfm/rehype-highlight/katex + 流式光标 + 消息进入动效）`d485ef0`
+- [x] 5.4 能力编排画布（@xyflow/react + 6 类节点 NodePalette 拖拽建图 + 运行态高亮 + Inspector 输出 + orchestrate 联调）`d485ef0`
+- [x] 5.5 管理后台列表范式（Table hover 浮起 + Drawer 编辑 + 空态/加载态/错误态规范）`d485ef0`
+- [x] 5.6 设置页全量（个人档案/外观/LLM 配置/关于）`d485ef0`
+- [x] 5.7 CommandPalette（⌘K 搜索过滤 + 键盘上下选择 + 回车执行 + 淡入动效）`d485ef0`
+- [x] 5.8 i18n 全量（namespace keys 补齐 + 硬编码清零 + Intl.DateTimeFormat）`d485ef0`
+- [x] 5.9 微动效（framer-motion：消息进入 + 命令面板淡入）`d485ef0`
 
 ---
 
