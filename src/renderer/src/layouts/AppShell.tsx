@@ -106,50 +106,33 @@ export function AppShell() {
 
           {showSideList ? (
             <aside className="side-list">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p className="section-title">{t('common.appName')}</p>
-                  <p className="section-subtitle">{t('common.subtitle')}</p>
-                </div>
-                <button
-                  type="button"
-                  className="nav-button"
-                  title={t('common:actions.newSession')}
-                  onClick={() => void newSession()}
-                  style={{ background: 'var(--color-brand-500)', color: 'white' }}
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-              <div style={{ display: 'grid', gap: 8, overflowY: 'auto' }}>
+              {/* 新建对话（横通栏主按钮） */}
+              <button
+                type="button"
+                onClick={() => void newSession()}
+                className="side-list__new"
+              >
+                <Plus size={16} />
+                <span>{t('common:actions.newSession')}</span>
+              </button>
+
+              {/* 历史会话列表（紧凑，无卡片，hover 高亮） */}
+              <div className="side-list__items">
                 {recentItems.length === 0 ? (
-                  <p className="section-subtitle">{t('common:empty.noSessions')}</p>
+                  <p className="side-list__empty">{t('common:empty.noSessions')}</p>
                 ) : (
                   recentItems.map((s) => (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => void selectSession(s.id)}
-                      className="surface-panel"
-                      style={{
-                        borderRadius: 14,
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        border: 0,
-                        cursor: 'pointer',
-                        outline:
-                          currentSessionId === s.id
-                            ? '2px solid var(--color-brand-500)'
-                            : 'none',
-                      }}
+                      className={`side-list__item${currentSessionId === s.id ? ' side-list__item--active' : ''}`}
                     >
-                      <p className="section-title" style={{ fontSize: '0.85rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {s.title}
-                      </p>
+                      <span className="side-list__item-title">{s.title}</span>
                       {s.updatedAt ? (
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--color-fg-3)' }}>
+                        <span className="side-list__item-time">
                           {new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(s.updatedAt)}
-                        </p>
+                        </span>
                       ) : null}
                     </button>
                   ))

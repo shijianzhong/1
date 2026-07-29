@@ -72,7 +72,17 @@ export function HomePage() {
     setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
 
     try {
-      await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
+      const result = await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
+      // 后端返回 runId=sessionId；若是新会话，存到 store 复用，后续多轮走同一会话
+      if (result.runId && result.runId !== sessionId) {
+        useChatStore.setState({ sessionId: result.runId })
+      }
+      // 把本轮流式产出的消息（user + assistant）拉成持久化历史，
+      // 清空流式态，避免重复
+      if (result.runId) {
+        await useChatStore.getState().selectSession(result.runId)
+        setStreamMsgs([])
+      }
       // 刷新会话列表（新建会话后标题有了）
       void useChatStore.getState().loadSessions()
     } catch (e) {
