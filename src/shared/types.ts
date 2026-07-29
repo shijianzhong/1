@@ -193,6 +193,15 @@ export type LlmDelta =
   | { type: 'tool_use_stop'; id: string }
   | { type: 'message_stop'; stop_reason: string | null }
   | { type: 'error'; error: string }
+  | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
+
+/** 重试回调参数 */
+export interface RetryInfo {
+  attempt: number
+  maxRetries: number
+  delayMs: number
+  reason: string
+}
 
 /** Agent 运行请求（铁律9：maxTokens 从 defaultOptions 取） */
 export interface LlmRequest {
@@ -205,6 +214,8 @@ export interface LlmRequest {
   temperature?: number
   /** 流式增量回调 */
   onDelta?: (delta: LlmDelta) => void
+  /** 重试等待回调（429/5xx 等，通知前端「重试中」） */
+  onRetry?: (info: RetryInfo) => void
   signal?: AbortSignal
 }
 
@@ -446,6 +457,7 @@ export interface AgentRunCallbacks {
   onText?: (text: string) => void
   onToolCall?: (tool: string, args: unknown) => void
   onToolResult?: (tool: string, result: unknown) => void
+  onRetry?: (info: RetryInfo) => void
 }
 
 /** Agent 终止条件（§D） */

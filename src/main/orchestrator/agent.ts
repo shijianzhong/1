@@ -68,6 +68,7 @@ export class Agent {
         temperature: this.config.defaultOptions.temperature,
         signal: input.signal,
         onDelta: (delta: LlmDelta) => this.emitDelta(delta, callbacks),
+        onRetry: (info) => callbacks.onRetry?.(info),
       })
 
       // 把 assistant 产出追加到 messages（下一轮 tool_result 要配对）

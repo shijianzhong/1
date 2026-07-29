@@ -13,6 +13,8 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   streaming?: boolean
+  error?: boolean
+  retrying?: string // 重试提示文案
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
@@ -49,27 +51,57 @@ export function HomePage() {
       if (delta.type === 'text') {
         setStreamMsgs((prev) => {
           const last = prev[prev.length - 1]
-          if (last?.role === 'assistant' && last.streaming) {
-            return [...prev.slice(0, -1), { ...last, text: last.text + delta.text }]
+          // 若末条是重试提示，先清掉重试态再追加文本
+          if (last?.role === 'assistant' && (last.streaming || last.retrying)) {
+            const { retrying: _r, ...rest } = last
+            void _r
+            return [...prev.slice(0, -1), { ...rest, text: rest.text + delta.text, streaming: true }]
           }
           return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.text, streaming: true }]
         })
+      } else if (delta.type === 'retry') {
+        // 重试等待：在 AI 气泡位置显示「重试中（N/M，等待 Xs）」
+        setStreamMsgs((prev) => {
+          const last = prev[prev.length - 1]
+          if (last?.role === 'assistant' && (last.streaming || last.retrying)) {
+            return [...prev.slice(0, -1), {
+              ...last,
+              streaming: false,
+              retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）`,
+            }]
+          }
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）` }]
+        })
+      } else if (delta.type === 'error') {
+        // 错误显示在 AI 气泡位置（而非顶部），含重试按钮
+        setStreamMsgs((prev) => {
+          const last = prev[prev.length - 1]
+          if (last?.role === 'assistant' && (last.streaming || last.retrying)) {
+            return [...prev.slice(0, -1), { id: last.id, role: 'assistant' as const, text: delta.error, error: true }]
+          }
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.error, error: true }]
+        })
       } else if (delta.type === 'message_stop') {
         setStreamMsgs((prev) =>
-          prev.map((m, i) => i === prev.length - 1 ? { ...m, streaming: false } : m),
+          prev.map((m, i) => i === prev.length - 1 ? { ...m, streaming: false, retrying: undefined } : m),
         )
       }
     })
     return () => streamRef.current?.()
   }, [])
 
-  const onSend = async (): Promise<void> => {
-    const text = input.trim()
+  const onSend = async (overrideText?: string): Promise<void> => {
+    const text = (overrideText ?? input).trim()
     if (!text || sending) return
-    setInput('')
+    if (!overrideText) setInput('')
     setError(null)
     setSending(true)
-    setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
+    // 重试时不清空已有流式消息（保留上下文），仅追加 user 消息
+    if (overrideText) {
+      setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
+    } else {
+      setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
+    }
 
     try {
       const result = await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
@@ -101,12 +133,6 @@ export function HomePage() {
           <p className="section-subtitle">{t('home:description')}</p>
         </section>
 
-        {error ? (
-          <div className="message__bubble message__bubble--assistant" style={{ color: 'var(--color-danger)' }}>
-            {error}
-          </div>
-        ) : null}
-
         {messages.map((m) => (
           <motion.div
             key={m.id}
@@ -120,9 +146,45 @@ export function HomePage() {
                 <Sparkles size={16} />
               </div>
             ) : null}
-            <div className={`message__bubble message__bubble--${m.role}`}>
-              {m.role === 'assistant' ? <Markdown>{m.text}</Markdown> : m.text}
+            <div
+              className={`message__bubble message__bubble--${m.role}`}
+              style={m.error ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
+            >
+              {m.retrying ? (
+                <span style={{ color: 'var(--color-fg-2)', fontSize: '0.85rem' }}>{m.retrying}</span>
+              ) : m.role === 'assistant' ? (
+                <Markdown>{m.text}</Markdown>
+              ) : (
+                m.text
+              )}
               {m.streaming ? <span className="stream-cursor">▋</span> : null}
+              {m.error ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // 找该错误气泡前最近一条 user 消息重发
+                    const idx = messages.findIndex((x) => x.id === m.id)
+                    const prevUser = [...messages.slice(0, idx)].reverse().find((x) => x.role === 'user')
+                    if (prevUser) {
+                      // 删掉错误气泡，重发
+                      setStreamMsgs((prev) => prev.filter((x) => x.id !== m.id))
+                      void onSend(prevUser.text)
+                    }
+                  }}
+                  style={{
+                    marginTop: 8,
+                    border: 0,
+                    borderRadius: 999,
+                    background: 'var(--color-brand-500)',
+                    color: 'white',
+                    padding: '4px 12px',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t('common:actions.retry')}
+                </button>
+              ) : null}
             </div>
           </motion.div>
         ))}

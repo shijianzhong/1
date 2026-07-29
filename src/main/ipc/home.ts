@@ -108,22 +108,40 @@ export function registerHomeHandlers(): void {
       toolCtx: { sessionId: sid },
     })
 
-    // 7. Agent.run
-    const result = await agent.run(
-      { messages: l1Messages, runId: sid },
-      { onText: (text) => emitStream({ type: 'text', text }) },
-    )
+    // 7. Agent.run（含重试等待回调 + 错误兜底推 AI 气泡位置）
+    try {
+      const result = await agent.run(
+        { messages: l1Messages, runId: sid },
+        {
+          onText: (text) => emitStream({ type: 'text', text }),
+          onRetry: (info) =>
+            emitStream({
+              type: 'retry',
+              attempt: info.attempt,
+              maxRetries: info.maxRetries,
+              delayMs: info.delayMs,
+              reason: info.reason,
+            }),
+        },
+      )
 
-    // 8. 存 assistant 回复
-    addMessage({ sessionId: sid, role: 'assistant', content: result.finalText })
+      // 8. 存 assistant 回复
+      addMessage({ sessionId: sid, role: 'assistant', content: result.finalText })
 
-    // 9. 会话结束异步触发 L2 精炼
-    void refineL2(DEFAULT_USER_ID, sid, allMessages, compressFn).catch((e) =>
-      logger.warn('[l2] 精炼失败', e),
-    )
+      // 9. 会话结束异步触发 L2 精炼
+      void refineL2(DEFAULT_USER_ID, sid, allMessages, compressFn).catch((e) =>
+        logger.warn('[l2] 精炼失败', e),
+      )
 
-    // 10. 结束事件
-    emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+      // 10. 结束事件
+      emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+    } catch (e) {
+      // 错误推到 AI 气泡位置（而非聊天区上方），含可重试提示
+      const msg = e instanceof Error ? e.message : String(e)
+      emitStream({ type: 'error', error: msg })
+      emitStream({ type: 'message_stop', stop_reason: 'error' })
+      throw e
+    }
 
     return { runId: sid }
   })

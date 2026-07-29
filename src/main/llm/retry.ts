@@ -94,6 +94,13 @@ export class RetryingClient {
           `[llm] 重试 ${attempt + 1}/${MAX_RETRIES}，延迟 ${delay}ms`,
           error instanceof Error ? error.message : error,
         )
+        // 通知前端「重试等待中」（429/5xx 等）
+        req.onRetry?.({
+          attempt: attempt + 1,
+          maxRetries: MAX_RETRIES,
+          delayMs: delay,
+          reason: error instanceof Error ? error.message : String(error),
+        })
         await sleep(delay, req.signal)
       }
     }
