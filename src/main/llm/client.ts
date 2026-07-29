@@ -56,6 +56,8 @@ export class LLMClient {
           ? { type: 'adaptive' as const }
           : undefined
       : undefined
+    // eslint-disable-next-line no-console
+    console.log('[llm] stream 请求:', { model: req.model, thinking, baseURL: req.model })
     const stream = await this.sdk.beta.messages.stream(
       {
         model: req.model,

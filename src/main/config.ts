@@ -39,6 +39,7 @@ export const ProviderSchema = z.object({
     default: z.string().optional(),
   }),
   enableThinking: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
   createdAt: ts,
   updatedAt: ts,
 })

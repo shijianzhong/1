@@ -313,6 +313,8 @@ export interface Provider {
   models: ProviderModels
   /** 是否开启 thinking（供应商级开关，用户决定中转是否支持） */
   enableThinking?: boolean
+  /** 是否默认供应商（聊天/编排默认使用） */
+  isDefault?: boolean
   createdAt: number
   updatedAt: number
 }

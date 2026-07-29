@@ -89,7 +89,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
           onClick={() =>
             setDraft(
               i18nKey === 'models'
-                ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false }
+                ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false, isDefault: false }
                 : { kind: i18nKey, isNew: true, name: '', instructions: '', content: '' },
             )
           }
@@ -147,6 +147,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
                               primary: p.models.primary ?? '', reasoning: p.models.reasoning ?? '',
                               fast: p.models.fast ?? '', default: p.models.default ?? '',
                               enableThinking: p.enableThinking ?? false,
+                              isDefault: p.isDefault ?? false,
                             })
                           }
                         }}
@@ -207,6 +208,7 @@ interface Draft {
   fast?: string
   default?: string
   enableThinking?: boolean
+  isDefault?: boolean
 }
 
 function DraftForm({
@@ -245,6 +247,7 @@ function DraftForm({
           default: draft.default || undefined,
         },
         enableThinking: draft.enableThinking,
+        isDefault: draft.isDefault,
       })
       if (provider.keyId && draft.key) {
         await window.one.secrets
@@ -346,6 +349,13 @@ function DraftForm({
                 onCheckedChange={(c) => setDraft({ ...draft, enableThinking: c })}
               />
               {t('common:columns.enableThinking')}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: 'var(--color-fg-2)' }}>
+              <Switch
+                checked={draft.isDefault ?? false}
+                onCheckedChange={(c) => setDraft({ ...draft, isDefault: c })}
+              />
+              {t('common:columns.default')}
             </label>
           </>
         ) : null}

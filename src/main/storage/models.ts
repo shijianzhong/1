@@ -293,6 +293,7 @@ export function saveProvider(input: unknown): Provider {
   const parsed = ProviderInputSchema.parse(input)
   const now = Date.now()
   const existing = parsed.id ? getProvider(parsed.id) : null
+  const isDefault = parsed.isDefault
   const next: Provider = {
     id: existing?.id ?? generateId('prv_'),
     name: parsed.name,
@@ -304,15 +305,18 @@ export function saveProvider(input: unknown): Provider {
     keyId: existing?.keyId ?? parsed.keyId ?? generateId('key_'),
     models: parsed.models ?? {},
     enableThinking: parsed.enableThinking,
+    isDefault: isDefault ?? false,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
   const list = listProviders()
-  providersStore.write(
-    existing
+  // 设为默认时取消其它默认
+  const updated = isDefault
+    ? list.map((p) => (p.id === next.id ? next : { ...p, isDefault: false }))
+    : existing
       ? list.map((p) => (p.id === next.id ? next : p))
-      : [...list.filter((p) => p.id !== next.id), next],
-  )
+      : [...list, next]
+  providersStore.write(updated)
   return next
 }
 
@@ -320,9 +324,10 @@ export function removeProvider(id: string): void {
   providersStore.write(listProviders().filter((p) => p.id !== id))
 }
 
-/** 取默认供应商（第一个，或标记默认的） */
+/** 取默认供应商（有 isDefault 标记的优先，否则取第一个） */
 export function getDefaultProvider(): Provider | null {
-  return listProviders()[0] ?? null
+  const list = listProviders()
+  return list.find((p) => p.isDefault) ?? list[0] ?? null
 }
 
 /**
