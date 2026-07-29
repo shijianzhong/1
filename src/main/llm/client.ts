@@ -117,29 +117,45 @@ function toAnthropicBlock(
         content: block.content,
         is_error: block.is_error ?? false,
       }
+    case 'thinking':
+      // 传回 thinking block（含 signature，多轮 thinking 需要）
+      return {
+        type: 'thinking',
+        thinking: block.thinking,
+        signature: block.signature,
+      } as Anthropic.Beta.Messages.BetaContentBlockParam
   }
 }
 
 // output 侧（SDK→我们）：模型产出只含 text/tool_use/thinking，无 tool_result
+// thinking block 保留（传回 messages 供多轮 thinking 用），但 extractText 跳过
 function fromAnthropicContent(
   content: Anthropic.Beta.Messages.BetaContentBlock[],
 ): import('@shared/types').LlmContentBlock[] {
-  return content.map((b: Anthropic.Beta.Messages.BetaContentBlock) => {
-    switch (b.type) {
-      case 'text':
-        return { type: 'text' as const, text: b.text }
-      case 'tool_use':
-        return {
-          type: 'tool_use' as const,
-          id: b.id,
-          name: b.name,
-          input: b.input,
-        }
-      default:
-        // thinking/redacted_thinking/server_tool_use 等降级为 text
-        return { type: 'text' as const, text: JSON.stringify(b) }
-    }
-  })
+  return content
+    .filter((b) => b.type !== 'redacted_thinking')
+    .map((b: Anthropic.Beta.Messages.BetaContentBlock) => {
+      switch (b.type) {
+        case 'text':
+          return { type: 'text' as const, text: b.text }
+        case 'tool_use':
+          return {
+            type: 'tool_use' as const,
+            id: b.id,
+            name: b.name,
+            input: b.input,
+          }
+        case 'thinking':
+          // 保留 thinking block（含 signature，多轮 thinking 需要）
+          return {
+            type: 'thinking' as const,
+            thinking: (b as { thinking: string }).thinking,
+            signature: (b as { signature: string }).signature,
+          }
+        default:
+          return { type: 'text' as const, text: JSON.stringify(b) }
+      }
+    })
 }
 
 // —— 流式事件转 LlmDelta（§三之三 I：哪些 type 有输出）——

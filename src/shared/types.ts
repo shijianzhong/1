@@ -179,6 +179,7 @@ export type LlmContentBlock =
       content: string
       is_error?: boolean
     }
+  | { type: 'thinking'; thinking: string; signature: string }
 
 export interface LlmMessage {
   role: LlmRole
