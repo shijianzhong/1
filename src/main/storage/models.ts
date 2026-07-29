@@ -79,10 +79,14 @@ export function saveModel(input: unknown): ModelConfig {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
+  // 先把 next 加入/替换到列表
+  const withNext = existing
+    ? models.map((m) => (m.id === next.id ? next : m))
+    : [...models, next]
   // 设为默认时取消其它默认
   const updated = isDefault
-    ? models.map((m) => (m.id === next.id ? next : { ...m, isDefault: false }))
-    : [...models.filter((m) => m.id !== next.id), next]
+    ? withNext.map((m) => (m.id === next.id ? next : { ...m, isDefault: false }))
+    : withNext
   modelsStore.write(updated)
   return next
 }
