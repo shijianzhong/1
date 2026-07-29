@@ -33,16 +33,26 @@ function isRetryable(error: unknown): boolean {
     return status === 429 || (status >= 500 && status <= 504)
   }
 
-  // 网络异常 / 中转网关报错
+  // —— duck-typing 兜底（SDK 在 ESM/打包下 instanceof 可能失效，§三之三 H）——
+  // 任何含 429/rate_limit/overloaded/5xx/backend returned 的都重试
+  const errStr = (
+    error instanceof Error
+      ? `${error.name} ${error.message}`
+      : typeof error === 'string'
+        ? error
+        : JSON.stringify(error)
+  ).toLowerCase()
+
+  // 401/400 明确不重试（即使 instanceof 失效）
+  if (/401|400|bad.?request|unauthor/i.test(errStr)) return false
+
   if (error instanceof Error) {
     const name = error.name.toLowerCase()
-    const msg = error.message.toLowerCase()
     // name 或 message 任一含网络/超时/中转关键词即重试
     if (/network|fetch|abort|timeout|connection|econn|enotfound/i.test(name)) return true
-    if (/network|fetch|abort|timeout|connection|econn|enotfound/i.test(msg)) return true
-    return GATEWAY_RETRY_KEYWORDS.some((kw) => msg.includes(kw))
   }
-  return false
+  if (/network|fetch|abort|timeout|connection|econn|enotfound/i.test(errStr)) return true
+  return GATEWAY_RETRY_KEYWORDS.some((kw) => errStr.includes(kw))
 }
 
 function computeDelay(attempt: number): number {
