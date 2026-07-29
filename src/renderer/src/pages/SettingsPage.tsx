@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import { useThemeStore } from '@renderer/store/theme'
 import { DEFAULT_THEME } from '@shared/types'
-import type { Persona, ThemeBackgroundConfig, ThemeConfig } from '@shared/types'
+import type { Persona, Provider, ThemeBackgroundConfig, ThemeConfig } from '@shared/types'
 import { Button } from '@renderer/components/ui/Button'
 import { Switch } from '@renderer/components/ui/Switch'
 import { Input } from '@renderer/components/ui/Input'
@@ -12,11 +12,8 @@ import { unwrap } from '@renderer/api/client'
 import {
   usePersona,
   useSavePersona,
-  useModels,
-  useSaveModel,
-  useRemoveModel,
+  useProviders,
 } from '@renderer/api/hooks'
-import type { ModelConfig } from '@shared/types'
 
 // —— 设置页（§4 + §12.6.1）——
 // 外观全量：预设/明暗/点缀色色板/背景图导入/玻璃参数/密度/字号。
@@ -45,41 +42,37 @@ export function SettingsPage() {
   const saveTheme = useThemeStore((state) => state.save)
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
 
-  // —— 个人档案 + LLM 配置 ——
+  // —— 个人档案 + LLM 配置（供应商为中心，cc switch 范式）——
   const personaQ = usePersona()
   const savePersona = useSavePersona()
-  const modelsQ = useModels()
-  const saveModel = useSaveModel()
-  const removeModel = useRemoveModel()
+  const providersQ = useProviders()
   const persona = personaQ.data ?? null
   const [profile, setProfile] = useState<NonNullable<Persona['profile']>>({
     alias: '',
     role: '',
     preferredLanguage: 'zh-CN',
   })
-  // 新建模型表单
-  const [newModel, setNewModel] = useState({ name: '', modelId: '', baseUrl: '' })
-  // 每模型 key 输入（keyId → 输入值）
+  // 每供应商 key 输入
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
-  // 每模型 key 是否已配置（hasKey）
+  // 每供应商 key 是否已配置
   const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (persona?.profile) setProfile(persona.profile)
   }, [persona?.profile])
 
-  // 查询每模型 key 状态
+  // 查询每供应商 key 状态
   useEffect(() => {
-    for (const m of modelsQ.data ?? []) {
-      if (!m.keyId) continue
+    for (const p of providersQ.data ?? []) {
+      if (!p.keyId) continue
       void window.one.secrets
-        .getLLMConfig(m.keyId)
+        .getLLMConfig(p.keyId)
         .then((r) => {
-          if ('data' in r) setKeyStatus((s) => ({ ...s, [m.id]: r.data.hasKey }))
+          if ('data' in r) setKeyStatus((s) => ({ ...s, [p.id]: r.data.hasKey }))
         })
         .catch(() => {})
     }
-  }, [modelsQ.data])
+  }, [providersQ.data])
 
   // profile 直接存 persona（更新 profile 字段）
   const saveProfile = async (): Promise<void> => {
@@ -98,42 +91,16 @@ export function SettingsPage() {
     } as never).catch(() => {})
   }
 
-  // 新建模型（saveModel 自动生成 keyId）
-  const onCreateModel = async (): Promise<void> => {
-    if (!newModel.name.trim() || !newModel.modelId.trim()) return
-    await saveModel.mutateAsync({
-      name: newModel.name.trim(),
-      modelId: newModel.modelId.trim(),
-      baseUrl: newModel.baseUrl.trim() || undefined,
-      isDefault: (modelsQ.data ?? []).length === 0,
-    })
-    setNewModel({ name: '', modelId: '', baseUrl: '' })
-  }
-
-  // 设为默认
-  const onSetDefault = (m: ModelConfig): void => {
-    void saveModel.mutateAsync({ ...m, isDefault: true })
-  }
-
-  // 删除模型
-  const onRemoveModel = async (m: ModelConfig): Promise<void> => {
-    if (!window.confirm(t('common:confirm.delete'))) return
-    if (m.keyId) {
-      await window.one.secrets.removeKey(m.keyId).then(unwrap).catch(() => {})
-    }
-    await removeModel.mutateAsync(m.id)
-  }
-
-  // 保存某模型 key 到 vault
-  const onSaveKey = async (m: ModelConfig): Promise<void> => {
-    const val = keyInputs[m.id]
-    if (!m.keyId || !val) return
+  // 保存供应商 key 到 vault
+  const onSaveKey = async (p: Provider): Promise<void> => {
+    const val = keyInputs[p.id]
+    if (!p.keyId || !val) return
     await window.one.secrets
-      .setLLMConfig({ keyId: m.keyId, apiKey: val })
+      .setLLMConfig({ keyId: p.keyId, apiKey: val })
       .then(unwrap)
       .catch(() => {})
-    setKeyInputs((s) => ({ ...s, [m.id]: '' }))
-    setKeyStatus((s) => ({ ...s, [m.id]: true }))
+    setKeyInputs((s) => ({ ...s, [p.id]: '' }))
+    setKeyStatus((s) => ({ ...s, [p.id]: true }))
   }
 
   // 背景图 dataUrl
@@ -378,89 +345,46 @@ export function SettingsPage() {
       </SectionCard>
 
       {/* LLM 配置（无登录，本地单用户）—— 模型列表 + key 管理 */}
+      {/* LLM 配置（供应商为中心）—— 显示供应商 + key 输入，完整编辑去模型页 */}
       <SectionCard title={t('settings:llm.title')} subtitle={t('settings:llm.subtitle')}>
-        {/* 新建模型 */}
-        <div
-          className="surface-panel"
-          style={{ borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}
-        >
-          <p className="section-subtitle" style={{ margin: 0 }}>
-            {t('settings:llm.addModel')}
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Input
-              placeholder={t('settings:llm.namePh')}
-              value={newModel.name}
-              onChange={(e) => setNewModel((m) => ({ ...m, name: e.target.value }))}
-            />
-            <Input
-              placeholder={t('settings:llm.modelIdPh')}
-              value={newModel.modelId}
-              onChange={(e) => setNewModel((m) => ({ ...m, modelId: e.target.value }))}
-            />
-          </div>
-          <Input
-            placeholder={t('settings:llm.baseUrlPh')}
-            value={newModel.baseUrl}
-            onChange={(e) => setNewModel((m) => ({ ...m, baseUrl: e.target.value }))}
-          />
-          <Button
-            size="sm"
-            onClick={() => void onCreateModel()}
-            disabled={!newModel.name.trim() || !newModel.modelId.trim() || saveModel.isPending}
-          >
-            {t('common:actions.add')}
-          </Button>
-        </div>
-
-        {/* 已配置模型列表 */}
-        {(modelsQ.data ?? []).length === 0 ? (
+        {(providersQ.data ?? []).length === 0 ? (
           <p className="section-subtitle">{t('settings:llm.empty')}</p>
         ) : (
-          (modelsQ.data ?? []).map((m) => (
+          (providersQ.data ?? []).map((p) => (
             <div
-              key={m.id}
+              key={p.id}
               className="surface-panel"
               style={{ borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
-                  <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{m.name}</span>
-                  {m.isDefault ? (
+                  <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{p.name}</span>
+                  {p.apiFormat ? (
                     <Badge variant="brand" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                      {t('settings:llm.default')}
+                      {p.apiFormat}
                     </Badge>
                   ) : null}
                   <p className="section-subtitle" style={{ margin: '4px 0 0' }}>
-                    {m.modelId}
-                    {m.baseUrl ? ` · ${m.baseUrl}` : ''}
+                    {p.baseUrl ? `${p.baseUrl} · ` : ''}主:{p.models.primary ?? '-'}
+                    {p.models.reasoning ? ` · 推理:${p.models.reasoning}` : ''}
+                    {p.models.fast ? ` · 快答:${p.models.fast}` : ''}
                   </p>
-                </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  {!m.isDefault ? (
-                    <Button variant="ghost" size="sm" onClick={() => onSetDefault(m)}>
-                      {t('settings:llm.setDefault')}
-                    </Button>
-                  ) : null}
-                  <Button variant="ghost" size="icon" onClick={() => void onRemoveModel(m)}>
-                    <Trash2 size={14} />
-                  </Button>
                 </div>
               </div>
               {/* key 输入 */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <Input
                   type="password"
-                  placeholder={keyStatus[m.id] ? '••••••••（已配置）' : t('settings:llm.apiKey')}
-                  value={keyInputs[m.id] ?? ''}
-                  onChange={(e) => setKeyInputs((s) => ({ ...s, [m.id]: e.target.value }))}
+                  placeholder={keyStatus[p.id] ? '••••••••（已配置，留空不改）' : t('settings:llm.apiKey')}
+                  value={keyInputs[p.id] ?? ''}
+                  onChange={(e) => setKeyInputs((s) => ({ ...s, [p.id]: e.target.value }))}
                   style={{ flex: 1 }}
                 />
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => void onSaveKey(m)}
-                  disabled={!keyInputs[m.id]}
+                  onClick={() => void onSaveKey(p)}
+                  disabled={!keyInputs[p.id]}
                 >
                   {t('common:actions.save')}
                 </Button>

@@ -3,13 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Pencil } from 'lucide-react'
 import {
   useAgents,
-  useModels,
   useProviders,
   useRemoveAgent,
-  useRemoveModel,
+  useRemoveProvider,
   useRemoveSkill,
   useSaveAgent,
-  useSaveModel,
   useSaveProvider,
   useSaveSkill,
   useSkills,
@@ -30,49 +28,19 @@ import {
   DrawerContent,
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
-import { Badge } from '@renderer/components/ui/Badge'
-import type { Agent, ModelConfig, Provider, Skill } from '@shared/types'
+import type {
+  Agent,
+  ApiFormat,
+  Provider,
+  Skill,
+} from '@shared/types'
 
 // —— 管理后台列表（§3 + §5.5）——
-// 顶部工具条 + Table + Drawer 编辑抽屉（按实体类型给对应表单字段）。
-// 不再用 window.prompt（Electron 沙箱下不可靠），改用 Drawer 表单。
+// agents/skills 用 Table + Drawer 编辑（name + 内容字段）；
+// models 用供应商为中心（cc switch 范式）：列出供应商，编辑含用途模型。
 
 interface ListPageProps {
   i18nKey: 'agents' | 'skills' | 'models'
-}
-
-type Entity = Agent | Skill | ModelConfig
-
-interface Draft {
-  id?: string // 有 id=编辑，无=新建
-  name: string
-  // agent
-  instructions: string
-  // model
-  modelId: string
-  providerId: string // 关联 provider（key+baseUrl 共享）；空=新建独立 provider
-  newProviderName: string // 新建 provider 名
-  newProviderBaseUrl: string // 新建 provider baseUrl
-  baseUrl: string // 模型自带（旧/独立）
-  key: string
-  tags: string // 逗号分隔
-  isDefault: boolean
-  // skill
-  content: string
-}
-
-const EMPTY_DRAFT: Draft = {
-  name: '',
-  instructions: '',
-  modelId: '',
-  providerId: '',
-  newProviderName: '',
-  newProviderBaseUrl: '',
-  baseUrl: '',
-  key: '',
-  tags: '',
-  isDefault: false,
-  content: '',
 }
 
 export function ListPage({ i18nKey }: ListPageProps) {
@@ -80,148 +48,30 @@ export function ListPage({ i18nKey }: ListPageProps) {
   const title = t(`common:list.${i18nKey}.title`)
   const description = t(`common:list.${i18nKey}.description`)
 
+  // 三种实体的 hooks（无条件调用）
   const agentsQ = useAgents()
   const skillsQ = useSkills()
-  const modelsQ = useModels()
-  const query = i18nKey === 'agents' ? agentsQ : i18nKey === 'skills' ? skillsQ : modelsQ
+  const providersQ = useProviders()
 
   const saveAgent = useSaveAgent()
   const saveSkill = useSaveSkill()
-  const saveModel = useSaveModel()
+  const saveProvider = useSaveProvider()
   const removeAgent = useRemoveAgent()
   const removeSkill = useRemoveSkill()
-  const removeModel = useRemoveModel()
-  const providersQ = useProviders()
-  const saveProvider = useSaveProvider()
+  const removeProvider = useRemoveProvider()
 
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({})
-  const items: Entity[] = query.data ?? []
+  const items =
+    i18nKey === 'agents'
+      ? agentsQ.data ?? []
+      : i18nKey === 'skills'
+        ? skillsQ.data ?? []
+        : i18nKey === 'models'
+          ? providersQ.data ?? []
+          : []
 
-  // 模型 key 状态
-  if (i18nKey === 'models') {
-    for (const m of items as ModelConfig[]) {
-      if (m.keyId && keyStatus[m.id] === undefined) {
-        void window.one.secrets
-          .getLLMConfig(m.keyId)
-          .then((r) => {
-            if ('data' in r) setKeyStatus((s) => ({ ...s, [m.id]: r.data.hasKey }))
-          })
-          .catch(() => {})
-      }
-    }
-  }
-
-  const onNew = (): void => setDraft({ ...EMPTY_DRAFT, isDefault: items.length === 0 })
-
-  const onEdit = (item: Entity): void => {
-    if (i18nKey === 'agents') {
-      const a = item as Agent
-      setDraft({
-        ...EMPTY_DRAFT,
-        id: a.id,
-        name: a.name,
-        instructions: a.instructions,
-      })
-    } else if (i18nKey === 'skills') {
-      const s = item as Skill
-      setDraft({
-        ...EMPTY_DRAFT,
-        id: s.id,
-        name: s.name,
-        content: s.content,
-      })
-    } else {
-      const m = item as ModelConfig
-      setDraft({
-        ...EMPTY_DRAFT,
-        id: m.id,
-        name: m.name,
-        modelId: m.modelId,
-        providerId: m.providerId ?? '',
-        baseUrl: m.baseUrl ?? '',
-        tags: (m.tags ?? []).join(', '),
-        isDefault: m.isDefault ?? false,
-      })
-    }
-  }
-
-  const onSave = async (): Promise<void> => {
-    if (!draft || !draft.name.trim()) return
-    if (i18nKey === 'agents') {
-      const existing = draft.id ? (items as Agent[]).find((a) => a.id === draft.id) : undefined
-      await saveAgent.mutateAsync({
-        id: draft.id,
-        name: draft.name,
-        instructions: draft.instructions || existing?.instructions || '',
-        source: 'custom',
-      })
-    } else if (i18nKey === 'skills') {
-      const existing = draft.id ? (items as Skill[]).find((s) => s.id === draft.id) : undefined
-      await saveSkill.mutateAsync({
-        id: draft.id,
-        name: draft.name,
-        content: draft.content || existing?.content || '',
-      })
-    } else {
-      // 模型：先处理 provider（选已有 / 新建），再保存模型挂 providerId + tags
-      let providerId = draft.providerId
-      let keyForVault: string | undefined
-      if (draft.providerId === '__new__' && draft.newProviderName.trim()) {
-        // 新建 provider
-        const provider = await saveProvider.mutateAsync({
-          name: draft.newProviderName.trim(),
-          baseUrl: draft.newProviderBaseUrl.trim() || undefined,
-        })
-        providerId = provider.id
-        keyForVault = draft.key || undefined
-      } else if (draft.providerId) {
-        // 已有 provider：若填了 key 则更新 provider 的 key
-        keyForVault = draft.key || undefined
-      } else {
-        // 无 provider（旧式独立模型）：key 用模型自带 keyId
-        keyForVault = draft.key || undefined
-      }
-      const tags = draft.tags
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      const saved = await saveModel.mutateAsync({
-        id: draft.id,
-        name: draft.name,
-        modelId: draft.modelId,
-        providerId: providerId || undefined,
-        baseUrl: draft.baseUrl || undefined,
-        isDefault: draft.isDefault,
-        tags: tags.length ? tags : undefined,
-      })
-      // key 存 vault：挂 provider 的用 provider.keyId，独立的用 saved.keyId
-      const keyId = providerId
-        ? (await window.one.providers.list().then(unwrap).then(
-            (ps) => ps.find((p) => p.id === providerId)?.keyId,
-          )) ?? saved.keyId
-        : saved.keyId
-      if (keyId && keyForVault) {
-        await window.one.secrets
-          .setLLMConfig({ keyId, apiKey: keyForVault })
-          .then(unwrap)
-          .catch(() => {})
-        setKeyStatus((s) => ({ ...s, [saved.id]: true }))
-      }
-    }
-    setDraft(null)
-  }
-
-  const onRemove = async (id: string): Promise<void> => {
-    if (!window.confirm(t('common:confirm.delete'))) return
-    if (i18nKey === 'agents') await removeAgent.mutateAsync(id)
-    else if (i18nKey === 'skills') await removeSkill.mutateAsync(id)
-    else {
-      const m = (items as ModelConfig[]).find((x) => x.id === id)
-      if (m?.keyId) await window.one.secrets.removeKey(m.keyId).then(unwrap).catch(() => {})
-      await removeModel.mutateAsync(id)
-    }
-  }
+  const query =
+    i18nKey === 'agents' ? agentsQ : i18nKey === 'skills' ? skillsQ : providersQ
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
@@ -234,12 +84,20 @@ export function ListPage({ i18nKey }: ListPageProps) {
           <h2 className="section-title" style={{ fontSize: '1rem' }}>{title}</h2>
           <p className="section-subtitle">{description}</p>
         </div>
-        <Button onClick={onNew}>
+        <Button
+          onClick={() =>
+            setDraft(
+              i18nKey === 'models'
+                ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '' }
+                : { kind: i18nKey, isNew: true, name: '', instructions: '', content: '' },
+            )
+          }
+        >
           <Plus size={16} /> {t('common:actions.new')}
         </Button>
       </section>
 
-      {/* Table / 状态态 */}
+      {/* 列表 */}
       {query.isLoading ? (
         <EmptyState text={t('common:state.loading')} />
       ) : query.isError ? (
@@ -259,27 +117,54 @@ export function ListPage({ i18nKey }: ListPageProps) {
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell style={{ fontWeight: 500 }}>
-                    {item.name}
-                    {i18nKey === 'models' && (item as ModelConfig).isDefault ? (
-                      <Badge variant="brand" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                        {t('common:columns.default')}
-                      </Badge>
-                    ) : null}
-                  </TableCell>
+                  <TableCell style={{ fontWeight: 500 }}>{item.name}</TableCell>
                   <TableCell style={{ color: 'var(--color-fg-2)' }}>
                     {i18nKey === 'agents'
                       ? (item as Agent).description ?? ''
                       : i18nKey === 'skills'
                         ? (item as Skill).description ?? ''
-                        : <ModelMeta model={item as ModelConfig} providers={providersQ.data ?? []} />}
+                        : <ProviderMeta provider={item as Provider} />}
                   </TableCell>
                   <TableCell>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (i18nKey === 'agents') {
+                            const a = item as Agent
+                            setDraft({ kind: 'agents', isNew: false, id: a.id, name: a.name, instructions: a.instructions, content: '' })
+                          } else if (i18nKey === 'skills') {
+                            const s = item as Skill
+                            setDraft({ kind: 'skills', isNew: false, id: s.id, name: s.name, instructions: '', content: s.content })
+                          } else {
+                            const p = item as Provider
+                            setDraft({
+                              kind: 'provider', isNew: false, id: p.id, name: p.name,
+                              remark: p.remark ?? '', website: p.website ?? '', baseUrl: p.baseUrl ?? '',
+                              apiFormat: p.apiFormat, authHeader: p.authHeader ?? '', key: '',
+                              primary: p.models.primary ?? '', reasoning: p.models.reasoning ?? '',
+                              fast: p.models.fast ?? '', default: p.models.default ?? '',
+                            })
+                          }
+                        }}
+                      >
                         <Pencil size={14} />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => void onRemove(item.id)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (!window.confirm(t('common:confirm.delete'))) return
+                          if (i18nKey === 'agents') void removeAgent.mutateAsync(item.id)
+                          else if (i18nKey === 'skills') void removeSkill.mutateAsync(item.id)
+                          else if (i18nKey === 'models') {
+                            const p = item as Provider
+                            if (p.keyId) void window.one.secrets.removeKey(p.keyId).then(unwrap).catch(() => {})
+                            void removeProvider.mutateAsync(p.id)
+                          }
+                        }}
+                      >
                         <Trash2 size={14} />
                       </Button>
                     </div>
@@ -294,177 +179,195 @@ export function ListPage({ i18nKey }: ListPageProps) {
       {/* 编辑/新建抽屉 */}
       <Drawer open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
         <DrawerContent>
-          <DrawerTitle>{draft?.id ? t('common:actions.edit') : t('common:actions.new')}</DrawerTitle>
-          {draft ? (
-            <div style={{ display: 'grid', gap: 14, marginTop: 20 }}>
-              <Field label={t('common:columns.name')}>
-                <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} autoFocus />
-              </Field>
-
-              {i18nKey === 'agents' ? (
-                <Field label={t('common:columns.instructions')}>
-                  <textarea
-                    value={draft.instructions}
-                    onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
-                    style={{
-                      minHeight: 120,
-                      borderRadius: 12,
-                      border: '1px solid var(--color-border)',
-                      background: 'var(--color-bg-1)',
-                      color: 'var(--color-fg-1)',
-                      padding: 10,
-                      fontFamily: 'inherit',
-                      fontSize: '0.875rem',
-                      resize: 'vertical',
-                    }}
-                  />
-                </Field>
-              ) : null}
-
-              {i18nKey === 'skills' ? (
-                <Field label={t('common:columns.content')}>
-                  <textarea
-                    value={draft.content}
-                    onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-                    style={{
-                      minHeight: 160,
-                      borderRadius: 12,
-                      border: '1px solid var(--color-border)',
-                      background: 'var(--color-bg-1)',
-                      color: 'var(--color-fg-1)',
-                      padding: 10,
-                      fontFamily: 'var(--font-mono, monospace)',
-                      fontSize: '0.8rem',
-                      resize: 'vertical',
-                    }}
-                  />
-                </Field>
-              ) : null}
-
-              {i18nKey === 'models' ? (
-                <>
-                  <Field label={t('common:columns.modelId')}>
-                    <Input
-                      value={draft.modelId}
-                      onChange={(e) => setDraft({ ...draft, modelId: e.target.value })}
-                      placeholder="claude-sonnet-5"
-                    />
-                  </Field>
-                  <Field label={t('common:columns.provider')}>
-                    <select
-                      value={draft.providerId}
-                      onChange={(e) => setDraft({ ...draft, providerId: e.target.value })}
-                      style={{
-                        height: 36, borderRadius: 12, border: '1px solid var(--color-border)',
-                        background: 'var(--color-bg-1)', color: 'var(--color-fg-1)', padding: '0 10px', width: '100%',
-                      }}
-                    >
-                      <option value="">{t('common:columns.noProvider')}</option>
-                      <option value="__new__">+ {t('common:columns.newProvider')}</option>
-                      {(providersQ.data ?? []).map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}{p.baseUrl ? ` · ${p.baseUrl}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {draft.providerId === '__new__' ? (
-                    <>
-                      <Field label={t('common:columns.providerName')}>
-                        <Input
-                          value={draft.newProviderName}
-                          onChange={(e) => setDraft({ ...draft, newProviderName: e.target.value })}
-                          placeholder="Anthropic / 中转 A"
-                        />
-                      </Field>
-                      <Field label={t('common:columns.baseUrl')}>
-                        <Input
-                          value={draft.newProviderBaseUrl}
-                          onChange={(e) => setDraft({ ...draft, newProviderBaseUrl: e.target.value })}
-                          placeholder={t('common:columns.baseUrlPh')}
-                        />
-                      </Field>
-                      <Field label={t('common:columns.apiKey')}>
-                        <Input
-                          type="password"
-                          value={draft.key}
-                          onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-                          placeholder={t('common:columns.apiKeyPh')}
-                        />
-                      </Field>
-                    </>
-                  ) : draft.providerId ? (
-                    <Field label={t('common:columns.apiKey')}>
-                      <Input
-                        type="password"
-                        value={draft.key}
-                        onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-                        placeholder={
-                          keyStatusForProvider(draft.providerId, providersQ.data ?? [])
-                            ? '••••••••（已配置，留空不改）'
-                            : t('common:columns.apiKeyPh')
-                        }
-                      />
-                    </Field>
-                  ) : (
-                    // 无 provider（旧式独立模型）
-                    <>
-                      <Field label={t('common:columns.baseUrl')}>
-                        <Input
-                          value={draft.baseUrl}
-                          onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
-                          placeholder={t('common:columns.baseUrlPh')}
-                        />
-                      </Field>
-                      <Field label={t('common:columns.apiKey')}>
-                        <Input
-                          type="password"
-                          value={draft.key}
-                          onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-                          placeholder={
-                            draft.id && keyStatus[draft.id]
-                              ? '••••••••（已配置，留空不改）'
-                              : t('common:columns.apiKeyPh')
-                          }
-                        />
-                      </Field>
-                    </>
-                  )}
-                  <Field label={t('common:columns.tags')}>
-                    <Input
-                      value={draft.tags}
-                      onChange={(e) => setDraft({ ...draft, tags: e.target.value })}
-                      placeholder={t('common:columns.tagsPh')}
-                    />
-                  </Field>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: 'var(--color-fg-2)' }}>
-                    <input
-                      type="checkbox"
-                      checked={draft.isDefault}
-                      onChange={(e) => setDraft({ ...draft, isDefault: e.target.checked })}
-                    />
-                    {t('common:columns.default')}
-                  </label>
-                </>
-              ) : null}
-
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <Button variant="ghost" onClick={() => setDraft(null)}>
-                  {t('common:actions.cancel')}
-                </Button>
-                <Button
-                  onClick={() => void onSave()}
-                  disabled={!draft.name.trim() || (i18nKey === 'models' && !draft.modelId.trim())}
-                >
-                  {t('common:actions.save')}
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          {draft ? <DraftForm draft={draft} setDraft={setDraft} i18nKey={i18nKey} /> : null}
         </DrawerContent>
       </Drawer>
     </div>
   )
+}
+
+interface Draft {
+  kind: 'agents' | 'skills' | 'provider'
+  isNew: boolean
+  id?: string
+  name?: string
+  instructions?: string
+  content?: string
+  // provider
+  remark?: string
+  website?: string
+  baseUrl?: string
+  apiFormat?: ApiFormat
+  authHeader?: string
+  key?: string
+  primary?: string
+  reasoning?: string
+  fast?: string
+  default?: string
+}
+
+function DraftForm({
+  draft,
+  setDraft,
+  i18nKey,
+}: {
+  draft: Draft
+  setDraft: (d: Draft) => void
+  i18nKey: 'agents' | 'skills' | 'models'
+}) {
+  const { t } = useTranslation(['common'])
+  const saveAgent = useSaveAgent()
+  const saveSkill = useSaveSkill()
+  const saveProvider = useSaveProvider()
+
+  const save = async (): Promise<void> => {
+    if (!draft.name?.trim()) return
+    if (draft.kind === 'agents') {
+      await saveAgent.mutateAsync({ id: draft.id, name: draft.name!, instructions: draft.instructions ?? '', source: 'custom' })
+    } else if (draft.kind === 'skills') {
+      await saveSkill.mutateAsync({ id: draft.id, name: draft.name!, content: draft.content ?? '' })
+    } else if (draft.kind === 'provider') {
+      const provider = await saveProvider.mutateAsync({
+        id: draft.id,
+        name: draft.name!,
+        remark: draft.remark || undefined,
+        website: draft.website || undefined,
+        baseUrl: draft.baseUrl || undefined,
+        apiFormat: draft.apiFormat,
+        authHeader: draft.authHeader || undefined,
+        models: {
+          primary: draft.primary || undefined,
+          reasoning: draft.reasoning || undefined,
+          fast: draft.fast || undefined,
+          default: draft.default || undefined,
+        },
+      })
+      if (provider.keyId && draft.key) {
+        await window.one.secrets
+          .setLLMConfig({ keyId: provider.keyId, apiKey: draft.key })
+          .then(unwrap)
+          .catch(() => {})
+      }
+    }
+    // 关闭抽屉
+    setDraft(null as never)
+  }
+
+  return (
+    <>
+      <DrawerTitle>{draft.isNew ? t('common:actions.new') : t('common:actions.edit')}</DrawerTitle>
+      <div style={{ display: 'grid', gap: 14, marginTop: 20 }}>
+        <Field label={t('common:columns.name')}>
+          <Input value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} autoFocus />
+        </Field>
+
+        {draft.kind === 'agents' ? (
+          <Field label={t('common:columns.instructions')}>
+            <textarea
+              value={draft.instructions ?? ''}
+              onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
+              style={textareaStyle}
+            />
+          </Field>
+        ) : null}
+
+        {draft.kind === 'skills' ? (
+          <Field label={t('common:columns.content')}>
+            <textarea
+              value={draft.content ?? ''}
+              onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+              style={{ ...textareaStyle, fontFamily: 'var(--font-mono, monospace)', minHeight: 160 }}
+            />
+          </Field>
+        ) : null}
+
+        {draft.kind === 'provider' ? (
+          <>
+            <Field label={t('common:columns.remark')}>
+              <Input value={draft.remark ?? ''} onChange={(e) => setDraft({ ...draft, remark: e.target.value })} />
+            </Field>
+            <Field label={t('common:columns.website')}>
+              <Input value={draft.website ?? ''} onChange={(e) => setDraft({ ...draft, website: e.target.value })} placeholder="https://" />
+            </Field>
+            <Field label={t('common:columns.baseUrl')}>
+              <Input value={draft.baseUrl ?? ''} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder={t('common:columns.baseUrlPh')} />
+            </Field>
+            <Field label={t('common:columns.apiFormat')}>
+              <select
+                value={draft.apiFormat ?? ''}
+                onChange={(e) => setDraft({ ...draft, apiFormat: e.target.value as ApiFormat })}
+                style={selectStyle}
+              >
+                <option value="anthropic">anthropic</option>
+                <option value="openai">openai</option>
+                <option value="custom">custom</option>
+              </select>
+            </Field>
+            <Field label={t('common:columns.authHeader')}>
+              <Input value={draft.authHeader ?? ''} onChange={(e) => setDraft({ ...draft, authHeader: e.target.value })} placeholder="Authorization / x-api-key（留空按格式推断）" />
+            </Field>
+            <Field label={t('common:columns.apiKey')}>
+              <Input
+                type="password"
+                value={draft.key ?? ''}
+                onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+                placeholder={t('common:columns.apiKeyPh')}
+              />
+            </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label={t('common:columns.primary')}>
+                <Input value={draft.primary ?? ''} onChange={(e) => setDraft({ ...draft, primary: e.target.value })} placeholder="claude-sonnet-5" />
+              </Field>
+              <Field label={t('common:columns.reasoning')}>
+                <Input value={draft.reasoning ?? ''} onChange={(e) => setDraft({ ...draft, reasoning: e.target.value })} placeholder="claude-opus-5" />
+              </Field>
+              <Field label={t('common:columns.fast')}>
+                <Input value={draft.fast ?? ''} onChange={(e) => setDraft({ ...draft, fast: e.target.value })} placeholder="claude-haiku-4-5" />
+              </Field>
+              <Field label={t('common:columns.default')}>
+                <Input value={draft.default ?? ''} onChange={(e) => setDraft({ ...draft, default: e.target.value })} placeholder="claude-sonnet-5" />
+              </Field>
+            </div>
+          </>
+        ) : null}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button variant="ghost" onClick={() => setDraft(null as never)}>
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            onClick={() => void save()}
+            disabled={!draft.name?.trim() || (draft.kind === 'provider' && !draft.primary?.trim() && !draft.default?.trim())}
+          >
+            {t('common:actions.save')}
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+const textareaStyle: React.CSSProperties = {
+  minHeight: 120,
+  borderRadius: 12,
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-bg-1)',
+  color: 'var(--color-fg-1)',
+  padding: 10,
+  fontFamily: 'inherit',
+  fontSize: '0.875rem',
+  resize: 'vertical',
+  width: '100%',
+}
+
+const selectStyle: React.CSSProperties = {
+  height: 36,
+  borderRadius: 12,
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-bg-1)',
+  color: 'var(--color-fg-1)',
+  padding: '0 10px',
+  width: '100%',
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -474,6 +377,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div style={{ marginTop: 6 }}>{children}</div>
     </div>
   )
+}
+
+function ProviderMeta({ provider }: { provider: Provider }) {
+  const parts: string[] = []
+  if (provider.baseUrl) parts.push(provider.baseUrl)
+  parts.push(provider.apiFormat)
+  const ms = provider.models
+  const modelParts: string[] = []
+  if (ms.primary) modelParts.push(`主:${ms.primary}`)
+  if (ms.reasoning) modelParts.push(`推理:${ms.reasoning}`)
+  if (ms.fast) modelParts.push(`快答:${ms.fast}`)
+  if (modelParts.length) parts.push(modelParts.join(' '))
+  return <span>{parts.join(' · ')}</span>
 }
 
 function EmptyState({ text, danger }: { text: string; danger?: boolean }): React.ReactNode {
@@ -490,20 +406,4 @@ function EmptyState({ text, danger }: { text: string; danger?: boolean }): React
       {text}
     </div>
   )
-}
-
-/** 查 provider 是否已配 key（getLLMConfig 查 provider.keyId） */
-function keyStatusForProvider(providerId: string, providers: Provider[]): boolean {
-  // 渲染层不缓存 provider key 状态，简化：假设有 keyId 即未配
-  return false
-}
-
-/** 模型行 meta：modelId + provider + tags */
-function ModelMeta({ model, providers }: { model: ModelConfig; providers: Provider[] }) {
-  const provider = model.providerId ? providers.find((p) => p.id === model.providerId) : null
-  const parts: string[] = [model.modelId]
-  if (provider) parts.push(provider.name)
-  else if (model.baseUrl) parts.push(model.baseUrl)
-  if (model.tags?.length) parts.push(model.tags.join('/'))
-  return <span>{parts.join(' · ')}</span>
 }

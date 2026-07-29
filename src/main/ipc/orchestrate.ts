@@ -10,14 +10,15 @@ import type {
 import { withHandler } from './handler'
 import { buildWorkflow, type BuildDeps } from '../orchestrator/builder'
 import { runWorkflow } from '../orchestrator/runner'
-import { getAgent, getDefaultModel, resolveModelCredentials } from '../storage/models'
+import { getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
 import { listToolDefs } from '../tools/registry'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
 
 // —— 编排 IPC（§5.6 + §八之二 B + §三之三 F）——
 // orchestrate:run(graph, input, sessionId) → buildWorkflow → runWorkflow
-// → webContents.send('orchestrate:stream', event) 流式推渲染层。
+// → webContents.send('orchestrate:stream', event) 流式推渲染。
+// cc switch 范式：凭据 + modelId 从默认 provider 取。
 
 const STREAM_CHANNEL = 'orchestrate:stream'
 
@@ -62,11 +63,12 @@ export function registerOrchestrateHandlers(): void {
         sessionId?: string
       }
 
-      const model = getDefaultModel()
-      if (!model) throw new Error('未配置模型')
-      const { apiKey, baseURL } = resolveModelCredentials(model)
+      const provider = getDefaultProvider()
+      if (!provider) throw new Error('未配置供应商')
+      const { apiKey, baseURL, modelId } = resolveProviderCredentials(provider, 'default')
+      if (!modelId) throw new Error('供应商未配置默认模型')
       const deps: BuildDeps = {
-        resolveAgent: makeResolveAgent(model.modelId, apiKey, baseURL),
+        resolveAgent: makeResolveAgent(modelId, apiKey, baseURL),
       }
 
       const wf = buildWorkflow(graph, deps)

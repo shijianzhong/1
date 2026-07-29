@@ -252,18 +252,59 @@ export interface ModelConfig {
   updatedAt: number
 }
 
-/** 服务商（baseUrl + key 共享，多个模型挂同一 provider） */
+/** API 协议格式（决定请求拼装 + 认证头） */
+export type ApiFormat = 'anthropic' | 'openai' | 'custom'
+
+/** 供应商内嵌的用途模型（cc switch 范式：一个供应商配多个用途模型） */
+export interface ProviderModels {
+  /** 主模型 modelId */
+  primary?: string
+  /** 推理模型 modelId（带 thinking） */
+  reasoning?: string
+  /** 快答模型 modelId */
+  fast?: string
+  /** 默认模型 modelId（未指定用途时用） */
+  default?: string
+}
+
+/**
+ * 供应商（cc switch 范式：以供应商为中心）。
+ * 一个供应商 = baseUrl + key + apiFormat + 认证 + 多个用途模型。
+ */
 export interface Provider {
   id: string
-  /** 显示名，如 Anthropic / 中转 A */
+  /** 显示名，如 Anthropic / 本地中转 */
   name: string
-  /** 中转/官方 endpoint；空走官方 */
+  /** 备注 */
+  remark?: string
+  /** 官网 */
+  website?: string
+  /** 请求地址（中转/官方 endpoint）；空走官方 */
   baseUrl?: string
-  /** vault key id（key 在 provider 级，多个模型共享） */
+  /** API 协议格式 */
+  apiFormat: ApiFormat
+  /** 认证头字段名（如 Authorization / x-api-key），默认按 apiFormat 推断 */
+  authHeader?: string
+  /** vault key id（key 在 provider 级共享） */
   keyId?: string
+  /** 用途模型（主/推理/快答/默认） */
+  models: ProviderModels
   createdAt: number
   updatedAt: number
 }
+
+/**
+ * 按用途从供应商解析出 modelId（agent 选模型用）。
+ * @param usage primary/reasoning/fast/default；default 兜底
+ */
+export function resolveModelIdByUsage(
+  provider: Pick<Provider, 'models'>,
+  usage: keyof ProviderModels = 'default',
+): string | undefined {
+  const m = provider.models
+  return m[usage] ?? m.default ?? m.primary ?? m.reasoning ?? m.fast
+}
+
 
 /** 角色（可编排的多个 agent 单元） */
 export interface Agent {

@@ -26,7 +26,17 @@ import {
   generateId,
 } from './json-store'
 import { getKey } from '../secrets/vault'
-import type { Agent, Capability, ModelConfig, Persona, Provider, Skill } from '@shared/types'
+import type {
+  Agent,
+  ApiFormat,
+  Capability,
+  ModelConfig,
+  Persona,
+  Provider,
+  ProviderModels,
+  Skill,
+} from '@shared/types'
+import { resolveModelIdByUsage } from '@shared/types'
 
 // —— models：单文件存储（userData/config/models.json）——
 const modelsStore = new JsonSingleton<ModelConfig[]>(
@@ -229,54 +239,33 @@ export function savePersona(input: unknown): Persona {
 }
 
 // —— 预置：首次启动 seed 一个 Anthropic provider + 三个 Claude 模型挂上去 ——
-const PRESET_PROVIDER: Omit<Provider, 'createdAt' | 'updatedAt'> = {
-  id: 'preset_anthropic',
-  name: 'Anthropic',
-  baseUrl: undefined, // 官方 endpoint
-  keyId: 'preset_key_anthropic',
-}
-
-const PRESET_MODELS: Array<Omit<ModelConfig, 'createdAt' | 'updatedAt'>> = [
+// —— 预置：首次启动 seed 一个完整 Anthropic 供应商（带用途模型）——
+const PRESET_PROVIDERS: Array<Omit<Provider, 'createdAt' | 'updatedAt'>> = [
   {
-    id: 'preset_claude_sonnet',
-    modelId: 'claude-sonnet-5',
-    name: 'Claude Sonnet 5',
-    providerId: 'preset_anthropic',
-    isDefault: true,
-    tags: ['默认', '快答'],
-    maxTokens: 16384,
-  },
-  {
-    id: 'preset_claude_opus',
-    modelId: 'claude-opus-5',
-    name: 'Claude Opus 5',
-    providerId: 'preset_anthropic',
-    isDefault: false,
-    tags: ['思考'],
-    maxTokens: 16384,
-  },
-  {
-    id: 'preset_claude_fable',
-    modelId: 'claude-fable-5',
-    name: 'Claude Fable 5',
-    providerId: 'preset_anthropic',
-    isDefault: false,
-    tags: ['知识库'],
-    maxTokens: 16384,
+    id: 'preset_anthropic',
+    name: 'Anthropic',
+    remark: 'Claude 官方，填入 API Key 即用',
+    website: 'https://www.anthropic.com',
+    baseUrl: undefined, // 官方 endpoint
+    apiFormat: 'anthropic',
+    authHeader: undefined, // anthropic 格式默认 x-api-key
+    keyId: 'preset_key_anthropic',
+    models: {
+      primary: 'claude-sonnet-5',
+      reasoning: 'claude-opus-5',
+      fast: 'claude-haiku-4-5-20251001',
+      default: 'claude-sonnet-5',
+    },
   },
 ]
 
-/** 首次启动无 provider/模型时 seed 预置（Anthropic provider + Claude 系列） */
+/** 首次启动无供应商时 seed 预置（cc switch 范式：供应商为中心） */
 export function seedDefaultModels(): void {
+  if (listProviders().length > 0) return
   const now = Date.now()
-  if (listProviders().length === 0) {
-    providersStore.write([{ ...PRESET_PROVIDER, createdAt: now, updatedAt: now } as Provider])
-  }
-  if (listModels().length === 0) {
-    modelsStore.write(
-      PRESET_MODELS.map((m) => ({ ...m, createdAt: now, updatedAt: now }) as ModelConfig),
-    )
-  }
+  providersStore.write(
+    PRESET_PROVIDERS.map((p) => ({ ...p, createdAt: now, updatedAt: now }) as Provider),
+  )
 }
 
 // —— providers：单文件存储（userData/config/providers.json）——
@@ -307,8 +296,13 @@ export function saveProvider(input: unknown): Provider {
   const next: Provider = {
     id: existing?.id ?? generateId('prv_'),
     name: parsed.name,
+    remark: parsed.remark || undefined,
+    website: parsed.website || undefined,
     baseUrl: parsed.baseUrl || undefined,
+    apiFormat: parsed.apiFormat ?? 'anthropic',
+    authHeader: parsed.authHeader || undefined,
     keyId: existing?.keyId ?? parsed.keyId ?? generateId('key_'),
+    models: parsed.models ?? {},
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -325,17 +319,32 @@ export function removeProvider(id: string): void {
   providersStore.write(listProviders().filter((p) => p.id !== id))
 }
 
+/** 取默认供应商（第一个，或标记默认的） */
+export function getDefaultProvider(): Provider | null {
+  return listProviders()[0] ?? null
+}
+
 /**
- * 解析模型凭据：优先用 provider 的 keyId/baseUrl（共享），回退到模型自带。
- * @returns { apiKey?, baseURL? }（apiKey 解密后明文，仅主进程用，铁律3）
+ * 解析供应商凭据 + 默认 modelId（cc switch 范式：key 在 provider 级共享）。
+ * @returns { apiKey?, baseURL?, authHeader?, apiFormat?, modelId? }
  */
-export function resolveModelCredentials(model: ModelConfig): {
+export function resolveProviderCredentials(
+  provider: Pick<Provider, 'keyId' | 'baseUrl' | 'authHeader' | 'apiFormat' | 'models'>,
+  usage: keyof import('@shared/types').ProviderModels = 'default',
+): {
   apiKey?: string
   baseURL?: string
+  authHeader?: string
+  apiFormat?: import('@shared/types').ApiFormat
+  modelId?: string
 } {
-  const provider = model.providerId ? getProvider(model.providerId) : null
-  const keyId = provider?.keyId ?? model.keyId
-  const baseURL = provider?.baseUrl ?? model.baseUrl
-  const apiKey = keyId ? getKey(keyId) ?? undefined : undefined
-  return { apiKey, baseURL }
+  const apiKey = provider.keyId ? getKey(provider.keyId) ?? undefined : undefined
+  return {
+    apiKey,
+    baseURL: provider.baseUrl || undefined,
+    authHeader: provider.authHeader,
+    apiFormat: provider.apiFormat,
+    modelId: resolveModelIdByUsage({ models: provider.models }, usage),
+  }
 }
+

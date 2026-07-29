@@ -26,8 +26,18 @@ export const ModelConfigSchema = z.object({
 export const ProviderSchema = z.object({
   id,
   name: z.string().min(1),
+  remark: z.string().optional(),
+  website: z.string().url().optional().or(z.literal('')),
   baseUrl: z.string().url().optional().or(z.literal('')),
+  apiFormat: z.enum(['anthropic', 'openai', 'custom']),
+  authHeader: z.string().optional(),
   keyId: z.string().optional(),
+  models: z.object({
+    primary: z.string().optional(),
+    reasoning: z.string().optional(),
+    fast: z.string().optional(),
+    default: z.string().optional(),
+  }),
   createdAt: ts,
   updatedAt: ts,
 })
