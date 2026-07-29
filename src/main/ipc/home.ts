@@ -30,9 +30,14 @@ function emitStream(delta: LlmDelta): void {
 }
 
 /** LLM 压缩函数（供 L1/L2 调用，用默认 provider） */
-function makeCompressFn(modelId: string, apiKey?: string, baseURL?: string) {
+function makeCompressFn(
+  modelId: string,
+  apiKey?: string,
+  baseURL?: string,
+  authHeader?: string,
+) {
   return async (text: string): Promise<string> => {
-    const client = getClient(modelId, { apiKey, baseURL })
+    const client = getClient(modelId, { apiKey, baseURL, authHeader })
     const res = await client.stream({
       model: modelId,
       system: '你是摘要助手。把对话压缩成不超过 300 字的要点摘要，保留关键事实与意图。',
@@ -56,9 +61,9 @@ export function registerHomeHandlers(): void {
     const persona = getPersona()
     const provider = getDefaultProvider()
     if (!provider) throw new Error('未配置供应商，请先在模型页添加供应商')
-    const { apiKey, baseURL, modelId } = resolveProviderCredentials(provider, 'default')
+    const { apiKey, baseURL, authHeader, modelId } = resolveProviderCredentials(provider, 'default')
     if (!modelId) throw new Error('供应商未配置默认模型')
-    const compressFn = makeCompressFn(modelId, apiKey, baseURL)
+    const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader)
 
     // 3. 历史 + 当前消息
     const history = listMessages(sid)
@@ -99,7 +104,7 @@ export function registerHomeHandlers(): void {
       defaultOptions: { maxTokens: 16384 },
     }
     const agent = new Agent(config, {
-      llmOpts: { apiKey, baseURL },
+      llmOpts: { apiKey, baseURL, authHeader },
       toolCtx: { sessionId: sid },
     })
 

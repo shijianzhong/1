@@ -32,7 +32,12 @@ function emitStream(event: StreamEvent): void {
 }
 
 /** 从节点 id 解析 AgentExecutorOptions（含 config/llmOpts/tools） */
-function makeResolveAgent(modelId: string, apiKey?: string, baseURL?: string): (nodeId: string) => AgentExecutorOptions | null {
+function makeResolveAgent(
+  modelId: string,
+  apiKey?: string,
+  baseURL?: string,
+  authHeader?: string,
+): (nodeId: string) => AgentExecutorOptions | null {
   return (nodeId: string): AgentExecutorOptions | null => {
     const agent = getAgent(nodeId)
     if (!agent) return null
@@ -47,7 +52,7 @@ function makeResolveAgent(modelId: string, apiKey?: string, baseURL?: string): (
     }
     return {
       config,
-      llmOpts: { apiKey, baseURL },
+      llmOpts: { apiKey, baseURL, authHeader },
       toolCtx: {},
     }
   }
@@ -65,10 +70,10 @@ export function registerOrchestrateHandlers(): void {
 
       const provider = getDefaultProvider()
       if (!provider) throw new Error('未配置供应商')
-      const { apiKey, baseURL, modelId } = resolveProviderCredentials(provider, 'default')
+      const { apiKey, baseURL, authHeader, modelId } = resolveProviderCredentials(provider, 'default')
       if (!modelId) throw new Error('供应商未配置默认模型')
       const deps: BuildDeps = {
-        resolveAgent: makeResolveAgent(modelId, apiKey, baseURL),
+        resolveAgent: makeResolveAgent(modelId, apiKey, baseURL, authHeader),
       }
 
       const wf = buildWorkflow(graph, deps)
