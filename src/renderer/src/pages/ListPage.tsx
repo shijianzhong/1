@@ -29,6 +29,7 @@ import {
   DrawerContent,
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
+import { Badge } from '@renderer/components/ui/Badge'
 import type {
   Agent,
   ApiFormat,
@@ -118,7 +119,26 @@ export function ListPage({ i18nKey }: ListPageProps) {
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell style={{ fontWeight: 500 }}>{item.name}</TableCell>
+                  <TableCell style={{ fontWeight: 500 }}>
+                    {i18nKey === 'models' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Switch
+                          checked={(item as Provider).isDefault ?? false}
+                          onCheckedChange={(c) => {
+                            if (!c) return // 互斥，不能取消只能切换
+                            const p = item as Provider
+                            void saveProvider.mutateAsync({ ...p, isDefault: true })
+                          }}
+                        />
+                        {item.name}
+                        {(item as Provider).isDefault ? (
+                          <Badge variant="brand" style={{ fontSize: '0.7rem' }}>
+                            {t('common:columns.active')}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : item.name}
+                  </TableCell>
                   <TableCell style={{ color: 'var(--color-fg-2)' }}>
                     {i18nKey === 'agents'
                       ? (item as Agent).description ?? ''
