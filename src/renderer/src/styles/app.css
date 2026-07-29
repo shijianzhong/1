@@ -404,40 +404,47 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-fg-3);
 }
 
-/* —— 思考过程折叠块 —— */
+/* —— 思考过程折叠块（视觉弱化）—— */
 .thinking-block {
-  margin-bottom: 10px;
-  border-left: 2px solid var(--color-fg-3);
-  padding-left: 10px;
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--color-border);
+  opacity: 0.55;
+  transition: opacity 200ms ease;
+}
+
+.thinking-block:hover {
+  opacity: 0.85;
 }
 
 .thinking-block__toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   border: 0;
   background: transparent;
   color: var(--color-fg-3);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   cursor: pointer;
-  padding: 2px 0;
+  padding: 1px 0;
+  user-select: none;
 }
 
-.thinking-block__icon {
-  font-size: 0.9rem;
+.thinking-block__label {
+  letter-spacing: 0.02em;
 }
 
 .thinking-block__arrow {
-  font-size: 0.7rem;
-  opacity: 0.6;
+  font-size: 0.6rem;
+  opacity: 0.5;
 }
 
 .thinking-block__content {
-  margin-top: 6px;
-  font-size: 0.8rem;
+  margin-top: 4px;
+  font-size: 0.72rem;
   color: var(--color-fg-3);
-  line-height: 1.5;
+  line-height: 1.45;
   white-space: pre-wrap;
-  max-height: 300px;
+  max-height: 240px;
   overflow-y: auto;
 }

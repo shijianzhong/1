@@ -14,8 +14,9 @@ interface ChatMessage {
   text: string
   streaming?: boolean
   error?: boolean
-  retrying?: string // 重试提示文案
-  thinking?: string // 思考过程（灰色折叠）
+  retrying?: string
+  thinking?: string
+  thinkingCollapsed?: boolean // 回复完成后自动折叠
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
@@ -96,8 +97,13 @@ export function HomePage() {
           return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.error, error: true }]
         })
       } else if (delta.type === 'message_stop') {
+        // 回复完成：停止流式 + 自动折叠 thinking
         setStreamMsgs((prev) =>
-          prev.map((m, i) => i === prev.length - 1 ? { ...m, streaming: false, retrying: undefined } : m),
+          prev.map((m, i) =>
+            i === prev.length - 1
+              ? { ...m, streaming: false, retrying: undefined, thinkingCollapsed: true }
+              : m,
+          ),
         )
       }
     })
@@ -164,7 +170,7 @@ export function HomePage() {
               className={`message__bubble message__bubble--${m.role}`}
               style={m.error ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
             >
-              {m.thinking ? <ThinkingBlock text={m.thinking} /> : null}
+              {m.thinking ? <ThinkingBlock text={m.thinking} collapsed={m.thinkingCollapsed} /> : null}
               {m.retrying ? (
                 <span style={{ color: 'var(--color-fg-2)', fontSize: '0.85rem' }}>{m.retrying}</span>
               ) : m.role === 'assistant' ? (
@@ -227,8 +233,12 @@ export function HomePage() {
 }
 
 /** 思考过程折叠块（灰色，默认展开，可折叠） */
-function ThinkingBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(true)
+function ThinkingBlock({ text, collapsed }: { text: string; collapsed?: boolean }) {
+  const [open, setOpen] = useState(!collapsed)
+  // 外部 collapsed 变化时同步（回复完成 → 折叠；重试 → 展开）
+  useEffect(() => {
+    setOpen(!collapsed)
+  }, [collapsed])
   return (
     <div className="thinking-block">
       <button
@@ -236,8 +246,7 @@ function ThinkingBlock({ text }: { text: string }) {
         className="thinking-block__toggle"
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="thinking-block__icon">💭</span>
-        <span>思考过程</span>
+        <span className="thinking-block__label">思考过程</span>
         <span className="thinking-block__arrow">{open ? '▾' : '▸'}</span>
       </button>
       {open ? (
