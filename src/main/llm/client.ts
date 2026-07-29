@@ -24,13 +24,15 @@ export class LLMClient {
 
   constructor(opts: LLMClientOptions = {}) {
     const apiKey = opts.apiKey ?? 'unused'
-    // 鉴权头：中转默认 Authorization Bearer（铁律9），官方走 SDK x-api-key
+    // 鉴权头：用户选 authorization → Bearer；选 x-api-key → x-api-key；
+    // 留空按 baseURL 推断（中转 Bearer / 官方 SDK 默认 x-api-key）
     let defaultHeaders: Record<string, string> | undefined
-    if (opts.authHeader) {
-      // 用户显式指定头名 + apiKey 作值
-      defaultHeaders = { [opts.authHeader]: apiKey }
-    } else if (opts.baseURL && opts.apiKey) {
-      // 中转：Authorization: Bearer <apiKey>
+    if (opts.authHeader === 'authorization' && opts.apiKey) {
+      defaultHeaders = { Authorization: `Bearer ${apiKey}` }
+    } else if (opts.authHeader === 'x-api-key' && opts.apiKey) {
+      defaultHeaders = { 'x-api-key': apiKey }
+    } else if (!opts.authHeader && opts.baseURL && opts.apiKey) {
+      // 中转默认 Bearer（铁律9）
       defaultHeaders = { Authorization: `Bearer ${apiKey}` }
     }
     this.sdk = new Anthropic({

@@ -304,7 +304,15 @@ function DraftForm({
               </select>
             </Field>
             <Field label={t('common:columns.authHeader')}>
-              <Input value={draft.authHeader ?? ''} onChange={(e) => setDraft({ ...draft, authHeader: e.target.value })} placeholder="Authorization / x-api-key（留空按格式推断）" />
+              <select
+                value={draft.authHeader ?? ''}
+                onChange={(e) => setDraft({ ...draft, authHeader: e.target.value })}
+                style={selectStyle}
+              >
+                <option value="">{t('common:columns.authAuto')}</option>
+                <option value="authorization">{t('common:columns.authBearer')}</option>
+                <option value="x-api-key">{t('common:columns.authApiKey')}</option>
+              </select>
             </Field>
             <Field label={t('common:columns.apiKey')}>
               <Input
