@@ -311,6 +311,8 @@ export interface Provider {
   keyId?: string
   /** 用途模型（主/推理/快答/默认） */
   models: ProviderModels
+  /** 是否开启 thinking（供应商级开关，用户决定中转是否支持） */
+  enableThinking?: boolean
   createdAt: number
   updatedAt: number
 }

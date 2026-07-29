@@ -303,6 +303,7 @@ export function saveProvider(input: unknown): Provider {
     authHeader: parsed.authHeader || undefined,
     keyId: existing?.keyId ?? parsed.keyId ?? generateId('key_'),
     models: parsed.models ?? {},
+    enableThinking: parsed.enableThinking,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -329,7 +330,7 @@ export function getDefaultProvider(): Provider | null {
  * @returns { apiKey?, baseURL?, authHeader?, apiFormat?, modelId? }
  */
 export function resolveProviderCredentials(
-  provider: Pick<Provider, 'keyId' | 'baseUrl' | 'authHeader' | 'apiFormat' | 'models'>,
+  provider: Pick<Provider, 'keyId' | 'baseUrl' | 'authHeader' | 'apiFormat' | 'models' | 'enableThinking'>,
   usage: keyof import('@shared/types').ProviderModels = 'default',
 ): {
   apiKey?: string
@@ -337,6 +338,7 @@ export function resolveProviderCredentials(
   authHeader?: string
   apiFormat?: import('@shared/types').ApiFormat
   modelId?: string
+  enableThinking?: boolean
 } {
   const apiKey = provider.keyId ? getKey(provider.keyId) ?? undefined : undefined
   return {
@@ -345,6 +347,7 @@ export function resolveProviderCredentials(
     authHeader: provider.authHeader,
     apiFormat: provider.apiFormat,
     modelId: resolveModelIdByUsage({ models: provider.models }, usage),
+    enableThinking: provider.enableThinking ?? false,
   }
 }
 

@@ -61,7 +61,7 @@ export function registerHomeHandlers(): void {
     const persona = getPersona()
     const provider = getDefaultProvider()
     if (!provider) throw new Error('未配置供应商，请先在模型页添加供应商')
-    const { apiKey, baseURL, authHeader, modelId } = resolveProviderCredentials(provider, 'default')
+    const { apiKey, baseURL, authHeader, modelId, enableThinking } = resolveProviderCredentials(provider, 'default')
     if (!modelId) throw new Error('供应商未配置默认模型')
     const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader)
 
@@ -96,15 +96,14 @@ export function registerHomeHandlers(): void {
     const instructions = injectL0(instructionsWithL2, persona)
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
-    // adaptive thinking：推理模型会思考（thinking_delta 流式推前端），
-    // 快答模型 SDK 自动跳过
+    // thinking：按供应商开关（enableThinking）决定是否传 thinking 参数
     const config: AgentConfig = {
       name: 'home',
       instructions,
       modelId,
       tools: listToolDefs(),
       defaultOptions: { maxTokens: 16384 },
-      thinking: { type: 'adaptive' },
+      thinking: enableThinking ? { type: 'adaptive' } : undefined,
     }
     const agent = new Agent(config, {
       llmOpts: { apiKey, baseURL, authHeader },

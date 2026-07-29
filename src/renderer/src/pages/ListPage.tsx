@@ -15,6 +15,7 @@ import {
 import { unwrap } from '@renderer/api/client'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
+import { Switch } from '@renderer/components/ui/Switch'
 import {
   Table,
   TableBody,
@@ -88,7 +89,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
           onClick={() =>
             setDraft(
               i18nKey === 'models'
-                ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '' }
+                ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false }
                 : { kind: i18nKey, isNew: true, name: '', instructions: '', content: '' },
             )
           }
@@ -145,6 +146,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
                               apiFormat: p.apiFormat, authHeader: p.authHeader ?? '', key: '',
                               primary: p.models.primary ?? '', reasoning: p.models.reasoning ?? '',
                               fast: p.models.fast ?? '', default: p.models.default ?? '',
+                              enableThinking: p.enableThinking ?? false,
                             })
                           }
                         }}
@@ -204,6 +206,7 @@ interface Draft {
   reasoning?: string
   fast?: string
   default?: string
+  enableThinking?: boolean
 }
 
 function DraftForm({
@@ -241,6 +244,7 @@ function DraftForm({
           fast: draft.fast || undefined,
           default: draft.default || undefined,
         },
+        enableThinking: draft.enableThinking,
       })
       if (provider.keyId && draft.key) {
         await window.one.secrets
@@ -336,6 +340,13 @@ function DraftForm({
                 <Input value={draft.default ?? ''} onChange={(e) => setDraft({ ...draft, default: e.target.value })} placeholder="claude-sonnet-5" />
               </Field>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: 'var(--color-fg-2)' }}>
+              <Switch
+                checked={draft.enableThinking ?? false}
+                onCheckedChange={(c) => setDraft({ ...draft, enableThinking: c })}
+              />
+              {t('common:columns.enableThinking')}
+            </label>
           </>
         ) : null}
 

@@ -48,17 +48,14 @@ export class LLMClient {
    */
   async stream(req: LlmRequest): Promise<LlmResponse> {
     const { onDelta } = req
-    // thinking 配置：仅 Claude 模型支持 extended thinking；
-    // 非 Claude（中转 deepseek/glm 等）传 thinking 参数会 404
-    const isClaude = req.model.toLowerCase().includes('claude')
-    const thinking =
-      isClaude && req.thinking
-        ? req.thinking.type === 'enabled'
-          ? { type: 'enabled' as const, budget_tokens: req.thinking.budgetTokens ?? 4096 }
-          : req.thinking.type === 'adaptive'
-            ? { type: 'adaptive' as const }
-            : undefined
-        : undefined
+    // thinking：按供应商开关（req.thinking 由 home.ts 按 enableThinking 传入）
+    const thinking = req.thinking
+      ? req.thinking.type === 'enabled'
+        ? { type: 'enabled' as const, budget_tokens: req.thinking.budgetTokens ?? 4096 }
+        : req.thinking.type === 'adaptive'
+          ? { type: 'adaptive' as const }
+          : undefined
+      : undefined
     const stream = await this.sdk.beta.messages.stream(
       {
         model: req.model,

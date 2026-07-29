@@ -38,6 +38,7 @@ export const ProviderSchema = z.object({
     fast: z.string().optional(),
     default: z.string().optional(),
   }),
+  enableThinking: z.boolean().optional(),
   createdAt: ts,
   updatedAt: ts,
 })
