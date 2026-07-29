@@ -403,3 +403,41 @@ html[data-platform='darwin'] .titlebar__inner {
   font-size: 0.68rem;
   color: var(--color-fg-3);
 }
+
+/* —— 思考过程折叠块 —— */
+.thinking-block {
+  margin-bottom: 10px;
+  border-left: 2px solid var(--color-fg-3);
+  padding-left: 10px;
+}
+
+.thinking-block__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--color-fg-3);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.thinking-block__icon {
+  font-size: 0.9rem;
+}
+
+.thinking-block__arrow {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.thinking-block__content {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--color-fg-3);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+}

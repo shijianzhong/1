@@ -15,6 +15,7 @@ interface ChatMessage {
   streaming?: boolean
   error?: boolean
   retrying?: string // 重试提示文案
+  thinking?: string // 思考过程（灰色折叠）
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
@@ -48,7 +49,20 @@ export function HomePage() {
   // 订阅流式
   useEffect(() => {
     streamRef.current = window.one.home.onStream((delta) => {
-      if (delta.type === 'text') {
+      if (delta.type === 'thinking') {
+        // 思考过程累积到末条 AI 消息的 thinking 字段（灰色折叠渲染）
+        setStreamMsgs((prev) => {
+          const last = prev[prev.length - 1]
+          if (last?.role === 'assistant' && (last.streaming || last.retrying || last.thinking !== undefined)) {
+            return [...prev.slice(0, -1), {
+              ...last,
+              thinking: (last.thinking ?? '') + delta.text,
+              streaming: true,
+            }]
+          }
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', thinking: delta.text, streaming: true }]
+        })
+      } else if (delta.type === 'text') {
         setStreamMsgs((prev) => {
           const last = prev[prev.length - 1]
           // 若末条是重试提示，先清掉重试态再追加文本
@@ -150,6 +164,7 @@ export function HomePage() {
               className={`message__bubble message__bubble--${m.role}`}
               style={m.error ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
             >
+              {m.thinking ? <ThinkingBlock text={m.thinking} /> : null}
               {m.retrying ? (
                 <span style={{ color: 'var(--color-fg-2)', fontSize: '0.85rem' }}>{m.retrying}</span>
               ) : m.role === 'assistant' ? (
@@ -207,6 +222,27 @@ export function HomePage() {
           {t('common:actions.send')}
         </button>
       </div>
+    </div>
+  )
+}
+
+/** 思考过程折叠块（灰色，默认展开，可折叠） */
+function ThinkingBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="thinking-block">
+      <button
+        type="button"
+        className="thinking-block__toggle"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="thinking-block__icon">💭</span>
+        <span>思考过程</span>
+        <span className="thinking-block__arrow">{open ? '▾' : '▸'}</span>
+      </button>
+      {open ? (
+        <div className="thinking-block__content">{text}</div>
+      ) : null}
     </div>
   )
 }

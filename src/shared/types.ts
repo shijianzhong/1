@@ -188,6 +188,7 @@ export interface LlmMessage {
 /** 流式增量（client.stream 产出，agent 聚合成 StreamEvent 推渲染层） */
 export type LlmDelta =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
   | { type: 'tool_use_start'; id: string; name: string }
   | { type: 'tool_use_delta'; id: string; partial_json: string }
   | { type: 'tool_use_stop'; id: string }
@@ -203,6 +204,13 @@ export interface RetryInfo {
   reason: string
 }
 
+/** thinking 配置（extended thinking） */
+export interface ThinkingConfig {
+  type: 'enabled' | 'adaptive' | 'disabled'
+  /** enabled 模式下的思考预算 token（≥1024，< maxTokens） */
+  budgetTokens?: number
+}
+
 /** Agent 运行请求（铁律9：maxTokens 从 defaultOptions 取） */
 export interface LlmRequest {
   model: string
@@ -212,6 +220,8 @@ export interface LlmRequest {
   tools?: LlmToolDef[]
   maxTokens: number // 必传，Anthropic 强制；缺省 16384（铁律8）
   temperature?: number
+  /** thinking 配置（推理模型用） */
+  thinking?: ThinkingConfig
   /** 流式增量回调 */
   onDelta?: (delta: LlmDelta) => void
   /** 重试等待回调（429/5xx 等，通知前端「重试中」） */
@@ -443,6 +453,8 @@ export interface AgentConfig {
   defaultOptions: AgentDefaultOptions // 铁律8
   /** 输出约束（"≤N字"等，§D 拼装顺序第 4 步） */
   outputConstraints?: string
+  /** thinking 配置（推理模型用，undefined=不开） */
+  thinking?: ThinkingConfig
 }
 
 export interface AgentRunInput {

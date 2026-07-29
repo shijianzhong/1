@@ -48,11 +48,20 @@ export class LLMClient {
    */
   async stream(req: LlmRequest): Promise<LlmResponse> {
     const { onDelta } = req
+    // thinking 配置：enabled/adaptive → 开 extended thinking
+    const thinking = req.thinking
+      ? req.thinking.type === 'enabled'
+        ? { type: 'enabled' as const, budget_tokens: req.thinking.budgetTokens ?? 4096 }
+        : req.thinking.type === 'adaptive'
+          ? { type: 'adaptive' as const }
+          : undefined
+      : undefined
     const stream = await this.sdk.beta.messages.stream(
       {
         model: req.model,
         max_tokens: req.maxTokens, // 铁律8：从 defaultOptions 取，这里已解包
         temperature: req.temperature,
+        thinking,
         system: req.system, // 抽顶层，不进 messages
         messages: req.messages.map(toAnthropicMessage),
         tools: req.tools as Anthropic.Beta.Messages.BetaTool[],
@@ -151,6 +160,9 @@ function handleStreamEvent(
       const d = event.delta
       if (d.type === 'text_delta') {
         onDelta({ type: 'text', text: d.text })
+      } else if (d.type === 'thinking_delta') {
+        // 思考过程流式推送（前端折叠/灰色渲染）
+        onDelta({ type: 'thinking', text: (d as { thinking: string }).thinking })
       } else if (d.type === 'input_json_delta') {
         onDelta({
           type: 'tool_use_delta',

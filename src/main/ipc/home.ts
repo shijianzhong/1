@@ -96,12 +96,15 @@ export function registerHomeHandlers(): void {
     const instructions = injectL0(instructionsWithL2, persona)
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
+    // adaptive thinking：推理模型会思考（thinking_delta 流式推前端），
+    // 快答模型 SDK 自动跳过
     const config: AgentConfig = {
       name: 'home',
       instructions,
       modelId,
       tools: listToolDefs(),
       defaultOptions: { maxTokens: 16384 },
+      thinking: { type: 'adaptive' },
     }
     const agent = new Agent(config, {
       llmOpts: { apiKey, baseURL, authHeader },

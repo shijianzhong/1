@@ -66,6 +66,7 @@ export class Agent {
         tools: tools.length ? tools : undefined,
         maxTokens: this.config.defaultOptions.maxTokens, // 铁律8
         temperature: this.config.defaultOptions.temperature,
+        thinking: this.config.thinking,
         signal: input.signal,
         onDelta: (delta: LlmDelta) => this.emitDelta(delta, callbacks),
         onRetry: (info) => callbacks.onRetry?.(info),
