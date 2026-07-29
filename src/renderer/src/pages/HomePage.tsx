@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { unwrap } from '@renderer/api/client'
 import { IpcError } from '@renderer/api/client'
 import { Markdown } from '@renderer/components/Markdown'
+import { useChatStore } from '@renderer/store/chat'
+import type { SessionMessage } from '@shared/types'
 
 interface ChatMessage {
   id: string
@@ -13,19 +15,39 @@ interface ChatMessage {
   streaming?: boolean
 }
 
+/** 把历史消息转成 ChatMessage（用于渲染） */
+function toChatMessages(msgs: SessionMessage[]): ChatMessage[] {
+  return msgs.map((m) => ({
+    id: m.id,
+    role: m.role === 'tool' ? 'user' : (m.role as 'user' | 'assistant'),
+    text: m.content,
+  }))
+}
+
 export function HomePage() {
   const { t } = useTranslation(['common', 'home'])
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const sessionId = useChatStore((s) => s.sessionId)
+  const historyMessages = useChatStore((s) => s.messages)
+  const [streamMsgs, setStreamMsgs] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<(() => void) | null>(null)
 
+  // 历史消息 + 本轮流式消息
+  const messages = [...toChatMessages(historyMessages), ...streamMsgs]
+
+  // 切换会话时清空流式
+  useEffect(() => {
+    setStreamMsgs([])
+    setError(null)
+  }, [sessionId])
+
   // 订阅流式
   useEffect(() => {
     streamRef.current = window.one.home.onStream((delta) => {
       if (delta.type === 'text') {
-        setMessages((prev) => {
+        setStreamMsgs((prev) => {
           const last = prev[prev.length - 1]
           if (last?.role === 'assistant' && last.streaming) {
             return [...prev.slice(0, -1), { ...last, text: last.text + delta.text }]
@@ -33,7 +55,7 @@ export function HomePage() {
           return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.text, streaming: true }]
         })
       } else if (delta.type === 'message_stop') {
-        setMessages((prev) =>
+        setStreamMsgs((prev) =>
           prev.map((m, i) => i === prev.length - 1 ? { ...m, streaming: false } : m),
         )
       }
@@ -47,10 +69,12 @@ export function HomePage() {
     setInput('')
     setError(null)
     setSending(true)
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
+    setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
 
     try {
-      await window.one.home.chat({ message: text }).then(unwrap)
+      await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
+      // 刷新会话列表（新建会话后标题有了）
+      void useChatStore.getState().loadSessions()
     } catch (e) {
       const msg = e instanceof IpcError ? e.message : String(e)
       setError(msg)

@@ -5,6 +5,7 @@ import {
   Boxes,
   Cable,
   Command,
+  Plus,
   Settings,
   Sparkles,
   Wrench,
@@ -12,6 +13,7 @@ import {
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useSessions } from '@renderer/api/hooks'
+import { useChatStore } from '@renderer/store/chat'
 
 const navItems = [
   { to: '/', key: 'home', icon: Sparkles },
@@ -37,9 +39,18 @@ export function AppShell() {
   const showInspector = false
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
   const sessionsQ = useSessions()
+  const chatSessions = useChatStore((s) => s.sessions)
+  const currentSessionId = useChatStore((s) => s.sessionId)
+  const selectSession = useChatStore((s) => s.selectSession)
+  const newSession = useChatStore((s) => s.newSession)
+  const loadSessions = useChatStore((s) => s.loadSessions)
+  // 首页加载会话列表
+  useEffect(() => {
+    if (showSideList) void loadSessions()
+  }, [showSideList, loadSessions])
   const recentItems = useMemo(
-    () => (sessionsQ.data ?? []).map((s) => s.title).slice(0, 5),
-    [sessionsQ.data],
+    () => (chatSessions.length ? chatSessions : sessionsQ.data ?? []).slice(0, 20),
+    [chatSessions, sessionsQ.data],
   )
 
   useEffect(() => {
@@ -95,16 +106,54 @@ export function AppShell() {
 
           {showSideList ? (
             <aside className="side-list">
-              <div>
-                <p className="section-title">{t('common.appName')}</p>
-                <p className="section-subtitle">{t('common.subtitle')}</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p className="section-title">{t('common.appName')}</p>
+                  <p className="section-subtitle">{t('common.subtitle')}</p>
+                </div>
+                <button
+                  type="button"
+                  className="nav-button"
+                  title={t('common:actions.newSession')}
+                  onClick={() => void newSession()}
+                  style={{ background: 'var(--color-brand-500)', color: 'white' }}
+                >
+                  <Plus size={16} />
+                </button>
               </div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                {recentItems.map((item) => (
-                  <div key={item} className="surface-panel" style={{ borderRadius: 18, padding: 14 }}>
-                    <p className="section-title">{item}</p>
-                  </div>
-                ))}
+              <div style={{ display: 'grid', gap: 8, overflowY: 'auto' }}>
+                {recentItems.length === 0 ? (
+                  <p className="section-subtitle">{t('common:empty.noSessions')}</p>
+                ) : (
+                  recentItems.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => void selectSession(s.id)}
+                      className="surface-panel"
+                      style={{
+                        borderRadius: 14,
+                        padding: '10px 12px',
+                        textAlign: 'left',
+                        border: 0,
+                        cursor: 'pointer',
+                        outline:
+                          currentSessionId === s.id
+                            ? '2px solid var(--color-brand-500)'
+                            : 'none',
+                      }}
+                    >
+                      <p className="section-title" style={{ fontSize: '0.85rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.title}
+                      </p>
+                      {s.updatedAt ? (
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: 'var(--color-fg-3)' }}>
+                          {new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(s.updatedAt)}
+                        </p>
+                      ) : null}
+                    </button>
+                  ))
+                )}
               </div>
             </aside>
           ) : null}
