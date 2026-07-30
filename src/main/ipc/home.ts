@@ -9,6 +9,7 @@ import {
   getCapability,
   listAgents,
   listCapabilities,
+  listSkills,
   resolveProviderCredentials,
 } from '../storage/models'
 import { addMessage, createSession, listMessages } from '../storage/sessions'
@@ -16,6 +17,7 @@ import { Agent } from '../orchestrator/agent'
 import {
   TeamJsonDetector,
   buildRoutingInstruction,
+  buildSkillBlocks,
   buildTeamGraph,
   resolveMentions,
   runTeam,
@@ -115,28 +117,33 @@ export function registerHomeHandlers(): void {
       : baseInstructions
     const instructionsWithL0 = injectL0(instructionsWithL2, persona)
 
-    // —— Skill 注入（§铁律22）：persona 也可绑定 skill，inline 成 <skill> XML 块拼入 instructions ——
+    // —— @提及预解析（提前到这里：@skill 要注入 instructions，需在拼 config 前解析）——
+    // 角色/能力直跳逻辑在下方 agent 构建后再分流；此处先把 mentions 解出来供 skill 注入用。
+    const allAgents = listAgents()
+    const allCapabilities = listCapabilities()
+    const allSkills = listSkills()
+    const mentions = resolveMentions(message, allAgents, allCapabilities, allSkills)
+
+    // —— Skill 注入（§铁律22）：persona 绑定 skill + @skill 动态注入，inline 成 <skill> XML 块 ——
     const personaSkillIds = persona?.skillIds ?? []
-    const skillBlocks: string[] = []
-    for (const sid of personaSkillIds) {
-      const skill = getSkill(sid)
-      if (!skill) {
-        logger.warn(`[home] persona 绑定的 skill ${sid} 不存在，跳过`)
-        continue
-      }
-      const content = skill.content.length > 24000
-        ? skill.content.slice(0, 24000) + '\n\n[... skill 内容超长截断 ...]'
-        : skill.content
-      const desc = skill.description ? `\n  description: ${skill.description}` : ''
-      skillBlocks.push(`<skill name="${skill.name}"${desc}>\n${content}\n</skill>`)
-    }
+    const personaSkills = personaSkillIds
+      .map((sid) => {
+        const s = getSkill(sid)
+        if (!s) logger.warn(`[home] persona 绑定的 skill ${sid} 不存在，跳过`)
+        return s
+      })
+      .filter((s): s is NonNullable<typeof s> => !!s)
+    // @skill 与 persona 绑定 skill 去重（同 id 不重复注入）
+    const boundIds = new Set(personaSkills.map((s) => s.id))
+    const mentionSkills = mentions.skills.filter((s) => !boundIds.has(s.id))
+    const skillBlocks = buildSkillBlocks([...personaSkills, ...mentionSkills])
     const instructionsWithSkills = skillBlocks.length > 0
       ? `${instructionsWithL0}\n\n${skillBlocks.join('\n\n')}`
       : instructionsWithL0
 
     // —— 意图路由指令段（§三之三 M + 铁律24）：注入角色/能力清单 + 组队 JSON 约定 ——
     // 主 Agent 据此判断直答 vs 输出组队 JSON；无可用角色/能力时不注入（不打扰人设）。
-    const routingInstruction = buildRoutingInstruction(listAgents(), listCapabilities())
+    const routingInstruction = buildRoutingInstruction(allAgents, allCapabilities)
     const instructions = routingInstruction
       ? `${instructionsWithSkills}\n${routingInstruction}`
       : instructionsWithSkills
@@ -198,11 +205,16 @@ export function registerHomeHandlers(): void {
     }
 
     // —— @提及直跳（用户明确意图，比 LLM 路由更准，不过 LLM 判定）——
-    const mentions = resolveMentions(message, listAgents(), listCapabilities())
-    const directCap = mentions.capabilities.length === 1 && mentions.agents.length === 0
+    // mentions 已在上方 skill 注入前解析（含 agents/capabilities/skills）。
+    // 仅纯角色/纯能力触发直跳；含 @skill 时仍需走主 Agent（skill 已注入其上下文）。
+    const directCap = mentions.capabilities.length === 1 &&
+      mentions.agents.length === 0 &&
+      mentions.skills.length === 0
       ? mentions.capabilities[0]
       : null
-    const directAgent = mentions.agents.length >= 1 && mentions.capabilities.length === 0
+    const directAgent = mentions.agents.length >= 1 &&
+      mentions.capabilities.length === 0 &&
+      mentions.skills.length === 0
       ? mentions.agents
       : null
 

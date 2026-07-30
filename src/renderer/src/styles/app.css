@@ -307,6 +307,11 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-accent, #8b5cf6);
 }
 
+.mention-chip--skill {
+  background: color-mix(in oklch, var(--color-success, #10b981) 14%, transparent);
+  color: var(--color-success, #10b981);
+}
+
 .mention-composer__dropdown {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -359,6 +364,38 @@ html[data-platform='darwin'] .titlebar__inner {
 .mention-composer__badge--capability {
   background: color-mix(in oklch, var(--color-accent, #8b5cf6) 16%, transparent);
   color: var(--color-accent, #8b5cf6);
+}
+
+.mention-composer__badge--skill {
+  background: color-mix(in oklch, var(--color-success, #10b981) 16%, transparent);
+  color: var(--color-success, #10b981);
+}
+
+.mention-composer__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mention-composer__group + .mention-composer__group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+.mention-composer__group-title {
+  padding: 2px 10px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-fg-3);
+  letter-spacing: 0.02em;
+}
+
+.mention-composer__empty {
+  padding: 14px 12px;
+  font-size: 0.85rem;
+  color: var(--color-fg-3);
+  text-align: center;
 }
 
 .mention-composer__name {

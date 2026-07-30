@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Agent, Capability } from '@shared/types'
+import type { Agent, Capability, Skill } from '@shared/types'
 import {
   TeamJsonDetector,
   buildRoutingInstruction,
+  buildSkillBlocks,
   resolveMentions,
 } from './home'
 
@@ -28,6 +29,10 @@ function capability(id: string, name: string, description?: string): Capability 
     createdAt: 0,
     updatedAt: 0,
   }
+}
+
+function skill(id: string, name: string, content: string, description?: string): Skill {
+  return { id, name, description, content, createdAt: 0, updatedAt: 0 }
 }
 
 describe('buildRoutingInstruction', () => {
@@ -94,6 +99,69 @@ describe('resolveMentions', () => {
     const r = resolveMentions('@文案专家 帮我写个标语', agents, caps)
     expect(r.agents.length).toBe(1)
     expect(r.cleanText).toBe('帮我写个标语')
+  })
+
+  it('@技能名 命中 → skills 数组（注入语义，不跑编排）', () => {
+    const sks = [skill('s1', '品牌文案规范', '# 规范内容')]
+    const r = resolveMentions('@品牌文案规范 帮我写标语', agents, caps, sks)
+    expect(r.skills.map((s) => s.id)).toEqual(['s1'])
+    expect(r.agents).toEqual([])
+    expect(r.capabilities).toEqual([])
+    expect(r.cleanText).toBe('帮我写标语')
+  })
+
+  it('同名冲突：角色 > 能力 > 技能', () => {
+    const r = resolveMentions(
+      '@助手 问题',
+      [agent('a1', '助手')],
+      [capability('c1', '助手')],
+      [skill('s1', '助手', 'x')],
+    )
+    expect(r.agents.map((a) => a.id)).toEqual(['a1']) // 角色优先
+    expect(r.capabilities).toEqual([])
+    expect(r.skills).toEqual([])
+  })
+
+  it('能力优先于技能（无同名角色时）', () => {
+    const r = resolveMentions(
+      '@助手 问题',
+      [],
+      [capability('c1', '助手')],
+      [skill('s1', '助手', 'x')],
+    )
+    expect(r.capabilities.map((c) => c.id)).toEqual(['c1'])
+    expect(r.skills).toEqual([])
+  })
+
+  it('@角色 + @技能 混合：都命中，cleanText 同时剥掉两类提及', () => {
+    const sks = [skill('s1', '品牌文案规范', 'x')]
+    const r = resolveMentions('@文案专家 @品牌文案规范 写标语', agents, caps, sks)
+    expect(r.agents.length).toBe(1)
+    expect(r.skills.length).toBe(1)
+    expect(r.cleanText).toBe('写标语')
+  })
+})
+
+describe('buildSkillBlocks（铁律22）', () => {
+  it('inline 成 <skill> XML 块，含 description', () => {
+    const out = buildSkillBlocks([skill('s1', '品牌规范', '# 内容', '品牌写作规范')])
+    expect(out.length).toBe(1)
+    expect(out[0]).toContain('<skill name="品牌规范"')
+    expect(out[0]).toContain('description: 品牌写作规范')
+    expect(out[0]).toContain('# 内容')
+    expect(out[0]).toContain('</skill>')
+  })
+
+  it('超 24000 字截断', () => {
+    const long = 'x'.repeat(25000)
+    const out = buildSkillBlocks([skill('s1', '长skill', long)])
+    expect(out[0]).toContain('超长截断')
+    expect(out[0].length).toBeLessThan(long.length)
+  })
+
+  it('无 description → 不带 desc 行', () => {
+    const out = buildSkillBlocks([skill('s1', '规范', '内容')])
+    expect(out[0]).not.toContain('description:')
   })
 })
 

@@ -4,6 +4,7 @@ import type {
   GraphNode,
   HomeStreamEvent,
   OrchMessage,
+  Skill,
   StreamEvent,
   WorkflowGraph,
 } from '@shared/types'
@@ -224,28 +225,38 @@ export function buildRoutingInstruction(
 
 /** @提及解析结果 */
 export interface MentionResolution {
-  /** 命中的角色（@角色名） */
+  /** 命中的角色（@角色名）→ 走组队编排 */
   agents: Agent[]
-  /** 命中的能力（@能力名） */
+  /** 命中的能力（@能力名）→ 走组队/能力编排 */
   capabilities: Capability[]
+  /** 命中的技能（@技能名）→ 注入主 Agent 上下文，不跑编排（铁律22） */
+  skills: Skill[]
   /** 剥掉 @提及后的纯文本问题 */
   cleanText: string
 }
 
 /**
- * 解析消息文本里的 @提及（@角色名 / @能力名）。
+ * 解析消息文本里的 @提及（@角色名 / @能力名 / @技能名）。
  * 匹配规则：@后跟名字，名字到下一个空白/标点/@ 结束；按名字精确命中
  * （大小写不敏感），未命中视为普通文本保留。
+ *
+ * 三类语义分流：
+ *   - 角色/能力 = 可执行实体（@它 = 让它干活，走 buildTeamGraph 跑编排）
+ *   - 技能 = 知识/规范包（@它 = 注入当前对话上下文，不跑编排，铁律22）
+ * 同名冲突时优先级：角色 > 能力 > 技能（角色是最具体的可执行体）。
  */
 export function resolveMentions(
   text: string,
   agents: Agent[],
   capabilities: Capability[],
+  skills: Skill[] = [],
 ): MentionResolution {
   const hitAgents = new Map<string, Agent>()
   const hitCaps = new Map<string, Capability>()
+  const hitSkills = new Map<string, Skill>()
   const lowerAgents = new Map(agents.map((a) => [a.name.toLowerCase(), a]))
   const lowerCaps = new Map(capabilities.map((c) => [c.name.toLowerCase(), c]))
+  const lowerSkills = new Map(skills.map((s) => [s.name.toLowerCase(), s]))
 
   // @名字：名字到空白/常见标点/@ 结束（允许中文、字母、数字、_、-）
   const mentionRe = /@([\w\u4e00-\u9fa5-]+)/g
@@ -255,11 +266,15 @@ export function resolveMentions(
     const name = m[1].toLowerCase()
     const agent = lowerAgents.get(name)
     const cap = lowerCaps.get(name)
+    const skill = lowerSkills.get(name)
     if (agent) {
       hitAgents.set(agent.id, agent)
       spans.push([m.index, m.index + m[0].length])
     } else if (cap) {
       hitCaps.set(cap.id, cap)
+      spans.push([m.index, m.index + m[0].length])
+    } else if (skill) {
+      hitSkills.set(skill.id, skill)
       spans.push([m.index, m.index + m[0].length])
     }
     // 未命中：不当提及，保留原文
@@ -276,8 +291,26 @@ export function resolveMentions(
   return {
     agents: [...hitAgents.values()],
     capabilities: [...hitCaps.values()],
+    skills: [...hitSkills.values()],
     cleanText,
   }
+}
+
+/**
+ * 把 @技能 inline 成 <skill> XML 块（铁律22，限长 24000 字）。
+ * 与 persona 绑定 skill 的注入逻辑一致；此处供 @skill 动态注入当前对话。
+ */
+export function buildSkillBlocks(skills: Skill[]): string[] {
+  const blocks: string[] = []
+  for (const skill of skills) {
+    const content =
+      skill.content.length > 24000
+        ? skill.content.slice(0, 24000) + '\n\n[... skill 内容超长截断 ...]'
+        : skill.content
+    const desc = skill.description ? `\n  description: ${skill.description}` : ''
+    blocks.push(`<skill name="${skill.name}"${desc}>\n${content}\n</skill>`)
+  }
+  return blocks
 }
 
 /**

@@ -6,7 +6,7 @@ import { unwrap } from '@renderer/api/client'
 import { IpcError } from '@renderer/api/client'
 import { Markdown } from '@renderer/components/Markdown'
 import { MentionComposer, type MentionComposerHandle } from '@renderer/components/MentionComposer'
-import { useAgents, useCapabilities } from '@renderer/api/hooks'
+import { useAgents, useCapabilities, useSkills } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 import type { SessionMessage } from '@shared/types'
 
@@ -45,9 +45,10 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<(() => void) | null>(null)
   const composerRef = useRef<MentionComposerHandle>(null)
-  // @提及数据源（角色/能力列表，供下拉补全）
+  // @提及数据源（角色/能力/技能列表，供下拉补全）
   const agentsQ = useAgents()
   const capabilitiesQ = useCapabilities()
+  const skillsQ = useSkills()
 
   // 自动滚动相关
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -259,6 +260,7 @@ export function HomePage() {
           ref={composerRef}
           agents={agentsQ.data ?? []}
           capabilities={capabilitiesQ.data ?? []}
+          skills={skillsQ.data ?? []}
           disabled={sending}
           placeholder={t('home:composerPlaceholder')}
           onSend={(text) => void onSend(text)}
