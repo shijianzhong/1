@@ -66,4 +66,6 @@ export interface BuilderContext {
     source: string,
     cases: Array<{ predicate: string; target: string }>,
   ): void
+  /** 配单条条件边（source → target，谓词如 `contains:X`） */
+  addCondition(source: string, target: string, predicate: string): void
 }

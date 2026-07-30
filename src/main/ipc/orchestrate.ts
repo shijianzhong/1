@@ -98,10 +98,15 @@ function makeResolveAgent(
       ? `${agentInstructions}\n\n${skillBlocks.join('\n\n')}`
       : agentInstructions
 
+    // outputConstraints 注入 instructions（运行时才吃得到）
+    const finalInstructions = agentOutputConstraints
+      ? `${instructions}\n\n【输出约束】\n${agentOutputConstraints}`
+      : instructions
+
     const config: AgentConfig = {
       name: agentName,
       description: agentDescription,
-      instructions,
+      instructions: finalInstructions,
       modelId: agentModelId,
       tools: listToolDefs(),
       defaultOptions: { maxTokens: agentMaxTokens, temperature: agentTemperature },

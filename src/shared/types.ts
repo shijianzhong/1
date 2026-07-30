@@ -132,6 +132,8 @@ export interface OrchMessage {
   toolUseId?: string
   /** 是否为 function_result（孤儿 tool_use 修复用，§K#1） */
   isFunctionResult?: boolean
+  /** 投递时是否触发 handle（false=仅 extend cache，broadcast 模式，铁律15） */
+  shouldRespond?: boolean
 }
 
 /** Executor 请求（铁律15：should_respond 双语义） */

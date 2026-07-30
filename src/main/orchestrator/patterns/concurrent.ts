@@ -20,8 +20,10 @@ export interface ConcurrentConfig {
 export class ConcurrentExecutor implements Executor {
   readonly id: string
   cache: import('@shared/types').OrchMessage[] = []
-  private readonly participantIds: string[]
-  private readonly aggregatorId: string
+  /** fan-in 栅栏等齐判定用（runner 只读） */
+  readonly participantIds: string[]
+  /** 聚合目标 executor id（runner 只读） */
+  readonly aggregatorId: string
 
   constructor(id: string, participantIds: string[], aggregatorId: string) {
     this.id = id
@@ -73,9 +75,8 @@ export function buildConcurrent(
   const container = new ConcurrentExecutor(node.id, participantIds, aggEx.id)
   bctx.addExecutor(container)
 
-  // 边：each participant → aggregator（fan-out 由 handle 内部 send_message 实现，
-  // 不再配 container→participant 边，避免 runner fan-out 重复投递）
-  for (const pid of participantIds) {
-    bctx.addEdge(pid, aggEx.id)
-  }
+  // fan-in 栅栏：不配 participant→aggregator 边。
+  // runner 在每个 superstep 结束后扫描 concurrent 容器，当所有 participant
+  // 都已有 assistant 产出时，把「各最后一条 assistant 拼接」一次性定向投给
+  // aggregator（等齐再聚合，治旧 fan-in 每条完成就触发 aggregator 的问题）。
 }

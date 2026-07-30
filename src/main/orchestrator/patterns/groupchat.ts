@@ -1,4 +1,5 @@
 import type {
+  AgentOrchestrationOutput,
   ExecutorRequest,
   GraphNode,
   OrchMessage,
@@ -6,16 +7,19 @@ import type {
   WorkflowContext,
 } from '@shared/types'
 import type { BuilderContext, Executor } from '../models'
+import { Agent } from '../agent'
+import { repairToolPairs } from '../constraints'
 import { AgentExecutor, type AgentExecutorOptions } from './agent'
 
 // —— GroupChat pattern（§三 D + §三之三 G + 铁律13/15/19）——
 // 容器 Executor（不直接调 LLM，协调 broadcast + 定向请求）。
-// 每轮：broadcast 给所有 participant（should_respond=false 仅 extend cache）
-//   → 定向请求 next_speaker（should_respond=true 触发 run）
+// 每轮：broadcast 给所有 participant（shouldRespond=false 仅 extend cache）
+//   → 定向请求 next_speaker（shouldRespond=true 触发 run）
 //   → participant 响应（fan-in 回 GroupChatExecutor）
 //   → 下一轮 broadcast（excl 发言者）。
 // round_robin：selection_func = state => names[round % len]。
-// manager：AgentOrchestrationOutput 结构化输出（4b.3）。
+// manager：AgentOrchestrationOutput 结构化输出（4b.3，本地调 orchestrator agent
+//   一次拿决策，不经 runner superstep——避免决策消息被广播/路由回环污染）。
 // 四 patch（4b.2）：cache/dedup/fairness/output。
 
 export interface GroupChatExecutorOptions {
@@ -25,6 +29,8 @@ export interface GroupChatExecutorOptions {
   maxRounds: number
   /** manager 模式：orchestrator agent id（结构化输出决策）；round_robin 忽略 */
   orchestratorId?: string
+  /** manager 模式：orchestrator Agent 实例（决策调本地一次，不经 superstep） */
+  orchestrator?: Agent
 }
 
 export class GroupChatExecutor implements Executor {
@@ -35,6 +41,7 @@ export class GroupChatExecutor implements Executor {
   private readonly selectorMode: 'round_robin' | 'manager'
   private readonly maxRounds: number
   private readonly orchestratorId?: string
+  private readonly orchestrator?: Agent
   /** 已发言者（fairness patch 用） */
   private spoken = new Set<string>()
 
@@ -44,6 +51,7 @@ export class GroupChatExecutor implements Executor {
     this.selectorMode = opts.selectorMode
     this.maxRounds = opts.maxRounds
     this.orchestratorId = opts.orchestratorId
+    this.orchestrator = opts.orchestrator
   }
 
   async *handle(
@@ -72,41 +80,50 @@ export class GroupChatExecutor implements Executor {
 
     // —— cache_patch（4b.2）：广播前剥 tool 块（clean_conversation_for_handoff）——
     const cleanCache = stripToolBlocks(this.cache)
+    // —— repair_tool_pairs（铁律18）：扫 call_id 配对修复，防孤儿 tool_use → 2013 ——
+    const repairedCache = repairToolPairs(cleanCache)
 
     this.round++
 
-    // 选 next_speaker
-    const nextSpeaker = this.selectNextSpeaker()
+    // 选 next_speaker（manager 模式先问 orchestrator agent；round_robin 直接轮转）
+    const decision = await this.selectNextSpeaker(cleanCache)
+    if (decision.terminate) {
+      // manager 给最终答复：final_message 非空 → 作为输出；否则回退 lastMsg
+      const out = decision.final_message || lastMsg.content
+      await ctx.yield_output(out)
+      return
+    }
+    const nextSpeaker = decision.next_speaker
     if (!nextSpeaker) {
       await ctx.yield_output(lastMsg.content)
       return
     }
 
-    // —— broadcast 给所有 participant（should_respond=false 仅 extend cache）——
-    // 广播内容：当前完整对话历史（cache_patch 治偶发空 cache）
+    // —— broadcast 给所有 participant（shouldRespond=false 仅 extend cache，铁律15）——
+    // 广播内容：当前完整对话历史（cache_patch 治偶发空 cache）。
+    // runner 见 message.shouldRespond === false 时仅 extend cache 不触发 handle，
+    // 且 broadcast 后不再 fan-out（runner 同 superstep 内拦截）。
     for (const pid of this.participantIds) {
       if (pid === nextSpeaker) continue // 发言者单独定向请求
-      // should_respond=false 仅 extend cache（runner 硬编码 true，此处用 send_message
-      // 让 participant 收到消息但不触发 run——骨架简化：broadcast 也走 send_message，
-      // participant 的 AgentExecutor 会 run；完整 should_respond=false 语义需 runner
-      // 支持 message 级 flag，4b 后续细化）
       await ctx.send_message(
         {
           role: 'user',
           author: this.id,
           content: lastMsg.content,
+          shouldRespond: false, // 铁律15：仅 extend cache
         },
         pid,
       )
     }
 
-    // —— 定向请求 next_speaker（should_respond=true 触发 run）——
+    // —— 定向请求 next_speaker（shouldRespond=true 触发 run）——
     // 发言请求自带完整对话历史（cache_patch 治空 cache → 2013）
     await ctx.send_message(
       {
         role: 'user',
         author: this.id,
-        content: this.buildSpeakerRequest(cleanCache, nextSpeaker),
+        content: this.buildSpeakerRequest(repairedCache, nextSpeaker),
+        shouldRespond: true,
       },
       nextSpeaker,
     )
@@ -114,15 +131,74 @@ export class GroupChatExecutor implements Executor {
     yield* [] // 无直接流式事件（participant 响应经 fan-in 回来）
   }
 
-  /** round_robin selection_func（§三之三 G） */
-  private selectNextSpeaker(): string | null {
-    if (this.participantIds.length === 0) return null
-    if (this.selectorMode === 'round_robin') {
-      return this.participantIds[this.round % this.participantIds.length]
+  /**
+   * round_robin selection_func（§三之三 G）
+   * manager 模式：本地调 orchestrator agent 一次（不经 superstep）拿 AgentOrchestrationOutput，
+   *   走四 patch：dedup/cache/output/fairness；解析失败降级 round_robin。
+   */
+  private async selectNextSpeaker(cleanCache: OrchMessage[]): Promise<{
+    terminate: boolean
+    next_speaker: string | null
+    final_message?: string
+  }> {
+    if (this.participantIds.length === 0) {
+      return { terminate: true, next_speaker: null }
     }
-    // manager 模式：4b.3 接入结构化输出决策
-    // 骨架降级：round_robin
-    return this.participantIds[this.round % this.participantIds.length]
+
+    if (this.selectorMode === 'round_robin' || !this.orchestrator) {
+      return {
+        terminate: false,
+        next_speaker: this.participantIds[this.round % this.participantIds.length],
+      }
+    }
+
+    // —— manager 模式（4b.3）：本地调 orchestrator agent 一次拿决策 ——
+    const history = cleanCache
+      .map((m) => `${m.author ?? m.role}: ${m.content}`)
+      .join('\n')
+    const roster = this.participantIds
+      .map((p) => `- ${p}${this.spoken.has(p) ? '（已发言）' : ''}`)
+      .join('\n')
+    const userPrompt = `【群聊历史】\n${history}\n\n【可选参与者】\n${roster}\n\n请以 JSON 格式决策：\n{"terminate": boolean, "reason": string, "next_speaker": string, "final_message": string}\n- terminate=true：对话可结束（给最终答复 final_message）\n- terminate=false：指定 next_speaker（必须是参与者之一）`
+
+    try {
+      const { finalText } = await this.orchestrator.run({
+        messages: [{ role: 'user', content: userPrompt }],
+      })
+      // —— manager_output_patch（4b.2）：剥 markdown 围栏 + 鲁棒 JSON 抽取 ——
+      const parsed = extractManagerOutput(finalText) as AgentOrchestrationOutput | null
+      if (!parsed || typeof parsed !== 'object') {
+        // 解析失败 → 降级 round_robin（保底不卡死）
+        return {
+          terminate: false,
+          next_speaker: this.participantIds[this.round % this.participantIds.length],
+        }
+      }
+      // —— manager_fairness_patch（4b.2）：对话进行中有未发言者则强制 terminate=false ——
+      // 注意：第一轮（round===1）跳过 fairness——此时全员未发言，manager 若判断可直答
+      // （如简单问题无需群聊），应尊重其 terminate=true；否则 manager 永远无法首轮结束，
+      // 退化成 round_robin。铁律 13 语境是对话进行中防过早终止漏人，非首轮限制。
+      const rawOutput = {
+        terminate: !!parsed.terminate,
+        next_speaker: String(parsed.next_speaker ?? ''),
+      }
+      const patched =
+        this.round > 1
+          ? applyFairnessPatch(rawOutput, this.participantIds, this.spoken)
+          : rawOutput
+      return {
+        terminate: patched.terminate,
+        next_speaker: patched.next_speaker || null,
+        final_message: parsed.final_message,
+      }
+    } catch (e) {
+      // orchestrator 调用失败 → 降级 round_robin
+      console.warn(`[groupchat:${this.id}] orchestrator 决策失败，降级 round_robin:`, e)
+      return {
+        terminate: false,
+        next_speaker: this.participantIds[this.round % this.participantIds.length],
+      }
+    }
   }
 
   /** 发言请求（cache_patch：自带完整历史 + speaker 输出约束） */
@@ -198,6 +274,7 @@ export function buildGroupChat(
   node: GraphNode,
   participants: AgentExecutorOptions[],
   bctx: BuilderContext,
+  orchestratorOpts?: AgentExecutorOptions | null,
 ): void {
   if (participants.length === 0) return
   const data = node.data as {
@@ -215,12 +292,22 @@ export function buildGroupChat(
     bctx.addEdge(ex.id, node.id)
   }
 
+  // manager 模式：orchestrator agent 单独注入（不走 superstep，本地调一次决策）
+  let orchestrator: Agent | undefined
+  if (data.selector_mode === 'manager' && orchestratorOpts) {
+    orchestrator = orchestratorOpts.agent ?? new Agent(orchestratorOpts.config, {
+      llmOpts: orchestratorOpts.llmOpts,
+      toolCtx: orchestratorOpts.toolCtx,
+    })
+  }
+
   const gc = new GroupChatExecutor({
     id: node.id,
     participantIds,
     selectorMode: data.selector_mode ?? 'round_robin',
     maxRounds: data.max_rounds ?? 6,
     orchestratorId: data.orchestrator_agent,
+    orchestrator,
   })
   bctx.addExecutor(gc)
 }

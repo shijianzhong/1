@@ -52,6 +52,14 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
     addSwitchCaseEdgeGroup(source, cases) {
       conditions.set(source, cases)
     },
+    addCondition(source, target, predicate) {
+      const list = conditions.get(source) ?? []
+      // 去重：同 source+target+predicate 不重复加
+      if (!list.some((c) => c.target === target && c.predicate === predicate)) {
+        list.push({ target, predicate })
+      }
+      conditions.set(source, list)
+    },
   }
 
   // 节点索引
@@ -97,7 +105,12 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
       )
       continue
     }
-    bctx.addEdge(e.source, e.target)
+    // 条件边（GraphEdge.condition）→ conditions；无 condition → 普通边
+    if (e.condition && e.condition.trim()) {
+      bctx.addCondition(e.source, e.target, e.condition.trim())
+    } else {
+      bctx.addEdge(e.source, e.target)
+    }
   }
 
   // 单节点（无边或仅一个节点）→ 直接作为 startExecutor
@@ -171,7 +184,14 @@ function buildNode(
         logger.warn(`[builder] groupchat ${node.id} 缺 participant`)
         return
       }
-      buildGroupChat(node, participantOpts, bctx)
+      // manager 模式：orchestrator agent 从图节点解析（data.orchestrator_agent 是节点 id）
+      let orchestratorOpts: AgentExecutorOptions | null = null
+      const orchNodeId = (node.data as { orchestrator_agent?: string }).orchestrator_agent
+      if (orchNodeId) {
+        const orchNode = graph.nodes.find((n) => n.id === orchNodeId)
+        orchestratorOpts = orchNode ? deps.resolveAgent(orchNode) : null
+      }
+      buildGroupChat(node, participantOpts, bctx, orchestratorOpts)
       return
     }
     case 'handoff': {

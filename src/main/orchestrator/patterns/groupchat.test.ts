@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import type { OrchMessage } from '@shared/types'
+import { describe, expect, it, vi } from 'vitest'
+import type { OrchMessage, WorkflowContext } from '@shared/types'
+import type { Agent } from '../agent'
 import {
+  GroupChatExecutor,
   applyFairnessPatch,
   dedupMessages,
   extractManagerOutput,
@@ -90,5 +92,130 @@ describe('GroupChat 四 patch', () => {
       new Set(['A']),
     )
     expect(out.terminate).toBe(false)
+  })
+})
+
+// —— GroupChat manager 结构化输出接线（铁律19）——
+
+function mockCtx(): WorkflowContext & { sent: Array<{ data: unknown; target?: string }>; outputs: string[] } {
+  const sent: Array<{ data: unknown; target?: string }> = []
+  const outputs: string[] = []
+  return {
+    sent,
+    outputs,
+    send_message: vi.fn(async (data: unknown, target?: string) => {
+      sent.push({ data, target })
+    }),
+    yield_output: vi.fn(async (data: unknown) => {
+      outputs.push(typeof data === 'string' ? data : JSON.stringify(data))
+    }),
+    add_event: vi.fn(async () => {}),
+    get_source_executor_id: () => 'gc',
+  }
+}
+
+describe('GroupChat manager 结构化输出', () => {
+  it('manager terminate=true + final_message → 直接输出 final_message', async () => {
+    const orchestrator = {
+      run: vi.fn(async () => ({
+        finalText: '{"terminate":true,"reason":"done","next_speaker":"","final_message":"最终答复"}',
+      })),
+    } as unknown as Agent
+
+    const gc = new GroupChatExecutor({
+      id: 'gc',
+      participantIds: ['A', 'B'],
+      selectorMode: 'manager',
+      maxRounds: 6,
+      orchestrator,
+    })
+    gc.cache.push({ role: 'user', content: '问题' })
+    const ctx = mockCtx()
+    const stream = gc.handle(
+      { messages: [{ role: 'user', content: '问题' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of stream) void _
+
+    expect(ctx.outputs).toEqual(['最终答复'])
+    expect(ctx.sent.length).toBe(0) // 不再 broadcast
+  })
+
+  it('manager terminate=false → broadcast + 定向 next_speaker', async () => {
+    const orchestrator = {
+      run: vi.fn(async () => ({
+        finalText: '{"terminate":false,"reason":"need more","next_speaker":"B","final_message":""}',
+      })),
+    } as unknown as Agent
+
+    const gc = new GroupChatExecutor({
+      id: 'gc',
+      participantIds: ['A', 'B'],
+      selectorMode: 'manager',
+      maxRounds: 6,
+      orchestrator,
+    })
+    gc.cache.push({ role: 'user', content: '问题' })
+    const ctx = mockCtx()
+    const stream = gc.handle(
+      { messages: [{ role: 'user', content: '问题' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of stream) void _
+
+    // broadcast 给 A（shouldRespond=false）+ 定向 B（shouldRespond=true）
+    expect(ctx.sent.length).toBe(2)
+    const broadcast = ctx.sent.find((s) => s.target === 'A')
+    const directed = ctx.sent.find((s) => s.target === 'B')
+    expect((broadcast?.data as { shouldRespond?: boolean }).shouldRespond).toBe(false)
+    expect((directed?.data as { shouldRespond?: boolean }).shouldRespond).toBe(true)
+    // 定向请求带完整历史（cache_patch）
+    expect((directed?.data as { content: string }).content).toContain('【群聊历史】')
+  })
+
+  it('manager 解析失败 → 降级 round_robin', async () => {
+    const orchestrator = {
+      run: vi.fn(async () => ({ finalText: '纯文本无法解析' })),
+    } as unknown as Agent
+
+    const gc = new GroupChatExecutor({
+      id: 'gc',
+      participantIds: ['A', 'B'],
+      selectorMode: 'manager',
+      maxRounds: 6,
+      orchestrator,
+    })
+    gc.cache.push({ role: 'user', content: '问题' })
+    const ctx = mockCtx()
+    const stream = gc.handle(
+      { messages: [{ role: 'user', content: '问题' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of stream) void _
+
+    // round_robin 第 1 轮选 A（round=1 % 2 = 1 → B？round 已自增到 1，1 % 2 = 1 → B）
+    // 关键是：不卡死，有 broadcast + 定向
+    expect(ctx.sent.length).toBe(2)
+    expect(ctx.outputs.length).toBe(0)
+  })
+
+  it('round_robin 模式不调 orchestrator', async () => {
+    const orchestrator = { run: vi.fn() } as unknown as Agent
+    const gc = new GroupChatExecutor({
+      id: 'gc',
+      participantIds: ['A', 'B'],
+      selectorMode: 'round_robin',
+      maxRounds: 6,
+      orchestrator,
+    })
+    gc.cache.push({ role: 'user', content: '问题' })
+    const ctx = mockCtx()
+    const stream = gc.handle(
+      { messages: [{ role: 'user', content: '问题' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of stream) void _
+
+    expect((orchestrator.run as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0)
   })
 })

@@ -5,6 +5,7 @@ import type {
   WorkflowContext,
 } from '@shared/types'
 import type { Executor, RuntimeWorkflow } from './models'
+import { ConcurrentExecutor } from './patterns/concurrent'
 import { logger } from '../logger'
 
 // —— Pregel superstep 执行模型（§三之三 E + 铁律7）——
@@ -102,13 +103,22 @@ function toOrchMessage(data: unknown): OrchMessage {
     return { role: 'user', content: data }
   }
   const m = data as Partial<OrchMessage>
-  return {
+  const msg: OrchMessage = {
     role: m.role ?? 'user',
     author: m.author,
     content: m.content ?? '',
     toolUseId: m.toolUseId,
     isFunctionResult: m.isFunctionResult,
   }
+  // shouldRespond 是 runner 投递语义（铁律15），不是业务消息字段——
+  // 单独携带，不落 executor.cache（避免广播消息污染 cache）
+  if (m.shouldRespond !== undefined) {
+    Object.defineProperty(msg, 'shouldRespond', {
+      value: m.shouldRespond,
+      enumerable: false,
+    })
+  }
+  return msg
 }
 
 /**
@@ -131,6 +141,9 @@ export async function runWorkflow(
     message: { role: 'user', content: input.text },
     targeted: true,
   })
+
+  // Concurrent fan-in 栅栏：跟踪已聚合的容器 id，防重复聚合
+  const aggregatedConc = new Set<string>()
 
   let iteration = 0
   while (iteration < MAX_SUPERSTEPS) {
@@ -171,6 +184,37 @@ export async function runWorkflow(
       }),
     )
 
+    // —— Concurrent fan-in 栅栏（等齐再聚合，铁律：fan-in 等 all 到齐）——
+    // 每个 superstep 结束后扫描 concurrent 容器：所有 participant 都已有
+    // assistant 产出（cache 里 role==='assistant'）→ 拼合成一条消息投给 aggregator。
+    for (const [id, ex] of wf.executors) {
+      if (!(ex instanceof ConcurrentExecutor)) continue
+      if (aggregatedConc.has(id)) continue
+      const participantIds = ex.participantIds
+      const allDone = participantIds.every((pid) => {
+        const pEx = wf.executors.get(pid)
+        return pEx?.cache.some((m) => m.role === 'assistant')
+      })
+      if (!allDone || participantIds.length === 0) continue
+      // 拼合各 participant 最后一条 assistant
+      const parts: string[] = []
+      for (const pid of participantIds) {
+        const pEx = wf.executors.get(pid)
+        const lastAssistant = [...(pEx?.cache ?? [])]
+          .reverse()
+          .find((m) => m.role === 'assistant')
+        parts.push(`【${pid}】\n${lastAssistant?.content ?? ''}`)
+      }
+      const joined = parts.join('\n\n')
+      aggregatedConc.add(id)
+      ctx.pending.push({
+        source: id,
+        target: ex.aggregatorId,
+        message: { role: 'user', content: joined, shouldRespond: true },
+        targeted: true,
+      })
+    }
+
     iteration++
   }
 
@@ -197,10 +241,15 @@ async function deliverToExecutor(
   const messages = envelopes.map((e) => e.message)
   executor.cache.push(...messages)
 
+  // shouldRespond 双语义（铁律15）：任一 envelope 显式 false 且全部显式 false
+  // → 仅 extend cache（broadcast 模式）；否则默认 true 触发 handle。
+  // 语义：GroupChat 广播发 false，定向请求发 true；targeted 边 fan-out 默认 true。
+  const anyExplicitFalse = envelopes.some((e) => e.message.shouldRespond === false)
+  const allExplicitFalse = envelopes.every((e) => e.message.shouldRespond === false)
+  const shouldRespond = !(anyExplicitFalse && allExplicitFalse)
+
   try {
-    // should_respond=true → 触发 handle；false → 仅 extend cache（broadcast 模式）
-    // TODO(M4 收口)：仍硬编码 true；GroupChat 广播须由 envelope/pattern 设 false（铁律 15，见 task.md）
-    const req = { messages, shouldRespond: true }
+    const req = { messages, shouldRespond }
     const eventStream = executor.handle(req, ctx)
     for await (const event of eventStream) {
       onEvent(event)
@@ -208,6 +257,9 @@ async function deliverToExecutor(
     onEvent({ type: 'node_done', node_id: executor.id })
 
     // handle 后 fan-out 给下游（非定向消息走边）
+    // broadcast（shouldRespond=false）仅 extend cache，不再 fan-out——
+    // 否则 GroupChat 广播一次就会把下游全部触发（§三 D broadcast 语义）。
+    if (!shouldRespond) return
     const edges = wf.edges.get(executor.id) ?? []
     const conditions = wf.conditions.get(executor.id) ?? []
     if (edges.length > 0 || conditions.length > 0) {
@@ -215,14 +267,25 @@ async function deliverToExecutor(
       const lastMsg = executor.cache[executor.cache.length - 1]
       if (lastMsg) {
         if (conditions.length > 0) {
-          // 条件边：求值谓词，只走第一个匹配的
+          // 条件边（switch-case 语义，§三之三 B）：求值谓词，走第一个匹配的；
+          // 全不命中 → 走无 condition 的普通边兜底（默认分支）。
+          let matched = false
           for (const c of conditions) {
             if (evaluatePredicate(c.predicate, lastMsg.content)) {
               await ctx.send_message(
                 { ...lastMsg, author: executor.id },
                 c.target,
               )
+              matched = true
               break
+            }
+          }
+          if (!matched) {
+            for (const target of edges) {
+              await ctx.send_message(
+                { ...lastMsg, author: executor.id },
+                target,
+              )
             }
           }
         } else {
