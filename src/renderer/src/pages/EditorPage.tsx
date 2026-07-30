@@ -193,6 +193,19 @@ function EditorCanvas() {
       )
     }
 
+    // 清理触及容器子节点的历史遗留边：画布已禁止子节点连线（isValidConnection），
+    // 容器内部布线由 pattern builder 决定，旧图残留的子节点边一并剔除
+    const childIds = new Set(
+      g.nodes
+        .filter((n) => Boolean((n.data as { parentId?: string })?.parentId))
+        .map((n) => n.id),
+    )
+    if (childIds.size > 0) {
+      g.edges = g.edges.filter(
+        (e) => !childIds.has(e.source) && !childIds.has(e.target),
+      )
+    }
+
     // 第一轮：创建所有节点（暂不带 parentId）
     const loadedNodes: Node[] = g.nodes.map((n) => {
       const isAgent = n.type === 'agent'
@@ -320,6 +333,22 @@ function EditorCanvas() {
   const onConnect = useCallback((connection: Connection) => {
     setEdges((eds) => addEdge({ ...connection, animated: false }, eds))
   }, [])
+
+  // —— 连线校验：容器子节点不参与画布连线 ——
+  // 容器内部布线由 pattern builder 全权决定（sequential 按 participants 顺序连链、
+  // groupchat 经容器广播、handoff 走 synthetic tool），子节点手动连线会与容器
+  // 语义叠加冲突（双投递 / hasCycle 检测不到的运行时环），故仅允许顶层节点互连。
+  const isValidConnection = useCallback(
+    (conn: Connection | Edge) => {
+      if (!conn.source || !conn.target || conn.source === conn.target) return false
+      const all = getNodes()
+      const src = all.find((n) => n.id === conn.source)
+      const tgt = all.find((n) => n.id === conn.target)
+      if (!src || !tgt) return false
+      return !src.parentId && !tgt.parentId
+    },
+    [getNodes],
+  )
 
   // —— 选中节点 ——
   const onNodeClick = useCallback((_: unknown, node: Node) => {
@@ -463,29 +492,33 @@ function EditorCanvas() {
   // —— 拖动节点时高亮容器 ——
   // 检测逻辑放在 setNodes 回调内，用 nds（最新 React state）而非 getNodes()
   // 避免 expandParent 撑大后 measured 尺寸未及时更新导致误判
+  // ⚠ xyflow v12 用户节点没有 positionAbsolute（只在 internals 里）；
+  //   子节点 node.position 是父容器相对坐标，必须经 getAbsolutePos 转成
+  //   画布绝对坐标后，才能与容器绝对坐标做命中检测。
   const onNodeDrag = useCallback(
     (_: unknown, node: Node) => {
       if (node.type !== 'agent') return
-      const anyNode = node as Node & { positionAbsolute?: { x: number; y: number } }
       const w = node.measured?.width ?? node.width ?? AGENT_DEFAULT_SIZE.width
       const h = node.measured?.height ?? node.height ?? AGENT_DEFAULT_SIZE.height
-      const ax = anyNode.positionAbsolute?.x ?? node.position.x
-      const ay = anyNode.positionAbsolute?.y ?? node.position.y
-      const centerX = ax + w / 2
-      const centerY = ay + h / 2
 
       setNodes((nds) => {
-        // 在 setNodes 回调内用 nds 检测（最新 state）
+        // 在 setNodes 回调内用 nds 检测（最新 state）；
+        // node 是回调实参（携带拖拽中的最新相对坐标），parent 链从 nds 取
+        const abs = getAbsolutePos(node, nds)
+        const centerX = abs.x + w / 2
+        const centerY = abs.y + h / 2
+
         let hoverId: string | undefined
         for (const cn of nds) {
           if (!isContainerNode(cn)) continue
           const cw = cn.measured?.width ?? cn.width ?? CONTAINER_DEFAULT_SIZE.width
           const ch = cn.measured?.height ?? cn.height ?? CONTAINER_DEFAULT_SIZE.height
+          const cnAbs = getAbsolutePos(cn, nds)
           if (
-            centerX >= cn.position.x &&
-            centerX <= cn.position.x + cw &&
-            centerY >= cn.position.y &&
-            centerY <= cn.position.y + ch
+            centerX >= cnAbs.x &&
+            centerX <= cnAbs.x + cw &&
+            centerY >= cnAbs.y &&
+            centerY <= cnAbs.y + ch
           ) {
             hoverId = cn.id
             break
@@ -510,36 +543,39 @@ function EditorCanvas() {
   // —— 拖动结束时更新 parent-child 关系 ——
   // 核心改进：
   // 1. 容器检测在 setNodes 回调内用 nds（最新 state），避免 getNodes() 时序不同步
-  // 2. 容差检测：如果 agent 已有 parent 但没检测到目标容器，
+  // 2. 坐标系统一：xyflow v12 用户节点无 positionAbsolute，子节点 position 是
+  //    父容器相对坐标，一律经 getAbsolutePos 转绝对坐标后再命中/换算
+  // 3. 容差检测：如果 agent 已有 parent 但没检测到目标容器，
   //    检查中心是否仍在原父容器附近（容差 60px），是则不移出
   //    这解决了 expandParent 撑大容器时 measured 未及时更新导致误移出的问题
   const onNodeDragStop = useCallback(
     (_: unknown, node: Node) => {
       if (node.type !== 'agent') return
-      const anyNode = node as Node & { positionAbsolute?: { x: number; y: number } }
       const w = node.measured?.width ?? node.width ?? AGENT_DEFAULT_SIZE.width
       const h = node.measured?.height ?? node.height ?? AGENT_DEFAULT_SIZE.height
-      const ax = anyNode.positionAbsolute?.x ?? node.position.x
-      const ay = anyNode.positionAbsolute?.y ?? node.position.y
-      const centerX = ax + w / 2
-      const centerY = ay + h / 2
 
       setNodes((nds) => {
+        // node 是回调实参（携带拖拽结束时的最新相对坐标），parent 链从 nds 取
+        const abs = getAbsolutePos(node, nds)
+        const centerX = abs.x + w / 2
+        const centerY = abs.y + h / 2
+
         // 在 setNodes 回调内用 nds 检测中心点所在容器
         let newParentId: string | undefined
-        let newParentNode: Node | undefined
+        let newParentAbs: { x: number; y: number } | undefined
         for (const cn of nds) {
           if (!isContainerNode(cn)) continue
           const cw = cn.measured?.width ?? cn.width ?? CONTAINER_DEFAULT_SIZE.width
           const ch = cn.measured?.height ?? cn.height ?? CONTAINER_DEFAULT_SIZE.height
+          const cnAbs = getAbsolutePos(cn, nds)
           if (
-            centerX >= cn.position.x &&
-            centerX <= cn.position.x + cw &&
-            centerY >= cn.position.y &&
-            centerY <= cn.position.y + ch
+            centerX >= cnAbs.x &&
+            centerX <= cnAbs.x + cw &&
+            centerY >= cnAbs.y &&
+            centerY <= cnAbs.y + ch
           ) {
             newParentId = cn.id
-            newParentNode = cn
+            newParentAbs = cnAbs
             break
           }
         }
@@ -568,12 +604,13 @@ function EditorCanvas() {
               if (oldParent) {
                 const pw = oldParent.measured?.width ?? oldParent.width ?? CONTAINER_DEFAULT_SIZE.width
                 const ph = oldParent.measured?.height ?? oldParent.height ?? CONTAINER_DEFAULT_SIZE.height
+                const oldParentAbs = getAbsolutePos(oldParent, nds)
                 const TOLERANCE = 60
                 if (
-                  centerX >= oldParent.position.x - TOLERANCE &&
-                  centerX <= oldParent.position.x + pw + TOLERANCE &&
-                  centerY >= oldParent.position.y - TOLERANCE &&
-                  centerY <= oldParent.position.y + ph + TOLERANCE
+                  centerX >= oldParentAbs.x - TOLERANCE &&
+                  centerX <= oldParentAbs.x + pw + TOLERANCE &&
+                  centerY >= oldParentAbs.y - TOLERANCE &&
+                  centerY <= oldParentAbs.y + ph + TOLERANCE
                 ) {
                   return n // 仍在原容器附近，不移出
                 }
@@ -581,16 +618,16 @@ function EditorCanvas() {
             }
 
             changed = true
-            if (newParentId && newParentNode) {
-              // 移入新容器（用 positionAbsolute 转换为容器内相对坐标）
+            if (newParentId && newParentAbs) {
+              // 移入新容器（绝对坐标 → 容器内相对坐标）
               return {
                 ...n,
                 parentId: newParentId,
                 extent: 'parent' as const,
                 expandParent: true,
                 position: {
-                  x: centerX - newParentNode.position.x - w / 2,
-                  y: centerY - newParentNode.position.y - h / 2,
+                  x: centerX - newParentAbs.x - w / 2,
+                  y: centerY - newParentAbs.y - h / 2,
                 },
               }
             }
@@ -955,6 +992,7 @@ function EditorCanvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          isValidConnection={isValidConnection}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onNodeDrag={onNodeDrag}

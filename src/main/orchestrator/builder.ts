@@ -71,13 +71,31 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
     }
   }
 
+  // 容器子节点集合（序列化时 data.parentId 记录了画布 parent 关系）
+  const childIds = new Set(
+    graph.nodes
+      .filter((n) => Boolean((n.data as { parentId?: string } | undefined)?.parentId))
+      .map((n) => n.id),
+  )
+
   // 补充显式边：graph.edges 中 pattern builder 未覆盖的跨节点连接
-  // 跳过 concurrent container → aggregator 的边（画布视觉线，运行时已由
-  // buildConcurrent 内部加 participant → aggregator 边）
+  // 跳过两类：
+  // 1. concurrent container → aggregator 的边（画布视觉线，运行时已由
+  //    buildConcurrent 内部加 participant → aggregator 边）
+  // 2. 触及容器子节点的边——容器内部布线由 pattern builder 全权决定
+  //    （sequential 链 / groupchat 广播 / handoff synthetic tool），
+  //    子节点显式边叠加会造成双投递，甚至与 pattern 边组成 hasCycle
+  //    检测不到的运行时环（hasCycle 只查 graph.edges）
   for (const e of graph.edges) {
     const skipAggregator = containerAggregators.get(e.source)
     if (skipAggregator === e.target) {
       continue // 视觉边，跳过
+    }
+    if (childIds.has(e.source) || childIds.has(e.target)) {
+      logger.warn(
+        `[builder] 跳过容器子节点显式边 ${e.source}→${e.target}（容器内部布线由 pattern 决定）`,
+      )
+      continue
     }
     bctx.addEdge(e.source, e.target)
   }
