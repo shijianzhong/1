@@ -7,6 +7,7 @@
 > - [`docs/REWRITE_PLAN.md`](./docs/REWRITE_PLAN.md) — 重写落地文档（架构、模块映射、Agent Framework 自研参考、分阶段计划、**测试策略 §十、错误与崩溃恢复 §十一、i18n §十二**）
 > - [`docs/DESIGN.md`](./docs/DESIGN.md) — UI 设计规范（纯白通透玻璃态、色彩/字体/组件、主题系统含背景图）
 > - [`docs/UI_BRIEF.md`](./docs/UI_BRIEF.md) — UI 实现简报（各屏幕视觉实现指引，编码 AI 直接读）
+> - [`task.md`](./task.md) — **活的实施清单**（阶段勾选、commit 哈希、已知缺口）；进度以它为准，优于本文件「当前阶段」摘要
 >
 > **横切约束（见 REWRITE_PLAN 对应章节）**：测试四层（§十）/ IPC 错误统一结构化 + SQLite WAL 恢复 + 草稿恢复（§十一）/ i18n 从一开始做，key 不硬编码中文（§十二）。
 
@@ -17,56 +18,77 @@
 - **Agent Framework 源码**：`/Users/shijianzhong/agent-framework-main`（Python 版，自研编排内核的对照参考）。
 - **决策基线**：后端全 TS 重写（不内嵌 Python sidecar）；纯桌面，放弃 Web 部署；前端重写不复用原 UI；**无登录、无鉴权、无用户隔离**（开源个人桌面工具，单用户）；**无地图**（不引入高德）。
 
-## 目录结构（目标态）
+## 目录结构（已落地）
 
 ```
 one/
 ├── package.json
 ├── electron-builder.yml
 ├── electron.vite.config.ts
-├── CLAUDE.md / AGENTS.md
+├── CLAUDE.md / AGENTS.md / task.md
 ├── docs/                      # 设计文档
 │   ├── REWRITE_PLAN.md        # 重写落地（架构/迁移/自研参考/阶段）
 │   ├── DESIGN.md              # UI 规范（纯白通透玻璃态/主题系统）
-│   └── UI_BRIEF.md            # UI 实现简报（编码 AI 直接读）
+│   ├── UI_BRIEF.md            # UI 实现简报（编码 AI 直接读）
+│   └── REVIEW_SUMMARY.md      # 文档 review 汇总（历史结论，进度以 task.md 为准）
+├── e2e/                       # Playwright Electron E2E
 └── src/
     ├── main/                  # 主进程 = 原 Python 后端的 TS 重写
     │   ├── index.ts           # 窗口/托盘/快捷键/自动更新
-    │   ├── ipc/               # ipcMain.handle 注册中心
-    │   ├── orchestrator/     # 自研编排内核 @one/orchestrator（逻辑名，非独立 npm 包）
+    │   ├── ipc/               # ipcMain.handle 注册中心（含 home / orchestrate）
+    │   ├── orchestrator/      # 自研编排内核 @one/orchestrator（逻辑名，非独立 npm 包）
     │   │   ├── models.ts / builder.ts / runner.ts / agent.ts
-    │   │   ├── constraints.ts / home.ts   # 输出约束+条件边谓词 / 首页主助手入口
-    │   │   └── patterns/      # sequential/concurrent/groupchat/handoff/magentic（builder 配图逻辑，非递归调度器）
-    │   ├── llm/               # Anthropic SDK 封装 + 重试
-    │   ├── storage/           # SQLite + JSON；含 memory/(L1/L2/L3)，无用户隔离
-    │   ├── secrets/          # LLM key 等本地加密存储（crypto）
-    │   └── tools/             # 工具注册表
+    │   │   └── patterns/      # sequential/concurrent/groupchat/handoff/magentic
+    │   ├── llm/               # Anthropic SDK 封装 + 重试 + thinking
+    │   ├── storage/           # SQLite + JSON；含 memory/(L0/L1/L2/L3)，无用户隔离
+    │   ├── secrets/           # LLM key 本地加密（safeStorage / vault）
+    │   ├── skills/            # ZIP 上传解析（ContextProvider 钩子尚未独立模块化）
+    │   └── tools/             # 工具注册表（builtin 目前以 memory_* 为主）
     ├── preload/
-    │   └── index.ts           # contextBridge 白名单 → window.one.*
-    ├── renderer/              # 重写的 React 前端
-    │   └── src/{pages,features,components,api,store,styles}
+    │   └── index.ts           # contextBridge 白名单 → window.one.*（产出 CJS）
+    ├── renderer/              # React 前端（pages/components/api/store/styles/i18n）
     └── shared/
         └── types.ts           # 主/渲染共享契约（图模型 + 事件 schema）
 ```
 
-> 当前阶段：尚未初始化脚手架。目录结构为目标态，落地顺序见 docs/REWRITE_PLAN.md §八。
+> 计划中的 `orchestrator/constraints.ts`、`orchestrator/home.ts` **尚未建文件**：条件边谓词在 `runner.ts`；首页主助手在 `ipc/home.ts`。
 
 ## 构建与测试命令
 
-> 待脚手架（electron-vite）就绪后填写。预计：
->
-> ```bash
-> npm install
-> npm run dev          # electron-vite 主/preload/渲染一体化热更
-> npm run build        # vite build（主/preload/渲染）
-> npm run package      # electron-builder 打包
-> npm run typecheck    # tsc --noEmit
-> npm test             # vitest（编排引擎/记忆/重试单测）
-> ```
+```bash
+npm install
+npm run dev          # electron-vite 主/preload/渲染一体化热更
+npm run build        # vite build（主/preload/渲染）
+npm run package      # electron-builder 打包（现有 mac dmg）
+npm run typecheck    # tsc --noEmit
+npm test             # vitest（编排/记忆/重试/颜色等单测）
+npm run test:e2e     # 先 build 再 Playwright Electron
+npm run rebuild      # better-sqlite3 对应当前 Electron ABI 重编
+```
 
-## 当前阶段
+## 当前阶段（2026-07-30 快照）
 
-阶段 0（脚手架）之前。详见 docs/REWRITE_PLAN.md §八的分阶段计划（阶段 0~7，其中阶段 7 为持续）。
+> **权威勾选见 [`task.md`](./task.md)**；下文是 AI 协作速查摘要。分阶段定义见 [`docs/REWRITE_PLAN.md`](./docs/REWRITE_PLAN.md) §八。
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| 0 脚手架 | ✅ M0 | electron-vite / IPC / 主题 / i18n 脚手架 / vitest+Playwright |
+| 1 存储与配置 | ✅ M1 | SQLite + JSON CRUD、vault、管理页 |
+| 2 LLM + 单 Agent | ✅ M2 | `beta.messages.stream`、重试、首页流式聊天 |
+| 3 三级记忆 | ✅ M3 | L0–L3 + memory 工具；首页已注入 |
+| 4 编排引擎 | ⚠ M4 未收口 | Pregel runner + 四模式骨架已有；语义保真与联调见下「缺口」 |
+| 5 前端 UI | ✅ 骨架 M5 | 核心页/画布/主题可用；**i18n 硬编码清零未完成** |
+| 6 原生与打磨 | ✅ 部分 M6 | 托盘/更新/mac dmg；草稿恢复 UI 未闭环；win 包未验 |
+| 7 工具与 MCP | ⏳ 持续 | 仅 memory_*；shell/文件/MCP 未做 |
+
+**当前优先缺口（勿当已完成）：**
+
+1. **编排保真**：runner 仍默认 `shouldRespond: true`（GroupChat 广播语义未通）；Concurrent fan-in 栅栏弱；GroupChat manager 降级 round_robin；`repair_tool_pairs` / 完整 `context_mode` 未齐。
+2. **首页意图路由**（铁律 24）：直答 vs `role_ids`/`capability_ids` 组队 JSON 未实现。
+3. **Skill**：IPC 内联 `<skill>` XML，缺独立 ContextProvider（`beforeRun`/`afterRun`）与 async 脚本执行。
+4. **i18n**：脚手架在，Editor/Agents/Skills/Home 等仍有硬编码中文；`errors.*` 主进程 key 未齐。
+5. **崩溃草稿**：哨兵/`listDrafts` 有，编辑器/聊天写盘 + 渲染层恢复 UI 未接。
+6. **工具生态**：builtin 几乎只有 memory；阶段 7 待做。
 
 ---
 
@@ -143,6 +165,8 @@ T3. **防首屏闪白**：React 挂载前 `bootstrap-theme.ts` 同步从 localSt
 ## 协作约定
 
 - 写代码前先读 docs/REWRITE_PLAN.md 对应章节（尤其 §三之三自研参考 + §五核心模块迁移）。
+- **动手前先看 [`task.md`](./task.md)**：已完成项勿重复；缺口区是优先战场。
 - 编排引擎相关改动，对照源码：框架侧 `/Users/shijianzhong/agent-framework-main`、使用侧 `/Users/shijianzhong/enn-workspace/proton/src/proton/`。
-- 每个 PR/提交聚焦一个阶段任务，参考 docs/REWRITE_PLAN.md §八里程碑。
+- 每个 PR/提交聚焦一个阶段任务，参考 docs/REWRITE_PLAN.md §八里程碑；改完同步勾选 `task.md`。
 - 不确定的命名/边界，优先遵守上面铁律；铁律没覆盖的，问清楚再写。
+- 本文件「当前阶段」若与 `task.md` 冲突，**以 `task.md` 为准**，并顺手改回本摘要。

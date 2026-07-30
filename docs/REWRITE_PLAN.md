@@ -880,98 +880,111 @@ one/
 ## 八、分阶段实施计划
 
 > 编号 0~7 连续，按依赖顺序排列。阶段 5（前端 UI）可与阶段 1~4 后端工作**并行**推进，后端模块就绪即可联调对应页面。
+>
+> **进度权威源**：根目录 [`task.md`](../task.md)（含 commit 哈希与缺口）。本节勾选与 task.md 对齐；详细子项以 task.md 为准。
+>
+> **进度快照（2026-07-30）**：M0–M3 ✅ · M5 骨架 ✅（i18n 清零未完）· M6 部分 ✅（mac dmg；草稿 UI / win 未齐）· **M4 ⚠ 未收口**（骨架有、保真缺口见阶段 4）· M7 ⏳。
 
-### 阶段 0：脚手架与基础设施（1 周）
+### 阶段 0：脚手架与基础设施（1 周）✅ M0
 
-- [ ] `electron-vite` 初始化主/preload/渲染三端工程
-- [ ] tsconfig + electron-builder.yml（先 mac 本地）
-- [ ] 主进程最小窗口 + preload 白名单 + 一个 hello IPC 通路
-- [ ] Tailwind v4 + ShadCN UI 基础接入，主题 token（纯白通透/夜色）+ 品牌色（薄荷绿）+ 玻璃配方变量
-- [ ] react-router v7 hashRouter 壳 + 全局布局骨架（`TitleBar` + `IconRail` + `SideList` + `MainArea` + `Inspector` 浮动槽位 + `CommandPalette` 槽位，见 UI_BRIEF §0.1）
-- [ ] Zustand + TanStack Query 接入
-- [ ] `electron-log` 接入
-- [ ] 测试脚手架：vitest（主进程单测）+ Playwright Electron（E2E）配置就绪（见 §十）
-- [ ] i18n 脚手架：`i18next` + `react-i18next` 接入，`locales/{zh-CN,en}/common.json` 初始化（见 §十二）
-- [ ] 错误兜底：主进程 `uncaughtException`/`unhandledRejection` + 渲染层 `window.onerror` 全局处理器（见 §十一）
+- [x] `electron-vite` 初始化主/preload/渲染三端工程
+- [x] tsconfig + electron-builder.yml（先 mac 本地）
+- [x] 主进程最小窗口 + preload 白名单 + 一个 hello IPC 通路
+- [x] Tailwind v4 + ShadCN UI 基础接入，主题 token（纯白通透/夜色）+ 品牌色（薄荷绿）+ 玻璃配方变量
+- [x] react-router v7 hashRouter 壳 + 全局布局骨架（`TitleBar` + `IconRail` + `SideList` + `MainArea` + `Inspector` 浮动槽位 + `CommandPalette` 槽位，见 UI_BRIEF §0.1）
+- [x] Zustand + TanStack Query 接入
+- [x] `electron-log` 接入
+- [x] 测试脚手架：vitest（主进程单测）+ Playwright Electron（E2E）配置就绪（见 §十）
+- [x] i18n 脚手架：`i18next` + `react-i18next` 接入，`locales/{zh-CN,en}/common.json` 初始化（见 §十二）
+- [x] 错误兜底：主进程 `uncaughtException`/`unhandledRejection` + 渲染层 `window.onerror` 全局处理器（见 §十一）
 
-**里程碑 M0**：桌面壳能打开，主题化骨架页渲染，IPC 双向通路通，测试 + i18n 脚手架就绪。
+**里程碑 M0**：桌面壳能打开，主题化骨架页渲染，IPC 双向通路通，测试 + i18n 脚手架就绪。✅
 
-### 阶段 1：存储与配置（1 周）
+### 阶段 1：存储与配置（1 周）✅ M1
 
-- [ ] `better-sqlite3` 接入 + schema 迁移
-- [ ] 配置模块（Zod）+ models.json 迁移
-- [ ] `secrets/vault.ts`（Node crypto 加密 LLM key）
-- [ ] 存储 CRUD：models / capabilities / agents（角色）/ skills / persona（首页主助手人设，独立于角色）
-- [ ] IPC 暴露 + 渲染层 `api/` 改造，管理后台页面先打通
+- [x] `better-sqlite3` 接入 + schema 迁移
+- [x] 配置模块（Zod）+ models.json 迁移
+- [x] `secrets/vault.ts`（Electron safeStorage / 加密 LLM key）
+- [x] 存储 CRUD：models / capabilities / agents（角色）/ skills / persona（首页主助手人设，独立于角色）
+- [x] IPC 暴露 + 渲染层 `api/` 改造，管理后台页面先打通
 
-**里程碑 M1**：模型配置、角色、技能、能力列表页能用（只读+增删改）。
+**里程碑 M1**：模型配置、角色、技能、能力列表页能用（只读+增删改）。✅
 
-### 阶段 2：LLM 与单 Agent 聊天（1 周）
+### 阶段 2：LLM 与单 Agent 聊天（1 周）✅ M2
 
-- [ ] LLM 客户端 + 重试包装（直译 `llm.py`，重试包在 `LLMClient.stream()` 外层，见铁律 10）
-- [ ] 单 Agent 执行（含 tool-use 循环，借力 Anthropic TS SDK `beta.messages.stream()`）
-- [ ] 流式 token 经 `webContents.send` → 渲染层渲染
-- [ ] 首页主助手聊天页打通（不含记忆）
+- [x] LLM 客户端 + 重试包装（直译 `llm.py`，重试包在 `LLMClient.stream()` 外层，见铁律 10）
+- [x] 单 Agent 执行（含 tool-use 循环，借力 Anthropic TS SDK `beta.messages.stream()`）
+- [x] 流式 token 经 `webContents.send` → 渲染层渲染
+- [x] 首页主助手聊天页打通（不含记忆；记忆见阶段 3）
 
-**里程碑 M2**：首页能跟主助手多轮对话，流式输出 + 工具调用。
+**里程碑 M2**：首页能跟主助手多轮对话，流式输出 + 工具调用。✅
 
-### 阶段 3：三级记忆（1.5 周，高风险）
+### 阶段 3：三级记忆（1.5 周，高风险）✅ M3
 
-- [ ] L0 身份块（从设置页"个人档案"取，见 DESIGN §9.4）
-- [ ] L1 滚动压缩（含压缩 prompt 迁移；受阻可先用简单截断兜底）
-- [ ] L2 跨会话精炼
-- [ ] L3 长期沉淀（`memory_recall`/`memory_search` 工具）
-- [ ] 会话/任务历史 SQLite 表 + 查询页
-- [ ] 与 Agent Framework compaction 的关系厘清（L1 会话级摘要存 SQLite，compaction 是 agent 运行时窗口截断，二者层级不同）
+- [x] L0 身份块（从设置页"个人档案"取，见 DESIGN §9.4）
+- [x] L1 滚动压缩（含压缩 prompt 迁移；受阻可先用简单截断兜底）
+- [x] L2 跨会话精炼
+- [x] L3 长期沉淀（`memory_recall`/`memory_search` 工具）
+- [x] 会话/任务历史 SQLite 表 + 查询页
+- [x] 与 Agent Framework compaction 的关系厘清（L1 会话级摘要存 SQLite，compaction 是 agent 运行时窗口截断，二者层级不同）
 
-**里程碑 M3**：多会话后记忆生效，任务进度页可用。
+**里程碑 M3**：多会话后记忆生效，任务进度页可用。✅（任务页偏薄：编排运行未必稳定落盘 task）
 
-### 阶段 4：编排引擎（2 周，最高风险）
+### 阶段 4：编排引擎（2 周，最高风险）⚠ M4 未收口
 
 > ⚠️ 最紧的阶段。若超期，拆 4a（Sequential+Concurrent+Agent 叶子，1 周）+ 4b（GroupChat 四 patch + Handoff middleware + Pregel 并发，2 周）分批验收。
+>
+> **现状**：4a/4b 代码与单测骨架已合入（见 `task.md`）；画布可跑 Sequential 等 demo。**未达 M4 里程碑定义**，因下列保真缺口仍开：
+> - runner 默认 `shouldRespond: true`（GroupChat 广播「仅 extend cache」未通）
+> - Concurrent fan-in 栅栏弱；GroupChat manager 仍降级 round_robin
+> - `repair_tool_pairs` / 完整 `context_mode` / 画布 `GraphEdge.condition`→runner 条件映射未齐
+> - 首页意图路由（§三之三 M / 铁律 24）未实现
+> - `orchestrator/constraints.ts`、`orchestrator/home.ts` 计划文件未建（逻辑散落 runner / ipc/home）
 
-- [ ] 图模型 + builder（5 种模式逐类型实现，Pregel 模型不是递归，见 §三 D）
-- [ ] runner（superstep 循环 + `Promise.all` 并发 deliver + 收敛判断，见 §三之三 E + §5.1.3）
-- [ ] 条件边路由（`contains:` 谓词 + `add_switch_case_edge_group`）
-- [ ] GroupChat 四个 patch（cache/dedup/fairness/output）
-- [ ] Handoff synthetic tool + middleware 短路
-- [ ] 画布编辑器（NodeInspector/NodePalette/nodes）联调
-- [ ] **每种编排模式补单元测试**（对照原 builder.py 行为，黄金用例见 §三 E）
+- [x] 图模型 + builder（5 种模式骨架；Pregel 非递归，见 §三 D）—— **语义保真未齐**
+- [x] runner（superstep 循环 + `Promise.all` 并发 deliver + 收敛判断）—— **shouldRespond 硬编码待修**
+- [x] 条件边路由（runner 内 `contains:` + 恒真；画布 condition 映射待齐）
+- [x] GroupChat 四个 patch（纯函数 + 单测有；**运行时接线不全**）
+- [x] Handoff synthetic tool + Agent 短路（容器路由基本可用）
+- [x] 画布编辑器联调（EditorPage + 流式高亮；细节持续打磨）
+- [x] 编排模式单测（Sequential/Concurrent/GroupChat patch/Handoff；非完整黄金对照原 builder.py）
+- [ ] **M4 收口**：shouldRespond 广播语义、Concurrent fan-in、manager 接线、repair_tool_pairs、首页组队路由
 
-**里程碑 M4**：画布编排能跑 Sequential/Concurrent/GroupChat/Handoff 全部；Magentic 降级提示"改用 groupchat+handoff 覆盖"（MVP 跳过，见 §三之三 K#1）。
+**里程碑 M4**：画布编排能跑 Sequential/Concurrent/GroupChat/Handoff 全部且语义保真；Magentic 降级提示"改用 groupchat+handoff 覆盖"（MVP 跳过，见 §三之三 K#1）。⚠ **未完成**
 
-### 阶段 5：前端 UI 重写（并行，3 周）
+### 阶段 5：前端 UI 重写（并行，3 周）✅ 骨架 · i18n 未清零
 
 > 与阶段 1~4 后端工作并行推进。所有页面从零重写，不复用原 UI。视觉按 [`UI_BRIEF.md`](./UI_BRIEF.md)，令牌按 [`DESIGN.md`](./DESIGN.md) §2.1。
 
-- [ ] **设计令牌与基础组件**：色板/间距/圆角/阴影/动效曲线；Button/Input/Dialog/Drawer/Toast/Tabs/Table 等 ShadCN 基础组件定制
-- [ ] **主题系统**（详见 DESIGN §12 + §12.6.1）：预设/明暗/点缀色/背景图（主进程 dialog 选图+压缩+imageId）/玻璃参数/密度/字号/对比度兜底/防首屏闪白；落地清单见 §12.8
-- [ ] **首页主助手聊天**：消息流（用户/AI 气泡差异化）、流式光标、Markdown/代码块/公式重做样式、工具调用卡片、停止/重发
-- [ ] **能力编排画布**：自定义节点视觉（Agent/Sequential/Concurrent/groupchat/Handoff/magentic 六类节点卡片）、NodeInspector 抽屉、NodePalette、连线与条件边交互、运行态高亮
-- [ ] **能力列表 / 角色 / 技能 / 模型 / 人设 / 任务进度**：统一表格+表单范式，空态/加载态/错误态规范
-- [ ] **设置页**：个人档案/外观（主题系统全量）/LLM 配置/快捷键/开机自启/日志查看
-- [ ] **CommandPalette（⌘K）**：全局导航/搜索/动作入口（UI_BRIEF §6）
-- [ ] **i18n 全量**：所有硬编码中文替换为 `useTranslation` key；`home/editor/settings/errors` namespace 补齐；日期用 `Intl` 格式化（见 §十二）
-- [ ] 微动效（Framer Motion）：消息进入、抽屉开合、节点选中、任务进度
+- [x] **设计令牌与基础组件**：色板/间距/圆角/阴影/动效曲线；Button/Input/Dialog/Drawer/Toast/Tabs/Table 等 ShadCN 基础组件定制
+- [x] **主题系统**（详见 DESIGN §12 + §12.6.1）：预设/明暗/点缀色/背景图/玻璃参数/密度/字号/防首屏闪白
+- [x] **首页主助手聊天**：消息流、流式、Markdown/代码块/公式、thinking 折叠等
+- [x] **能力编排画布**：六类节点、Inspector、Palette、运行态高亮、orchestrate 联调
+- [x] **能力列表 / 角色 / 技能 / 模型 / 人设 / 任务进度**：列表+表单范式
+- [x] **设置页**：个人档案/外观/LLM 配置等
+- [x] **CommandPalette（⌘K）**
+- [ ] **i18n 全量**：脚手架与部分页已用 `t()`；Editor/Agents/Skills/Home 等仍有硬编码中文；`errors.*` 未齐（见 §十二）
+- [x] 微动效（Framer Motion）：消息进入、命令面板等
 
-**里程碑 M5**：核心页面视觉与交互重写完成，主题系统可用，后端就绪部分可联调。
+**里程碑 M5**：核心页面视觉与交互重写完成，主题系统可用，后端就绪部分可联调。✅ 骨架 · **i18n 清零仍开**
 
-### 阶段 6：原生能力与打磨（1 周）
+### 阶段 6：原生能力与打磨（1 周）✅ 部分 M6
 
-- [ ] 托盘 + 全局快捷键 + 原生菜单
-- [ ] 自动更新（electron-updater）
-- [ ] 通知 + 开机自启 + 明暗跟随系统（`nativeTheme`）
-- [ ] **崩溃恢复**：`crashReporter` + 启动哨兵检测上次崩溃 + 草稿恢复提示（见 §十一.5/.7）
-- [ ] **存储恢复**：SQLite WAL + integrity_check + 损坏备份恢复（见 §十一.4）
-- [ ] 打包 mac/win，安装包验证
+- [x] 托盘 + 全局快捷键 + 原生菜单
+- [x] 自动更新（electron-updater）
+- [x] 通知 + 开机自启 + 明暗跟随系统（`nativeTheme`）
+- [x] **崩溃恢复（主进程半程）**：启动哨兵 + `listDrafts`；**编辑器/聊天草稿写盘 + 渲染层恢复 UI 未闭环**
+- [x] **存储恢复**：SQLite WAL + integrity_check + 周期备份
+- [x] 打包 mac dmg 验证；**[ ] win 安装包未验**
 
-**里程碑 M6**：可分发的双平台安装包，自动更新闭环。
+**里程碑 M6**：可分发的双平台安装包，自动更新闭环。⚠ **mac 可分发；win / 草稿 UI 未齐**
 
-### 阶段 7：工具与 MCP（持续）
+### 阶段 7：工具与 MCP（持续）⏳
 
-- [ ] 内置工具 TS 重写（shell / 文件 / grep / glob / browser_use / desktop_screenshot）
+- [ ] 内置工具 TS 重写（shell / 文件 / grep / glob / browser_use / desktop_screenshot）—— 目前 builtin 以 `memory_*` 为主
 - [ ] MCP 工具协议接入（@modelcontextprotocol/sdk）
 - [ ] 即梦文生图等外部工具
+- [ ] Skill ContextProvider 模块化（`beforeRun`/`afterRun`）+ async 脚本执行（铁律 22/23）
 
 ---
 
