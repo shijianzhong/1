@@ -58,6 +58,15 @@ export class AgentExecutor implements Executor {
           text,
         })
       },
+      onThinking: (text) => {
+        // thinking delta 通过 output 事件流式推前端（speaker=executor_id）
+        void ctx.add_event({
+          type: 'output',
+          node_id: this.id,
+          speaker: this.id,
+          text,
+        })
+      },
     }
 
     const result = await this.agent.run(

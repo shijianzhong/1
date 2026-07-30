@@ -68,7 +68,7 @@ export const DEFAULT_THEME: ThemeConfig = {
 
 // ============================================================================
 // 编排引擎契约（§5.1.3 + §三之三 B/F）—— 主/渲染唯一契约源
-// 骨架阶段只放类型；编排引擎阶段（M4）落地 builder/runner 时直接 import。
+// 图/事件契约源；orchestrator builder/runner 与渲染层均从此 import（M4 骨架已落地，保真见 task.md）。
 // ============================================================================
 
 /** 6 种节点类型（§三之三 B） */
@@ -383,6 +383,8 @@ export interface Persona {
   name: string
   instructions: string
   modelId?: string
+  /** 绑定的技能 id 列表（首页主助手也可注入 skill，§铁律22） */
+  skillIds?: string[]
   /** L0 个人档案（称呼/角色/偏好语种） */
   profile?: {
     alias?: string
@@ -472,6 +474,7 @@ export interface AgentRunInput {
 /** Agent 流式回调 */
 export interface AgentRunCallbacks {
   onText?: (text: string) => void
+  onThinking?: (text: string) => void
   onToolCall?: (tool: string, args: unknown) => void
   onToolResult?: (tool: string, result: unknown) => void
   onRetry?: (info: RetryInfo) => void

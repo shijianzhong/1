@@ -60,6 +60,20 @@
   --color-bg-1: #fffdf8;
   --color-bg-2: #f4efe4;
   --color-bg-3: #ebe3d6;
+  --color-border: rgba(140, 120, 90, 0.16);
+  --color-border-strong: rgba(140, 120, 90, 0.28);
+  --color-fg-1: #3a322a;
+  --color-fg-2: #8c7e6e;
+  --color-fg-3: #bfb3a0;
+  --glass-bg: rgba(255, 250, 240, 0.6);
+  --glass-bg-strong: rgba(255, 250, 240, 0.78);
+  --glass-border-top: rgba(255, 250, 240, 0.95);
+  --glass-border-bottom: rgba(140, 120, 90, 0.12);
+  --glass-shadow: 0 6px 20px rgba(120, 100, 70, 0.06);
+  --overlay-bg: rgba(120, 100, 70, 0.1);
+  --shadow-1: 0 1px 2px oklch(0.5 0.02 60 / 0.2);
+  --shadow-2: 0 4px 12px oklch(0.5 0.02 60 / 0.25);
+  --shadow-3: 0 12px 32px oklch(0.5 0.02 60 / 0.35);
 }
 
 @theme inline {
@@ -80,6 +94,17 @@
   --color-warning: var(--color-warning);
   --color-danger: var(--color-danger);
   --color-info: var(--color-info);
+  --glass-bg: var(--glass-bg);
+  --glass-bg-strong: var(--glass-bg-strong);
+  --glass-border-top: var(--glass-border-top);
+  --glass-border-bottom: var(--glass-border-bottom);
+  --glass-shadow: var(--glass-shadow);
+  --glass-blur: var(--glass-blur);
+  --glass-blur-strong: var(--glass-blur-strong);
+  --overlay-bg: var(--overlay-bg);
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
 }
 
 html {

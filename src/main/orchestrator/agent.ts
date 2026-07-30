@@ -45,7 +45,7 @@ export class Agent {
     input: AgentRunInput,
     callbacks: AgentRunCallbacks = {},
     limits: AgentLimits = {},
-  ): Promise<{ messages: LlmMessage[]; finalText: string }> {
+  ): Promise<{ messages: LlmMessage[]; finalText: string; finalThinking: string }> {
     const maxIter = limits.maxIterations ?? DEFAULT_MAX_ITERATIONS
     let functionCallCount = 0
     const messages = [...input.messages]
@@ -53,12 +53,14 @@ export class Agent {
     const client = getClient(this.config.modelId, this.deps.llmOpts)
 
     let finalText = ''
+    let finalThinking = ''
 
     for (let iter = 0; iter < maxIter; iter++) {
       if (input.signal?.aborted) {
         throw input.signal.reason ?? new Error('aborted')
       }
 
+      logger.debug('[agent] thinking config:', this.config.thinking)
       const response = await client.stream({
         model: this.config.modelId,
         system: this.config.instructions,
@@ -75,9 +77,11 @@ export class Agent {
       // 把 assistant 产出追加到 messages（下一轮 tool_result 要配对）
       messages.push({ role: 'assistant', content: response.content })
 
-      // 聚合文本
+      // 聚合文本 + thinking
       const text = extractText(response.content)
       if (text) finalText = text
+      const thinkingText = extractThinking(response.content)
+      if (thinkingText) finalThinking = thinkingText
 
       // stop_reason 非 tool_use → 终止
       if (response.stopReason !== 'tool_use') break
@@ -140,7 +144,7 @@ export class Agent {
       }
     }
 
-    return { messages, finalText }
+    return { messages, finalText, finalThinking }
   }
 
   private resolveTools() {
@@ -151,6 +155,7 @@ export class Agent {
 
   private emitDelta(delta: LlmDelta, cb: AgentRunCallbacks): void {
     if (delta.type === 'text') cb.onText?.(delta.text)
+    else if (delta.type === 'thinking') cb.onThinking?.(delta.text)
   }
 }
 
@@ -161,5 +166,10 @@ function extractText(blocks: LlmContentBlock[]): string {
     .join('')
 }
 
-void logger
+function extractThinking(blocks: LlmContentBlock[]): string {
+  return blocks
+    .filter((b): b is Extract<LlmContentBlock, { type: 'thinking' }> => b.type === 'thinking')
+    .map((b) => b.thinking)
+    .join('')
+}
 export type { LlmResponse }

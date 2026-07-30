@@ -1,1 +1,44 @@
-{"palette": {"title": "Node palette"}, "run": "Run", "running": "Running…", "runPrompt": "Enter orchestration start message:", "inspector": {"title": "Inspector", "hint": "Drag nodes to canvas, connect, then run. Runtime highlight shows here."}, "nodes": {"agent": "Single agent node", "sequential": "Sequential container", "groupchat": "GroupChat container"}, "labels": {"seq": "SEQ", "par": "PAR", "group": "GROUP", "handoff": "HANDOFF", "magentic": "MVP"}, "capabilities": {"title": "Capabilities", "subtitle": "Create a capability, then orchestrate on the canvas.", "new": "New capability", "newTitle": "New capability", "desc": "Description", "emptyTitle": "No capabilities yet", "emptyHint": "Create one to start orchestrating your agent workflow."}}
+{
+  "back": "Back to capabilities",
+  "palette": {
+    "title": "Node palette",
+    "agents": "Agents",
+    "containers": "Containers",
+    "noAgents": "No agents yet, click to create"
+  },
+  "run": "Run",
+  "running": "Running…",
+  "runPrompt": "Enter orchestration start message:",
+  "output": "Output",
+  "status": {
+    "idle": "Idle",
+    "running": "Running",
+    "done": "Done",
+    "error": "Error"
+  },
+  "inspector": {
+    "title": "Inspector",
+    "hint": "Drag nodes to canvas, connect, then run. Runtime highlight shows here."
+  },
+  "nodes": {
+    "agent": "Single agent node",
+    "sequential": "Sequential container",
+    "groupchat": "GroupChat container"
+  },
+  "labels": {
+    "seq": "SEQ",
+    "par": "PAR",
+    "group": "GROUP",
+    "handoff": "HANDOFF",
+    "magentic": "MVP"
+  },
+  "capabilities": {
+    "title": "Capabilities",
+    "subtitle": "Create a capability, then orchestrate on the canvas.",
+    "new": "New capability",
+    "newTitle": "New capability",
+    "desc": "Description",
+    "emptyTitle": "No capabilities yet",
+    "emptyHint": "Create one to start orchestrating your agent workflow."
+  }
+}

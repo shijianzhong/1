@@ -59,6 +59,44 @@ function createWorkflowContext(
   return ctx
 }
 
+/**
+ * 创建子上下文：固定 source 为指定 executor id，共享 pending/output/onEvent。
+ * 解决并发 Promise.all 中 ctx.source 被互相覆盖的竞态问题。
+ */
+function createChildContext(parent: WorkflowContextImpl, source: string): WorkflowContextImpl {
+  return {
+    source,
+    pending: parent.pending, // 共享引用：parent.pending 被重新赋值时，send_message 仍读 parent.pending
+    output: parent.output,
+    onEvent: parent.onEvent,
+    async send_message(data, target_id) {
+      const message = toOrchMessage(data)
+      parent.pending.push({
+        source,
+        target: target_id ?? '',
+        message,
+        targeted: !!target_id,
+      })
+    },
+    async yield_output(data) {
+      const text = typeof data === 'string' ? data : JSON.stringify(data)
+      parent.output.push(text)
+      parent.onEvent({
+        type: 'output',
+        node_id: source,
+        speaker: source,
+        text,
+      })
+    },
+    async add_event(e) {
+      parent.onEvent(e)
+    },
+    get_source_executor_id() {
+      return source
+    },
+  }
+}
+
 function toOrchMessage(data: unknown): OrchMessage {
   if (typeof data === 'string') {
     return { role: 'user', content: data }
@@ -127,8 +165,9 @@ export async function runWorkflow(
           logger.warn(`[runner] 未找到 executor ${targetId}，跳过`)
           return
         }
-        ctx.source = targetId
-        await deliverToExecutor(executor, envelopes, ctx, wf, onEvent, signal)
+        // 为每个并发 executor 创建独立子上下文，避免 source 互相覆盖
+        const executorCtx = createChildContext(ctx, targetId)
+        await deliverToExecutor(executor, envelopes, executorCtx, wf, onEvent, signal)
       }),
     )
 
@@ -160,7 +199,7 @@ async function deliverToExecutor(
 
   try {
     // should_respond=true → 触发 handle；false → 仅 extend cache（broadcast 模式）
-    // 骨架阶段：默认 should_respond=true（具体 pattern 实现广播时设 false）
+    // TODO(M4 收口)：仍硬编码 true；GroupChat 广播须由 envelope/pattern 设 false（铁律 15，见 task.md）
     const req = { messages, shouldRespond: true }
     const eventStream = executor.handle(req, ctx)
     for await (const event of eventStream) {

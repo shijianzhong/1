@@ -49,6 +49,7 @@ export interface OneApi {
     get: (id: string) => Promise<IpcResult<Skill | null>>
     save: (input: Partial<Skill> & { name: string; content: string }) => Promise<IpcResult<Skill>>
     remove: (id: string) => Promise<IpcResult<void>>
+    pickFile: () => Promise<IpcResult<{ name: string; description?: string; content: string; scriptPath?: string } | null>>
   }
   models: {
     list: () => Promise<IpcResult<ModelConfig[]>>
@@ -103,8 +104,6 @@ export interface OneApi {
     getSystemColorMode: () => Promise<IpcResult<'light' | 'dark' | 'system'>>
     show: () => Promise<IpcResult<void>>
   }
-  // 编排（M4 接入）
-  // orchestrate: { run, onStream, cancel }
 }
 
 const api: OneApi = {
@@ -136,6 +135,7 @@ const api: OneApi = {
     get: (id) => ipcRenderer.invoke('skills:get', id),
     save: (input) => ipcRenderer.invoke('skills:save', input),
     remove: (id) => ipcRenderer.invoke('skills:remove', id),
+    pickFile: () => ipcRenderer.invoke('skills:pickFile'),
   },
   models: {
     list: () => ipcRenderer.invoke('models:list'),

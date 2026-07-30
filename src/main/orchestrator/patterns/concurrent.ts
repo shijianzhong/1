@@ -7,8 +7,10 @@ import { AgentExecutor } from './agent'
 // dispatcher fan-out 给所有 participant（同 superstep 并发）；
 // fan-in 等 all 到齐再调 aggregator 取每个最后 assistant msg 拼合。
 //
-// builder 职责：注册所有 participant，配 fan-out 边（dispatcher→each）+
-// fan-in 边（each→aggregator）。骨架用 ConcurrentExecutor 包装聚合逻辑。
+// builder 职责：注册所有 participant + aggregator + Concurrent 容器，
+// 配 fan-in 边（each→aggregator）。fan-out 由 ConcurrentExecutor.handle 内部
+// 调 ctx.send_message 实现，不再额外配 container→participant 边（避免 runner
+// fan-out 与 handle fan-out 重复投递导致 participant 收到双份消息）。
 
 export interface ConcurrentConfig {
   participants: string[]
@@ -71,9 +73,9 @@ export function buildConcurrent(
   const container = new ConcurrentExecutor(node.id, participantIds, aggEx.id)
   bctx.addExecutor(container)
 
-  // 边：container → each participant → aggregator
+  // 边：each participant → aggregator（fan-out 由 handle 内部 send_message 实现，
+  // 不再配 container→participant 边，避免 runner fan-out 重复投递）
   for (const pid of participantIds) {
-    bctx.addEdge(container.id, pid)
     bctx.addEdge(pid, aggEx.id)
   }
 }
