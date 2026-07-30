@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { unwrap } from '@renderer/api/client'
 import { IpcError } from '@renderer/api/client'
 import { Markdown } from '@renderer/components/Markdown'
+import { MentionComposer, type MentionComposerHandle } from '@renderer/components/MentionComposer'
+import { useAgents, useCapabilities } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 import type { SessionMessage } from '@shared/types'
 
@@ -39,10 +41,13 @@ export function HomePage() {
   const sessionId = useChatStore((s) => s.sessionId)
   const historyMessages = useChatStore((s) => s.messages)
   const [streamMsgs, setStreamMsgs] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<(() => void) | null>(null)
+  const composerRef = useRef<MentionComposerHandle>(null)
+  // @提及数据源（角色/能力列表，供下拉补全）
+  const agentsQ = useAgents()
+  const capabilitiesQ = useCapabilities()
 
   // 自动滚动相关
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -138,9 +143,9 @@ export function HomePage() {
   }, [])
 
   const onSend = async (overrideText?: string): Promise<void> => {
-    const text = (overrideText ?? input).trim()
+    const text = (overrideText ?? composerRef.current?.getText() ?? '').trim()
     if (!text || sending) return
-    if (!overrideText) setInput('')
+    if (!overrideText) composerRef.current?.clear()
     setError(null)
     setSending(true)
     // 重试时不清空已有流式消息（保留上下文），仅追加 user 消息
@@ -250,17 +255,13 @@ export function HomePage() {
       </div>
 
       <div className="glass-panel composer">
-        <input
-          placeholder={t('home:composerPlaceholder')}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void onSend()
-            }
-          }}
+        <MentionComposer
+          ref={composerRef}
+          agents={agentsQ.data ?? []}
+          capabilities={capabilitiesQ.data ?? []}
           disabled={sending}
+          placeholder={t('home:composerPlaceholder')}
+          onSend={(text) => void onSend(text)}
         />
         <button type="button" onClick={() => void onSend()} disabled={sending}>
           {t('common:actions.send')}

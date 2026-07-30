@@ -199,6 +199,12 @@ export type LlmDelta =
   | { type: 'error'; error: string }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
 
+/** 首页流式事件（home:stream）——LlmDelta 超集 + 编排事件 + 会话 id */
+export type HomeStreamEvent =
+  | LlmDelta
+  | { type: 'run_id'; sessionId: string }
+  | { type: 'orch_event'; event: StreamEvent }
+
 /** 重试回调参数 */
 export interface RetryInfo {
   attempt: number

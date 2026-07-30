@@ -256,6 +256,125 @@ html[data-platform='darwin'] .titlebar__inner {
   cursor: pointer;
 }
 
+/* —— @提及芯片输入框 —— */
+.mention-composer {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.mention-composer__editor {
+  min-height: 1.5em;
+  max-height: 8em;
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-fg-1);
+  font-size: 1rem;
+  line-height: 1.5;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  caret-color: var(--color-brand-500);
+}
+
+.mention-composer__editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--color-fg-3);
+  pointer-events: none;
+}
+
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 6px;
+  margin: 0 1px;
+  font-size: 0.92em;
+  font-weight: 500;
+  line-height: 1.5;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.mention-chip--agent {
+  background: color-mix(in oklch, var(--color-brand-500) 14%, transparent);
+  color: var(--color-brand-600);
+}
+
+.mention-chip--capability {
+  background: color-mix(in oklch, var(--color-accent, #8b5cf6) 14%, transparent);
+  color: var(--color-accent, #8b5cf6);
+}
+
+.mention-composer__dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 260px;
+  max-width: min(420px, 80vw);
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 16px;
+  padding: 6px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mention-composer__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-fg-1);
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mention-composer__option.is-active {
+  background: color-mix(in oklch, var(--color-brand-500) 12%, transparent);
+}
+
+.mention-composer__badge {
+  flex-shrink: 0;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mention-composer__badge--agent {
+  background: color-mix(in oklch, var(--color-brand-500) 16%, transparent);
+  color: var(--color-brand-600);
+}
+
+.mention-composer__badge--capability {
+  background: color-mix(in oklch, var(--color-accent, #8b5cf6) 16%, transparent);
+  color: var(--color-accent, #8b5cf6);
+}
+
+.mention-composer__name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mention-composer__desc {
+  color: var(--color-fg-3);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .command-overlay {
   position: fixed;
   inset: 0;

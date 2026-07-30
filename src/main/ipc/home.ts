@@ -1,15 +1,33 @@
 import { BrowserWindow } from 'electron'
-import type { AgentConfig, LlmDelta, LlmMessage, Persona } from '@shared/types'
+import type { AgentConfig, HomeStreamEvent, LlmMessage, Persona } from '@shared/types'
 import { withHandler } from './handler'
-import { getDefaultProvider, getPersona, getSkill, resolveProviderCredentials } from '../storage/models'
+import {
+  getDefaultProvider,
+  getPersona,
+  getSkill,
+  getAgent,
+  getCapability,
+  listAgents,
+  listCapabilities,
+  resolveProviderCredentials,
+} from '../storage/models'
 import { addMessage, createSession, listMessages } from '../storage/sessions'
 import { Agent } from '../orchestrator/agent'
+import {
+  TeamJsonDetector,
+  buildRoutingInstruction,
+  buildTeamGraph,
+  resolveMentions,
+  runTeam,
+} from '../orchestrator/home'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolDefs } from '../tools/registry'
+import type { BuildDeps } from '../orchestrator/builder'
+import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
 
 // —— 首页主助手聊天 IPC（§5.6 + §三之三 D/M + 铁律21）——
@@ -25,7 +43,7 @@ function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
 }
 
-function emitStream(delta: LlmDelta): void {
+function emitStream(delta: HomeStreamEvent): void {
   const win = getMainWindow()
   win?.webContents.send(STREAM_CHANNEL, delta)
 }
@@ -112,9 +130,16 @@ export function registerHomeHandlers(): void {
       const desc = skill.description ? `\n  description: ${skill.description}` : ''
       skillBlocks.push(`<skill name="${skill.name}"${desc}>\n${content}\n</skill>`)
     }
-    const instructions = skillBlocks.length > 0
+    const instructionsWithSkills = skillBlocks.length > 0
       ? `${instructionsWithL0}\n\n${skillBlocks.join('\n\n')}`
       : instructionsWithL0
+
+    // —— 意图路由指令段（§三之三 M + 铁律24）：注入角色/能力清单 + 组队 JSON 约定 ——
+    // 主 Agent 据此判断直答 vs 输出组队 JSON；无可用角色/能力时不注入（不打扰人设）。
+    const routingInstruction = buildRoutingInstruction(listAgents(), listCapabilities())
+    const instructions = routingInstruction
+      ? `${instructionsWithSkills}\n${routingInstruction}`
+      : instructionsWithSkills
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
@@ -135,12 +160,94 @@ export function registerHomeHandlers(): void {
       toolCtx: { sessionId: sid },
     })
 
-    // 7. Agent.run（含重试等待回调 + 错误兜底推 AI 气泡位置）
+    // —— 编排图 BuildDeps（组队/能力直跑共用）——
+    const buildDeps: BuildDeps = {
+      resolveAgent: (node) => {
+        const d = node.data as {
+          label?: string
+          instructions?: string
+          description?: string
+          skillIds?: string[]
+          modelId?: string
+          temperature?: number
+          maxTokens?: number
+          outputConstraints?: string
+        }
+        const nodeThinking = resolveThinkingConfig(
+          d.modelId ?? modelId,
+          apiFormat,
+          enableThinking,
+        )
+        const cfg: AgentConfig = {
+          name: d.label ?? node.id,
+          description: d.description,
+          instructions: d.instructions ?? '',
+          modelId: d.modelId ?? modelId,
+          tools: listToolDefs(),
+          defaultOptions: { maxTokens: d.maxTokens ?? 16384, temperature: d.temperature },
+          outputConstraints: d.outputConstraints,
+          thinking: nodeThinking,
+        }
+        const opts: AgentExecutorOptions = {
+          config: cfg,
+          llmOpts: { apiKey, baseURL, authHeader },
+          toolCtx: { sessionId: sid },
+        }
+        return opts
+      },
+    }
+
+    // —— @提及直跳（用户明确意图，比 LLM 路由更准，不过 LLM 判定）——
+    const mentions = resolveMentions(message, listAgents(), listCapabilities())
+    const directCap = mentions.capabilities.length === 1 && mentions.agents.length === 0
+      ? mentions.capabilities[0]
+      : null
+    const directAgent = mentions.agents.length >= 1 && mentions.capabilities.length === 0
+      ? mentions.agents
+      : null
+
     try {
+      if (directCap) {
+        // 单能力：直接跑能力图
+        emitStream({ type: 'run_id', sessionId: sid })
+        const cap = getCapability(directCap.id)
+        if (!cap) throw new Error(`能力 ${directCap.name} 不存在`)
+        const question = mentions.cleanText || message
+        const result = await runTeam(cap.graph, question, sid, buildDeps, emitStream)
+        addMessage({ sessionId: sid, role: 'assistant', content: result.output })
+        emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+        return { runId: sid }
+      }
+
+      if (directAgent) {
+        // 单/多角色：拼图跑（单角色单 agent 图；多角色 groupchat）
+        emitStream({ type: 'run_id', sessionId: sid })
+        const graph = buildTeamGraph(
+          { role_ids: directAgent.map((a) => a.id) },
+          getAgent,
+          getCapability,
+        )
+        if (!graph) throw new Error('组队图构建失败')
+        const question = mentions.cleanText || message
+        const result = await runTeam(graph, question, sid, buildDeps, emitStream)
+        addMessage({ sessionId: sid, role: 'assistant', content: result.output })
+        emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+        return { runId: sid }
+      }
+
+      // —— 意图路由（铁律24）：主 Agent 跑时 onText 不直接推前端，喂 detector ——
+      // 安全文本推前端；判出组队起始后文本进 teamBuffer 不再推前端，改跑编排。
+      const detector = new TeamJsonDetector()
+      let finalText = ''
+      let finalThinking = ''
+
       const result = await agent.run(
         { messages: l1Messages, runId: sid },
         {
-          onText: (text) => emitStream({ type: 'text', text }),
+          onText: (text) => {
+            const safe = detector.feed(text)
+            if (safe) emitStream({ type: 'text', text: safe })
+          },
           onThinking: (text) => emitStream({ type: 'thinking', text }),
           onRetry: (info) =>
             emitStream({
@@ -152,14 +259,47 @@ export function registerHomeHandlers(): void {
             }),
         },
       )
+      finalText = result.finalText
+      finalThinking = result.finalThinking
 
-      // 8. 存 assistant 回复（thinking 存入 meta，供前端折叠展示）
-      addMessage({
-        sessionId: sid,
-        role: 'assistant',
-        content: result.finalText,
-        meta: result.finalThinking ? { thinking: result.finalThinking } : undefined,
-      })
+      // 流结束：判定直答 vs 组队
+      const decision = detector.decide()
+      if (decision.kind === 'team') {
+        // 组队：拼编排图跑 runner，事件经 orch_event 转前端
+        logger.info('[home-router] 判为组队:', JSON.stringify(decision.json))
+        emitStream({ type: 'run_id', sessionId: sid })
+        const graph = buildTeamGraph(decision.json, getAgent, getCapability)
+        if (graph) {
+          const teamResult = await runTeam(graph, message, sid, buildDeps, emitStream)
+          addMessage({
+            sessionId: sid,
+            role: 'assistant',
+            content: teamResult.output,
+            meta: { thinking: finalThinking || undefined, team: decision.json },
+          })
+        } else {
+          // 组队 JSON 指向的 role/capability 全失效 → 回退直答
+          logger.warn('[home-router] 组队图构建失败（role/capability 失效），回退直答')
+          const direct = detector.flushDirect()
+          if (direct) emitStream({ type: 'text', text: direct })
+          addMessage({
+            sessionId: sid,
+            role: 'assistant',
+            content: finalText,
+            meta: finalThinking ? { thinking: finalThinking } : undefined,
+          })
+        }
+      } else {
+        // 直答：flush 尾窗残留推前端，存档
+        const tail = detector.flushDirect()
+        if (tail) emitStream({ type: 'text', text: tail })
+        addMessage({
+          sessionId: sid,
+          role: 'assistant',
+          content: finalText,
+          meta: finalThinking ? { thinking: finalThinking } : undefined,
+        })
+      }
 
       // 9. 会话结束异步触发 L2 精炼
       void refineL2(DEFAULT_USER_ID, sid, allMessages, compressFn).catch((e) =>

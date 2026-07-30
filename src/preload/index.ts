@@ -89,7 +89,7 @@ export interface OneApi {
   }
   home: {
     chat: (input: { message: string; sessionId?: string }) => Promise<IpcResult<{ runId: string }>>
-    onStream: (cb: (delta: import('@shared/types').LlmDelta) => void) => () => void
+    onStream: (cb: (delta: import('@shared/types').HomeStreamEvent) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
   }
   orchestrate: {
@@ -176,7 +176,7 @@ const api: OneApi = {
   home: {
     chat: (input) => ipcRenderer.invoke('home:chat', input),
     onStream: (cb) => {
-      const handler = (_e: unknown, delta: import('@shared/types').LlmDelta) => cb(delta)
+      const handler = (_e: unknown, delta: import('@shared/types').HomeStreamEvent) => cb(delta)
       ipcRenderer.on('home:stream', handler)
       return () => ipcRenderer.off('home:stream', handler)
     },
