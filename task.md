@@ -4,7 +4,7 @@
 > **本文件是实现进度权威源**；`CLAUDE.md`「当前阶段」与 `REWRITE_PLAN` §八 应与此对齐。
 > 阶段 0（脚手架）已完成于 `2f759db`（M0 骨架修复）。
 >
-> **快照 2026-07-30**：M0–M3 ✅ · M5 骨架 ✅ · M6 部分 ✅ · **M4 ⚠ 骨架有、保真未收口** · M7 ⏳。详见文末「已知缺口」。
+> **快照 2026-07-30**：M0–M4 ✅ · M5 骨架 ✅ · M6 部分 ✅ · M7 ⏳。详见文末「已知缺口」。
 
 ---
 
@@ -80,33 +80,33 @@
 
 ---
 
-## 阶段 4：编排引擎（M4）⚠ 未收口
+## 阶段 4：编排引擎（M4）✅ 已收口 `4dd76dc`
 
-里程碑：画布编排能跑 Sequential/Concurrent/GroupChat/Handoff 且语义保真；Magentic 降级提示。**骨架已合入，M4 里程碑未达。**
+里程碑：画布编排能跑 Sequential/Concurrent/GroupChat/Handoff 且语义保真；Magentic 降级提示。**M4 收口完成于 `4dd76dc`。**
 
-### 4a：Sequential + Concurrent + Agent 叶子（✅ 骨架；fan-in 待加固）
+### 4a：Sequential + Concurrent + Agent 叶子（✅）
 
 - [x] 4a.1 `orchestrator/models.ts`：Executor/ExecutorRequest/WorkflowContext/RuntimeWorkflow 抽象 + shared 补 OrchMessage/MessageEnvelope（铁律7/15）`914ca5e`
 - [x] 4a.2 `runner.ts`：Pregel superstep 主循环（非递归，单 pending buffer）+ Promise.all 并发 deliver + 收敛 + MAX_SUPERSTEPS 兜底 `914ca5e`
 - [x] 4a.3 `builder.ts`：JSON 图→RuntimeWorkflow，环检测（DFS 三色），按 type 分发，无静态排序 `914ca5e`
 - [x] 4a.4 Sequential + Agent 叶子（wake_on_upstream 治复述 / strip_tool_blocks_filter 治 2013）`914ca5e`
-- [x] 4a.5 Concurrent fan-out（参与者边已配）；**[ ] fan-in 栅栏（等齐再聚合）未扎实** `914ca5e`
-- [x] 4a.6 条件边 `contains:` 谓词 + 恒真（runner evaluatePredicate）；**[ ] 画布 GraphEdge.condition → conditions 映射未齐**
+- [x] 4a.5 Concurrent fan-out + fan-in 栅栏（等齐再聚合，runner superstep 末尾扫描）`914ca5e` + `4dd76dc`
+- [x] 4a.6 条件边 `contains:` 谓词 + 恒真 + GraphEdge.condition → conditions 映射（builder addCondition）+ 未命中走普通边兜底 `914ca5e` + `4dd76dc`
 - [x] 4a.7 黄金用例：Sequential 4 case（接力/单 agent/wake/strip）+ Concurrent 2 case（fan-out/should_respond=false）`914ca5e`
 
 > 4a 修复：Pregel 单 pending buffer（原双 buffer nextPending 导致下轮误判收敛，B 永不 deliver）。
 
-### 4b：GroupChat + Handoff（⚠ 骨架有，运行时保真缺口）
+### 4b：GroupChat + Handoff（✅ 运行时保真已通）
 
-- [x] 4b.1 GroupChat：round_robin 容器骨架 `46270e4`；**[ ] runner 仍硬编码 `shouldRespond: true`，broadcast「仅 extend cache」未通**
-- [x] 4b.2 GroupChat 四 patch：纯函数 + 单测 `46270e4`；**[ ] 运行时 handle 未完整调用 fairness/manager_output 等**
-- [x] 4b.3 GroupChat manager：extract 辅助有；**selectNextSpeaker manager 模式仍降级 round_robin（TODO）** `46270e4`
+- [x] 4b.1 GroupChat：round_robin 容器骨架 `46270e4`；runner shouldRespond 双语义接线 + broadcast「仅 extend cache」已通 `4dd76dc`
+- [x] 4b.2 GroupChat 四 patch：纯函数 + 运行时 handle 完整调用（dedup/cache/repair/fairness/manager_output）`46270e4` + `4dd76dc`
+- [x] 4b.3 GroupChat manager：结构化输出接线（本地调 orchestrator agent 拿 AgentOrchestrationOutput，不经 superstep）；fairness 首轮跳过；解析失败降级 round_robin `46270e4` + `4dd76dc`
 - [x] 4b.4 Handoff：synthetic tool + Agent 短路 + HandoffExecutor 路由基本可用 `46270e4`
 - [x] 4b.5 Magentic 占位降级（抛提示改用 groupchat+handoff）`46270e4`
 - [x] 4b.6 编排 IPC + 流式（orchestrate:run/onStream/cancel + preload namespace）`46270e4`
 - [x] 4b.7 单测：GroupChat 四 patch + Handoff 辅助 `46270e4`
 - [x] 4b.8 画布编辑器联调（EditorPage + Agent/Container NodeView + 运行高亮）—— 可持续打磨
-- [ ] 4b.9 **M4 收口清单**：shouldRespond 接线 · Concurrent fan-in · manager 结构化输出接线 · repair_tool_pairs · 完整 context_mode · 首页意图路由（铁律 24）· outputConstraints 注入 instructions
+- [x] 4b.9 **M4 收口清单**（`4dd76dc`）：shouldRespond 接线 ✅ · Concurrent fan-in ✅ · manager 结构化输出接线 ✅ · repair_tool_pairs ✅ · outputConstraints 注入 instructions ✅ · 完整 context_mode（strip_tool_blocks_filter 已在 constraints.ts，Sequential 下游接入待联调）· 首页意图路由（铁律 24，移交 M5 后续）
 
 ---
 
@@ -156,11 +156,11 @@
 
 | 优先级 | 缺口 | 对应 |
 |--------|------|------|
-| P0 | runner `shouldRespond` 硬编码 true | 铁律 15 / GroupChat 广播 |
-| P0 | Concurrent fan-in 栅栏 | 4a.5 |
-| P0 | 首页直答 vs 组队 JSON 路由 | 铁律 24 |
-| P1 | GroupChat manager 运行时接线 | 4b.3 |
-| P1 | `repair_tool_pairs` / context_mode | 铁律 16/18 |
+| ~~P0~~ | ~~runner `shouldRespond` 硬编码 true~~ ✅ `4dd76dc` | 铁律 15 / GroupChat 广播 |
+| ~~P0~~ | ~~Concurrent fan-in 栅栏~~ ✅ `4dd76dc` | 4a.5 |
+| ~~P1~~ | ~~GroupChat manager 运行时接线~~ ✅ `4dd76dc` | 4b.3 |
+| ~~P1~~ | ~~`repair_tool_pairs`~~ ✅ `4dd76dc`；context_mode 完整三态（`full`/`last_agent`/`custom+context_filter`）Sequential 下游接入待联调 | 铁律 16/18 |
+| P0 | 首页直答 vs 组队 JSON 路由（M5 后续主战场） | 铁律 24 |
 | P1 | i18n 硬编码清零 + errors.* | 5.8 / 铁律 T2 |
 | P2 | Skill ContextProvider + 脚本 | 7.4 / 铁律 22/23 |
 | P2 | 崩溃草稿写盘 + UI | 6.4 |
