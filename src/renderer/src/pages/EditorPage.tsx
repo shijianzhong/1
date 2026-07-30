@@ -172,7 +172,11 @@ function EditorCanvas() {
     if (incomingHash === lastGraphHashRef.current) return
     lastGraphHashRef.current = incomingHash
 
-    const g = cap.graph
+    // 拷贝 graph 外壳 + edges 数组：下面的归一化有 push / filter 重赋值，
+    // 直接别名 capQ.data.graph 会就地污染 React Query 缓存。
+    // （edges 必须一起拷——仅 { ...cap.graph } 时 push 仍会改到缓存数组；
+    //   nodes 只读不改，无需拷贝。）
+    const g = { ...cap.graph, edges: [...cap.graph.edges] }
 
     // 整理 concurrent 容器的连线：
     // - 补 container → aggregator 的视觉边（一根线代表 fan-in）
