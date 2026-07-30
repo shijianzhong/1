@@ -81,6 +81,7 @@ export function SettingsPage() {
       name: persona?.name ?? t('settings:profile.defaultName'),
       instructions: persona?.instructions ?? '',
       modelId: persona?.modelId,
+      skillIds: persona?.skillIds,
       profile,
       updatedAt: Date.now(),
     }
@@ -88,6 +89,8 @@ export function SettingsPage() {
       name: p.name,
       instructions: p.instructions,
       modelId: p.modelId,
+      skillIds: p.skillIds,
+      profile: p.profile,
     } as never).catch(() => {})
   }
 

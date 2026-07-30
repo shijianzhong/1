@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
@@ -21,11 +21,17 @@ interface ChatMessage {
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
 function toChatMessages(msgs: SessionMessage[]): ChatMessage[] {
-  return msgs.map((m) => ({
-    id: m.id,
-    role: m.role === 'tool' ? 'user' : (m.role as 'user' | 'assistant'),
-    text: m.content,
-  }))
+  return msgs.map((m) => {
+    const thinking = (m.meta as { thinking?: string } | undefined)?.thinking
+    return {
+      id: m.id,
+      role: m.role === 'tool' ? 'user' : (m.role as 'user' | 'assistant'),
+      text: m.content,
+      // 历史消息的 thinking 默认折叠（用户可展开查看）
+      thinking: thinking || undefined,
+      thinkingCollapsed: thinking ? true : undefined,
+    }
+  })
 }
 
 export function HomePage() {
@@ -38,14 +44,35 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<(() => void) | null>(null)
 
+  // 自动滚动相关
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isNearBottomRef = useRef(true)
+
   // 历史消息 + 本轮流式消息
   const messages = [...toChatMessages(historyMessages), ...streamMsgs]
 
-  // 切换会话时清空流式
+  // 自动滚动到底部（用户接近底部时才触发，避免打断阅读历史消息）
+  const scrollToBottom = useCallback((force = false) => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    if (force || isNearBottomRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: force ? 'smooth' : 'auto' })
+    }
+  }, [])
+
+  // 消息变化时自动滚动
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, scrollToBottom])
+
+  // 切换会话时清空流式 + 强制滚动到底部
   useEffect(() => {
     setStreamMsgs([])
     setError(null)
-  }, [sessionId])
+    isNearBottomRef.current = true
+    // 延迟一帧确保 DOM 更新后再滚动
+    requestAnimationFrame(() => scrollToBottom(true))
+  }, [sessionId, scrollToBottom])
 
   // 订阅流式
   useEffect(() => {
@@ -122,6 +149,9 @@ export function HomePage() {
     } else {
       setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
     }
+    // 发送后强制滚动到底部
+    isNearBottomRef.current = true
+    requestAnimationFrame(() => scrollToBottom(true))
 
     try {
       const result = await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
@@ -147,7 +177,15 @@ export function HomePage() {
 
   return (
     <div className="chat-shell">
-      <div className="chat-messages">
+      <div
+        className="chat-messages"
+        ref={scrollContainerRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+          isNearBottomRef.current = distance < 80
+        }}
+      >
         <section className="glass-panel placeholder-card" style={{ borderRadius: 28, padding: 24 }}>
           <p className="section-title">{t('home:welcome')}</p>
           <p className="section-subtitle">{t('home:description')}</p>

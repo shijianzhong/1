@@ -118,12 +118,30 @@ export class RetryingClient {
   }
 }
 
-// —— client 按 modelId 缓存（§三之三 H：@lru_cache(maxsize=16)）——
+// —— client 按 modelId+baseURL+authHeader+apiKey 缓存（§三之三 H：@lru_cache(maxsize=16)）——
+// 缓存键必须区分不同供应商/凭据，否则同一 modelId 不同 baseURL 会命中错误的 client。
 const clientCache = new Map<string, RetryingClient>()
 const MAX_CACHE = 16
 
+/** 生成缓存键：modelId + baseURL + authHeader + apiKey 哈希 */
+function makeCacheKey(modelId: string, opts: LLMClientOptions): string {
+  const keyHash = opts.apiKey ? hashApiKey(opts.apiKey) : 'none'
+  return `${modelId}|${opts.baseURL ?? ''}|${opts.authHeader ?? ''}|${keyHash}`
+}
+
+/** 简单哈希 apiKey，避免明文存入 Map key */
+function hashApiKey(key: string): string {
+  let h = 0
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) - h) + key.charCodeAt(i)
+    h |= 0
+  }
+  return `h${(h >>> 0).toString(36)}`
+}
+
 export function getClient(modelId: string, opts: LLMClientOptions): RetryingClient {
-  let cached = clientCache.get(modelId)
+  const cacheKey = makeCacheKey(modelId, opts)
+  let cached = clientCache.get(cacheKey)
   if (cached) return cached
   cached = new RetryingClient(opts)
   if (clientCache.size >= MAX_CACHE) {
@@ -131,6 +149,6 @@ export function getClient(modelId: string, opts: LLMClientOptions): RetryingClie
     const firstKey = clientCache.keys().next().value
     if (firstKey) clientCache.delete(firstKey)
   }
-  clientCache.set(modelId, cached)
+  clientCache.set(cacheKey, cached)
   return cached
 }

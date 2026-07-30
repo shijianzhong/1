@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LlmDelta, LlmRequest, LlmResponse } from '@shared/types'
 import { logger } from '../logger'
+import { ThinkingTagParser } from './thinking-tag-parser'
 
 // —— Anthropic TS SDK 封装（§5.3 + §三之三 I + 铁律9）——
 // 用 beta.messages.stream；system 抽顶层；role 映射 system/tool→user；
@@ -56,8 +57,7 @@ export class LLMClient {
           ? { type: 'adaptive' as const }
           : undefined
       : undefined
-    // eslint-disable-next-line no-console
-    console.log('[llm] stream 请求:', { model: req.model, thinking, baseURL: req.model })
+    logger.debug('[llm] stream 请求', { model: req.model, thinking: !!thinking, hasThinking: !!req.thinking })
     const stream = await this.sdk.beta.messages.stream(
       {
         model: req.model,
@@ -72,14 +72,19 @@ export class LLMClient {
       { signal: req.signal },
     )
 
+    // 标签解析器：中转代理不支持原生 thinking API 时，模型用 think 标签输出推理
+    const tagParser = new ThinkingTagParser()
     for await (const event of stream) {
-      handleStreamEvent(event, onDelta)
+      handleStreamEvent(event, onDelta, tagParser)
     }
 
     const finalMessage = await stream.finalMessage()
+    logger.debug('[llm] finalMessage content types', finalMessage.content.map((b: { type: string }) => b.type))
+    // 清理最终 text 中的 thinking 标签（中转代理可能把标签留在 text block 里）
+    const cleanedContent = fromAnthropicContent(finalMessage.content).map(stripThinkingTags)
     return {
       stopReason: finalMessage.stop_reason ?? null,
-      content: fromAnthropicContent(finalMessage.content),
+      content: cleanedContent,
     }
   }
 }
@@ -161,9 +166,12 @@ function fromAnthropicContent(
 }
 
 // —— 流式事件转 LlmDelta（§三之三 I：哪些 type 有输出）——
+// text_delta 经过 ThinkingTagParser：中转代理不支持原生 thinking API 时，
+// 模型用 think 标签包推理过程，解析器把标签内文本转成 thinking delta。
 function handleStreamEvent(
   event: Anthropic.Beta.Messages.BetaRawMessageStreamEvent,
   onDelta: ((d: LlmDelta) => void) | undefined,
+  tagParser: ThinkingTagParser,
 ): void {
   if (!onDelta) return
   switch (event.type) {
@@ -177,9 +185,13 @@ function handleStreamEvent(
     case 'content_block_delta': {
       const d = event.delta
       if (d.type === 'text_delta') {
-        onDelta({ type: 'text', text: d.text })
+        // 中转可能把 thinking 内容混在 text_delta 里，用标签解析器分流
+        const deltas = tagParser.feed(d.text)
+        for (const delta of deltas) {
+          onDelta(delta)
+        }
       } else if (d.type === 'thinking_delta') {
-        // 思考过程流式推送（前端折叠/灰色渲染）
+        // 原生 thinking delta（官方 Anthropic API 走这条路径）
         onDelta({ type: 'thinking', text: (d as { thinking: string }).thinking })
       } else if (d.type === 'input_json_delta') {
         onDelta({
@@ -191,6 +203,10 @@ function handleStreamEvent(
       break
     }
     case 'content_block_stop':
+      // flush 标签解析器残留 buffer
+      for (const delta of tagParser.flush()) {
+        onDelta(delta)
+      }
       onDelta({ type: 'tool_use_stop', id: event.index.toString() })
       break
     case 'message_delta':
@@ -204,4 +220,38 @@ function handleStreamEvent(
   }
 }
 
-void logger // 预留日志（流式错误时用）
+/**
+ * 从最终 text block 中清除 thinking 标签。
+ * 中转代理可能把思考过程用标签包裹后留在 text block 里。
+ * 流式阶段已通过 ThinkingTagParser 分流，但 finalMessage 的 content 是原始的。
+ *
+ * 代理兼容：某些中转会剥离开标签只留闭标签，
+ * 此时 paired regex 匹配不到，需要第二遍清除孤立闭标签及其前文（thinking 内容）。
+ */
+function stripThinkingTags(block: import('@shared/types').LlmContentBlock): import('@shared/types').LlmContentBlock {
+  if (block.type !== 'text') return block
+  const tagPairs: Array<[string, string]> = [
+    ['\u003Cthink\u003E', '\u003C/think\u003E'],
+    ['\u003Cthinking\u003E', '\u003C/thinking\u003E'],
+    ['\u003Cadia\u003E', '\u003C/adia\u003E'],
+  ]
+  let text = block.text
+  // 第一遍：移除配对标签（开标签 + 内容 + 闭标签）
+  for (const [open, close] of tagPairs) {
+    const regex = new RegExp(
+      open.replace(/[<>/]/g, (m) => '\\' + m) +
+      '[\\s\\S]*?' +
+      close.replace(/[<>/]/g, (m) => '\\' + m),
+      'g',
+    )
+    text = text.replace(regex, '')
+  }
+  // 第二遍：移除孤立闭标签及其前文（代理剥离开标签后的残留）
+  for (const [, close] of tagPairs) {
+    const idx = text.indexOf(close)
+    if (idx !== -1) {
+      text = text.slice(idx + close.length)
+    }
+  }
+  return { type: 'text' as const, text: text.trim() }
+}
