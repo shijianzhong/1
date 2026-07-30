@@ -1,13 +1,14 @@
 import { BrowserWindow } from 'electron'
 import type { AgentConfig, LlmDelta, LlmMessage, Persona } from '@shared/types'
 import { withHandler } from './handler'
-import { getDefaultProvider, getPersona, resolveProviderCredentials } from '../storage/models'
+import { getDefaultProvider, getPersona, getSkill, resolveProviderCredentials } from '../storage/models'
 import { addMessage, createSession, listMessages } from '../storage/sessions'
 import { Agent } from '../orchestrator/agent'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { getClient } from '../llm/retry'
+import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolDefs } from '../tools/registry'
 import { logger } from '../logger'
 
@@ -61,7 +62,8 @@ export function registerHomeHandlers(): void {
     const persona = getPersona()
     const provider = getDefaultProvider()
     if (!provider) throw new Error('未配置供应商，请先在模型页添加供应商')
-    const { apiKey, baseURL, authHeader, modelId, enableThinking } = resolveProviderCredentials(provider, 'default')
+    const { apiKey, baseURL, authHeader, modelId, enableThinking, apiFormat } = resolveProviderCredentials(provider, 'default')
+    logger.info('[home] provider:', provider.name, 'enableThinking:', enableThinking, 'modelId:', modelId)
     if (!modelId) throw new Error('供应商未配置默认模型')
     const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader)
 
@@ -87,23 +89,46 @@ export function registerHomeHandlers(): void {
     void _l1Summary
     const l1Messages = buildL1Messages(sid, recentWindow)
 
-    // 5. 拼装 instructions（§D）：L0 + L2 + persona instructions
+    // 5. 拼装 instructions（§D）：L0 + L2 + persona instructions + skill 注入
     const baseInstructions = persona?.instructions ?? ''
     const l2 = buildL2Injection(DEFAULT_USER_ID)
     const instructionsWithL2 = l2
       ? `${baseInstructions}\n\n${l2}`
       : baseInstructions
-    const instructions = injectL0(instructionsWithL2, persona)
+    const instructionsWithL0 = injectL0(instructionsWithL2, persona)
+
+    // —— Skill 注入（§铁律22）：persona 也可绑定 skill，inline 成 <skill> XML 块拼入 instructions ——
+    const personaSkillIds = persona?.skillIds ?? []
+    const skillBlocks: string[] = []
+    for (const sid of personaSkillIds) {
+      const skill = getSkill(sid)
+      if (!skill) {
+        logger.warn(`[home] persona 绑定的 skill ${sid} 不存在，跳过`)
+        continue
+      }
+      const content = skill.content.length > 24000
+        ? skill.content.slice(0, 24000) + '\n\n[... skill 内容超长截断 ...]'
+        : skill.content
+      const desc = skill.description ? `\n  description: ${skill.description}` : ''
+      skillBlocks.push(`<skill name="${skill.name}"${desc}>\n${content}\n</skill>`)
+    }
+    const instructions = skillBlocks.length > 0
+      ? `${instructionsWithL0}\n\n${skillBlocks.join('\n\n')}`
+      : instructionsWithL0
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
-    // thinking：按供应商开关（enableThinking）决定是否传 thinking 参数
+    // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
+    // - adaptive：仅 Opus 4.7/4.8/Opus 5 支持
+    // - enabled + budget_tokens：Claude 4 系列（Sonnet 4.5 / Opus 4.1 / Haiku 4.5）
+    // - 非 anthropic 协议（中转 OpenAI 等）不传 thinking 参数
+    const thinking = resolveThinkingConfig(modelId, apiFormat, enableThinking)
     const config: AgentConfig = {
       name: 'home',
       instructions,
       modelId,
       tools: listToolDefs(),
       defaultOptions: { maxTokens: 16384 },
-      thinking: enableThinking ? { type: 'adaptive' } : undefined,
+      thinking,
     }
     const agent = new Agent(config, {
       llmOpts: { apiKey, baseURL, authHeader },
@@ -116,6 +141,7 @@ export function registerHomeHandlers(): void {
         { messages: l1Messages, runId: sid },
         {
           onText: (text) => emitStream({ type: 'text', text }),
+          onThinking: (text) => emitStream({ type: 'thinking', text }),
           onRetry: (info) =>
             emitStream({
               type: 'retry',
@@ -127,8 +153,13 @@ export function registerHomeHandlers(): void {
         },
       )
 
-      // 8. 存 assistant 回复
-      addMessage({ sessionId: sid, role: 'assistant', content: result.finalText })
+      // 8. 存 assistant 回复（thinking 存入 meta，供前端折叠展示）
+      addMessage({
+        sessionId: sid,
+        role: 'assistant',
+        content: result.finalText,
+        meta: result.finalThinking ? { thinking: result.finalThinking } : undefined,
+      })
 
       // 9. 会话结束异步触发 L2 精炼
       void refineL2(DEFAULT_USER_ID, sid, allMessages, compressFn).catch((e) =>

@@ -94,6 +94,13 @@ export function useRemoveSkill() {
   })
 }
 
+/** 上传技能文件（.md / .skill / .zip）→ 返回解析后的 ParsedSkill */
+export function usePickSkillFile() {
+  return useMutation({
+    mutationFn: () => thenUnwrap(window.one.skills.pickFile()),
+  })
+}
+
 // —— 能力 ——
 export function useCapabilities() {
   return useQuery({
@@ -107,7 +114,13 @@ export function useSaveCapability() {
   return useMutation({
     mutationFn: (input: Parameters<typeof window.one.capabilities.save>[0]) =>
       thenUnwrap(window.one.capabilities.save(input)),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['capabilities'] }),
+    onSuccess: () => {
+      // 列表查询（复数前缀）
+      qc.invalidateQueries({ queryKey: ['capabilities'] })
+      // 单个能力查询（单数前缀，queryKey = ['capability', id]）
+      // 不 invalidate 会导致保存后重进画布拿到旧缓存
+      qc.invalidateQueries({ queryKey: ['capability'] })
+    },
   })
 }
 

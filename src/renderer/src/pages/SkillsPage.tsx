@@ -1,0 +1,369 @@
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Plus, Trash2, Pencil, Upload, Wrench, FileCode2 } from 'lucide-react'
+import {
+  useSkills,
+  useRemoveSkill,
+  useSaveSkill,
+  usePickSkillFile,
+} from '@renderer/api/hooks'
+import { Button } from '@renderer/components/ui/Button'
+import { Input } from '@renderer/components/ui/Input'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+} from '@renderer/components/ui/Drawer'
+import { Badge } from '@renderer/components/ui/Badge'
+import type { Skill } from '@shared/types'
+
+// —— 技能管理页 ——
+// 支持两种创建方式：
+//   1. 新建：手动填写 name + content
+//   2. 上传：选择 .zip 技能包，自动解析 SKILL.md frontmatter 后落盘
+// 编排页面通过 skill id 引用已创建的技能。
+// 卡片描述限 2 行；抽屉用 flex 布局撑满高度，描述和内容输入框尽量高。
+
+interface Draft {
+  isNew: boolean
+  id?: string
+  name: string
+  description: string
+  content: string
+  scriptPath?: string
+}
+
+const EMPTY_DRAFT: Draft = {
+  isNew: true,
+  name: '',
+  description: '',
+  content: '',
+}
+
+export function SkillsPage() {
+  const { t } = useTranslation(['common'])
+  const { data, isLoading, isError } = useSkills()
+  const saveSkill = useSaveSkill()
+  const removeSkill = useRemoveSkill()
+  const pickFile = usePickSkillFile()
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const skills: Skill[] = data ?? []
+
+  const openNew = (): void => setDraft({ ...EMPTY_DRAFT })
+  const openEdit = (s: Skill): void =>
+    setDraft({
+      isNew: false,
+      id: s.id,
+      name: s.name,
+      description: s.description ?? '',
+      content: s.content,
+      scriptPath: s.scriptPath,
+    })
+
+  const onSave = async (): Promise<void> => {
+    if (!draft?.name.trim()) return
+    await saveSkill.mutateAsync({
+      id: draft.id,
+      name: draft.name.trim(),
+      description: draft.description.trim() || undefined,
+      content: draft.content,
+      scriptPath: draft.scriptPath,
+    })
+    setDraft(null)
+  }
+
+  const onRemove = async (id: string): Promise<void> => {
+    if (!window.confirm(t('common:confirm.delete'))) return
+    await removeSkill.mutateAsync(id)
+  }
+
+  /** 上传技能文件 → 解析 → 自动保存 */
+  const onUpload = async (): Promise<void> => {
+    setUploading(true)
+    try {
+      const parsed = await pickFile.mutateAsync()
+      if (!parsed) {
+        // 用户取消选择
+        setUploading(false)
+        return
+      }
+      // 自动落盘
+      await saveSkill.mutateAsync({
+        name: parsed.name,
+        description: parsed.description || undefined,
+        content: parsed.content,
+        scriptPath: parsed.scriptPath,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      window.alert(`上传失败：${msg}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
+      {/* 顶部工具条 */}
+      <section
+        className="glass-panel"
+        style={{
+          padding: 16,
+          borderRadius: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <h2 className="section-title" style={{ fontSize: '1rem' }}>
+            {t('common:list.skills.title')}
+          </h2>
+          <p className="section-subtitle">{t('common:list.skills.description')}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="outline" onClick={() => void onUpload()} disabled={uploading}>
+            <Upload size={16} /> {uploading ? '上传中…' : '上传'}
+          </Button>
+          <Button onClick={openNew}>
+            <Plus size={16} /> {t('common:actions.new')}
+          </Button>
+        </div>
+      </section>
+
+      {/* 技能卡片网格 */}
+      {isLoading ? (
+        <EmptyState text={t('common:state.loading')} />
+      ) : isError ? (
+        <EmptyState text={t('common:state.error')} danger />
+      ) : skills.length === 0 ? (
+        <button
+          type="button"
+          onClick={openNew}
+          className="glass-panel"
+          style={{
+            borderRadius: 20,
+            padding: 48,
+            textAlign: 'center',
+            border: 0,
+            cursor: 'pointer',
+            color: 'var(--color-fg-2)',
+            display: 'grid',
+            gap: 8,
+            justifyItems: 'center',
+          }}
+        >
+          <Wrench size={40} style={{ color: 'var(--color-brand-500)' }} />
+          <p className="section-title">{t('common:empty.noItems')}</p>
+          <p className="section-subtitle">{t('common:list.skills.description')}</p>
+        </button>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 16,
+          }}
+        >
+          {skills.map((s) => (
+            <article
+              key={s.id}
+              className="surface-panel"
+              style={{
+                borderRadius: 18,
+                padding: 18,
+                transition: 'transform 120ms ease, box-shadow 120ms ease',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: 'var(--color-bg-3)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Wrench size={18} style={{ color: 'var(--color-brand-500)' }} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 className="section-title">{s.name}</h3>
+                    {s.description ? (
+                      <p
+                        className="section-subtitle"
+                        style={{
+                          marginTop: 2,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {s.description}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
+                    <Pencil size={14} />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => void onRemove(s.id)}>
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              </div>
+              {s.content ? (
+                <p
+                  style={{
+                    margin: '10px 0 0',
+                    fontSize: '0.8rem',
+                    color: 'var(--color-fg-2)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'var(--font-mono, monospace)',
+                  }}
+                >
+                  {s.content.slice(0, 80)}
+                  {s.content.length > 80 ? '…' : ''}
+                </p>
+              ) : null}
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                {s.scriptPath ? (
+                  <Badge variant="brand" style={{ fontSize: '0.7rem' }}>
+                    <FileCode2 size={10} style={{ marginRight: 4 }} />
+                    含脚本
+                  </Badge>
+                ) : null}
+                <Badge style={{ fontSize: '0.7rem' }}>
+                  {Math.ceil(s.content.length / 1000)}k 字
+                </Badge>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {/* 编辑/新建抽屉 */}
+      <Drawer open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
+        <DrawerContent width={720}>
+          {draft ? (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+              <DrawerTitle>
+                {draft.isNew ? t('common:actions.new') : t('common:actions.edit')}
+              </DrawerTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20, flex: 1, minHeight: 0 }}>
+                <Field label={t('common:columns.name')}>
+                  <Input
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    autoFocus
+                  />
+                </Field>
+                <Field label="描述">
+                  <textarea
+                    value={draft.description}
+                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                    style={descTextareaStyle}
+                    placeholder="技能的简要描述"
+                    rows={5}
+                  />
+                </Field>
+                <Field label={t('common:columns.content')} style={{ flex: '1', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  <textarea
+                    value={draft.content}
+                    onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                    style={{ ...contentTextareaStyle, flex: 1, minHeight: 0 }}
+                    placeholder="SKILL.md 内容，支持 frontmatter + Markdown…"
+                  />
+                </Field>
+                {draft.scriptPath ? (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)', flexShrink: 0 }}>
+                    脚本路径：{draft.scriptPath}
+                  </p>
+                ) : null}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
+                  <Button variant="ghost" onClick={() => setDraft(null)}>
+                    {t('common:actions.cancel')}
+                  </Button>
+                  <Button
+                    onClick={() => void onSave()}
+                    disabled={!draft.name.trim() || saveSkill.isPending}
+                  >
+                    {t('common:actions.save')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
+    </div>
+  )
+}
+
+const descTextareaStyle: React.CSSProperties = {
+  minHeight: 120,
+  borderRadius: 12,
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-bg-1)',
+  color: 'var(--color-fg-1)',
+  padding: 10,
+  fontFamily: 'inherit',
+  fontSize: '0.875rem',
+  resize: 'vertical',
+  width: '100%',
+}
+
+const contentTextareaStyle: React.CSSProperties = {
+  minHeight: 200,
+  borderRadius: 12,
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-bg-1)',
+  color: 'var(--color-fg-1)',
+  padding: 10,
+  fontFamily: 'var(--font-mono, monospace)',
+  fontSize: '0.875rem',
+  resize: 'none',
+  width: '100%',
+}
+
+function Field({ label, children, style }: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', ...style }}>
+      <label style={{ fontSize: '0.875rem', color: 'var(--color-fg-2)', flexShrink: 0 }}>{label}</label>
+      <div style={{ marginTop: 6, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{children}</div>
+    </div>
+  )
+}
+
+function EmptyState({ text, danger }: { text: string; danger?: boolean }): React.ReactNode {
+  return (
+    <div
+      className="glass-panel"
+      style={{
+        borderRadius: 20,
+        padding: 40,
+        textAlign: 'center',
+        color: danger ? 'var(--color-danger)' : 'var(--color-fg-2)',
+      }}
+    >
+      {text}
+    </div>
+  )
+}

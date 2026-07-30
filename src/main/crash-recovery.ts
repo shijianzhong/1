@@ -1,4 +1,5 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { getDraftsDir } from './storage/paths'
 import { logger } from './logger'
 
@@ -45,8 +46,6 @@ export function hadCrashedLastRun(): boolean {
 export function listDrafts(): Array<{ name: string; content: string }> {
   const dir = getDraftsDir()
   if (!existsSync(dir)) return []
-  const { readdirSync, readFileSync } = require('node:fs') as typeof import('node:fs')
-  const { join } = require('node:path') as typeof import('node:path')
   return readdirSync(dir)
     .filter((f) => f.endsWith('.json'))
     .map((f) => {

@@ -19,7 +19,7 @@ import {
 import type { Capability } from '@shared/types'
 
 // —— 能力列表（§3 + EClaw CapabilitiesPage 范式）——
-// 卡片网格，点卡片进画布 /editor/:id；新建弹窗填名后跳画布。
+// 卡片网格，点卡片进画布 /capability/:id；新建弹窗填名后跳画布。
 // 这是画布编辑器的入口，不是直接进画布。
 
 export function CapabilitiesPage() {
@@ -49,7 +49,7 @@ export function CapabilitiesPage() {
         graph: { nodes: [], edges: [] },
       })
       setShowModal(false)
-      nav(`/editor/${cap.id}`)
+      nav(`/capability/${cap.id}`)
     } catch {
       // TanStack Query onError 兜底
     }
@@ -117,7 +117,7 @@ export function CapabilitiesPage() {
             <article
               key={cap.id}
               className="surface-panel"
-              onClick={() => nav(`/editor/${cap.id}`)}
+              onClick={() => nav(`/capability/${cap.id}`)}
               style={{
                 borderRadius: 18,
                 padding: 18,

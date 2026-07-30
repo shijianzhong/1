@@ -231,6 +231,7 @@ export function savePersona(input: unknown): Persona {
     name: parsed.name,
     instructions: parsed.instructions,
     modelId: parsed.modelId,
+    skillIds: parsed.skillIds,
     profile: parsed.profile,
     updatedAt: Date.now(),
   }

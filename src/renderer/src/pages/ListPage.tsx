@@ -2,12 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Pencil } from 'lucide-react'
 import {
-  useAgents,
   useProviders,
-  useRemoveAgent,
   useRemoveProvider,
   useRemoveSkill,
-  useSaveAgent,
   useSaveProvider,
   useSaveSkill,
   useSkills,
@@ -31,18 +28,18 @@ import {
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
 import type {
-  Agent,
   ApiFormat,
   Provider,
   Skill,
 } from '@shared/types'
 
 // —— 管理后台列表（§3 + §5.5）——
-// agents/skills 用 Table + Drawer 编辑（name + 内容字段）；
+// skills 用 Table + Drawer 编辑（name + 内容字段）；
 // models 用供应商为中心（cc switch 范式）：列出供应商，编辑含用途模型。
+// agents 已移至独立的 AgentsPage。
 
 interface ListPageProps {
-  i18nKey: 'agents' | 'skills' | 'models'
+  i18nKey: 'skills' | 'models'
 }
 
 export function ListPage({ i18nKey }: ListPageProps) {
@@ -50,30 +47,21 @@ export function ListPage({ i18nKey }: ListPageProps) {
   const title = t(`common:list.${i18nKey}.title`)
   const description = t(`common:list.${i18nKey}.description`)
 
-  // 三种实体的 hooks（无条件调用）
-  const agentsQ = useAgents()
   const skillsQ = useSkills()
   const providersQ = useProviders()
 
-  const saveAgent = useSaveAgent()
   const saveSkill = useSaveSkill()
   const saveProvider = useSaveProvider()
-  const removeAgent = useRemoveAgent()
   const removeSkill = useRemoveSkill()
   const removeProvider = useRemoveProvider()
 
   const [draft, setDraft] = useState<Draft | null>(null)
   const items =
-    i18nKey === 'agents'
-      ? agentsQ.data ?? []
-      : i18nKey === 'skills'
-        ? skillsQ.data ?? []
-        : i18nKey === 'models'
-          ? providersQ.data ?? []
-          : []
+    i18nKey === 'skills'
+      ? skillsQ.data ?? []
+      : providersQ.data ?? []
 
-  const query =
-    i18nKey === 'agents' ? agentsQ : i18nKey === 'skills' ? skillsQ : providersQ
+  const query = i18nKey === 'skills' ? skillsQ : providersQ
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
@@ -91,7 +79,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
             setDraft(
               i18nKey === 'models'
                 ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false, isDefault: false }
-                : { kind: i18nKey, isNew: true, name: '', instructions: '', content: '' },
+                : { kind: 'skills', isNew: true, name: '', content: '' },
             )
           }
         >
@@ -140,11 +128,9 @@ export function ListPage({ i18nKey }: ListPageProps) {
                     ) : item.name}
                   </TableCell>
                   <TableCell style={{ color: 'var(--color-fg-2)' }}>
-                    {i18nKey === 'agents'
-                      ? (item as Agent).description ?? ''
-                      : i18nKey === 'skills'
-                        ? (item as Skill).description ?? ''
-                        : <ProviderMeta provider={item as Provider} />}
+                    {i18nKey === 'skills'
+                      ? (item as Skill).description ?? ''
+                      : <ProviderMeta provider={item as Provider} />}
                   </TableCell>
                   <TableCell>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -152,12 +138,9 @@ export function ListPage({ i18nKey }: ListPageProps) {
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          if (i18nKey === 'agents') {
-                            const a = item as Agent
-                            setDraft({ kind: 'agents', isNew: false, id: a.id, name: a.name, instructions: a.instructions, content: '' })
-                          } else if (i18nKey === 'skills') {
+                          if (i18nKey === 'skills') {
                             const s = item as Skill
-                            setDraft({ kind: 'skills', isNew: false, id: s.id, name: s.name, instructions: '', content: s.content })
+                            setDraft({ kind: 'skills', isNew: false, id: s.id, name: s.name, content: s.content })
                           } else {
                             const p = item as Provider
                             setDraft({
@@ -179,8 +162,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
                         size="icon"
                         onClick={() => {
                           if (!window.confirm(t('common:confirm.delete'))) return
-                          if (i18nKey === 'agents') void removeAgent.mutateAsync(item.id)
-                          else if (i18nKey === 'skills') void removeSkill.mutateAsync(item.id)
+                          if (i18nKey === 'skills') void removeSkill.mutateAsync(item.id)
                           else if (i18nKey === 'models') {
                             const p = item as Provider
                             if (p.keyId) void window.one.secrets.removeKey(p.keyId).then(unwrap).catch(() => {})
@@ -210,11 +192,10 @@ export function ListPage({ i18nKey }: ListPageProps) {
 }
 
 interface Draft {
-  kind: 'agents' | 'skills' | 'provider'
+  kind: 'skills' | 'provider'
   isNew: boolean
   id?: string
   name?: string
-  instructions?: string
   content?: string
   // provider
   remark?: string
@@ -238,18 +219,15 @@ function DraftForm({
 }: {
   draft: Draft
   setDraft: (d: Draft) => void
-  i18nKey: 'agents' | 'skills' | 'models'
+  i18nKey: 'skills' | 'models'
 }) {
   const { t } = useTranslation(['common'])
-  const saveAgent = useSaveAgent()
   const saveSkill = useSaveSkill()
   const saveProvider = useSaveProvider()
 
   const save = async (): Promise<void> => {
     if (!draft.name?.trim()) return
-    if (draft.kind === 'agents') {
-      await saveAgent.mutateAsync({ id: draft.id, name: draft.name!, instructions: draft.instructions ?? '', source: 'custom' })
-    } else if (draft.kind === 'skills') {
+    if (draft.kind === 'skills') {
       await saveSkill.mutateAsync({ id: draft.id, name: draft.name!, content: draft.content ?? '' })
     } else if (draft.kind === 'provider') {
       const provider = await saveProvider.mutateAsync({
@@ -287,16 +265,6 @@ function DraftForm({
         <Field label={t('common:columns.name')}>
           <Input value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })} autoFocus />
         </Field>
-
-        {draft.kind === 'agents' ? (
-          <Field label={t('common:columns.instructions')}>
-            <textarea
-              value={draft.instructions ?? ''}
-              onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
-              style={textareaStyle}
-            />
-          </Field>
-        ) : null}
 
         {draft.kind === 'skills' ? (
           <Field label={t('common:columns.content')}>

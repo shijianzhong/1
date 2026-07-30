@@ -89,6 +89,7 @@ export const PersonaSchema = z.object({
   name: z.string().min(1),
   instructions: z.string(),
   modelId: z.string().optional(),
+  skillIds: z.array(z.string()).optional(),
   profile: z
     .object({
       alias: z.string().optional(),

@@ -17,7 +17,7 @@ import { useChatStore } from '@renderer/store/chat'
 
 const navItems = [
   { to: '/', key: 'home', icon: Sparkles },
-  { to: '/editor', key: 'editor', icon: Boxes },
+  { to: '/capabilities', key: 'capabilities', icon: Boxes },
   { to: '/agents', key: 'agents', icon: Bot },
   { to: '/skills', key: 'skills', icon: Wrench },
   { to: '/models', key: 'models', icon: Cable },
@@ -34,7 +34,7 @@ export function AppShell() {
   const [commandIndex, setCommandIndex] = useState(0)
 
   const showSideList = location.pathname === '/'
-  const isEditor = location.pathname.startsWith('/editor')
+  const isEditor = location.pathname.startsWith('/capability/')
   // EditorPage 自带 Inspector + NodePalette，AppShell 不再显示
   const showInspector = false
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
