@@ -91,6 +91,12 @@ export interface OneApi {
     chat: (input: { message: string; sessionId?: string }) => Promise<IpcResult<{ runId: string }>>
     onStream: (cb: (delta: import('@shared/types').HomeStreamEvent) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
+    confirmCreate: (input: {
+      draftId: string
+      kind: import('@shared/types').CreateDraft['kind']
+      payload: import('@shared/types').CreateDraft['payload']
+    }) => Promise<IpcResult<{ id: string }>>
+    cancelCreate: (input: { draftId: string }) => Promise<IpcResult<void>>
   }
   orchestrate: {
     run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string }) => Promise<IpcResult<{ runId: string; output: string }>>
@@ -181,6 +187,8 @@ const api: OneApi = {
       return () => ipcRenderer.off('home:stream', handler)
     },
     cancel: () => ipcRenderer.invoke('home:cancel'),
+    confirmCreate: (input) => ipcRenderer.invoke('home:confirmCreate', input),
+    cancelCreate: (input) => ipcRenderer.invoke('home:cancelCreate', input),
   },
   orchestrate: {
     run: (input) => ipcRenderer.invoke('orchestrate:run', input),

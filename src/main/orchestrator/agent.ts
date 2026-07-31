@@ -24,8 +24,12 @@ const DEFAULT_MAX_ITERATIONS = 10
 export interface AgentDeps {
   /** LLM client 选项（apiKey/baseURL，从 vault + model config 解析） */
   llmOpts: LLMClientOptions
-  /** 工具执行上下文（sessionId 等） */
-  toolCtx?: { sessionId?: string; signal?: AbortSignal }
+  /** 工具执行上下文（sessionId / 创建提案回调等） */
+  toolCtx?: {
+    sessionId?: string
+    signal?: AbortSignal
+    onPropose?: (draft: import('@shared/types').CreateDraft) => void
+  }
 }
 
 export class Agent {
@@ -123,6 +127,7 @@ export class Agent {
           {
             sessionId: this.deps.toolCtx?.sessionId,
             signal: input.signal,
+            onPropose: this.deps.toolCtx?.onPropose,
           },
         )
         callbacks.onToolResult?.(tu.name, result.content)

@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import type { AgentConfig, HomeStreamEvent, LlmMessage, Persona } from '@shared/types'
+import type { AgentConfig, CreateDraft, HomeStreamEvent, LlmMessage, Persona } from '@shared/types'
 import { withHandler } from './handler'
 import {
   getDefaultProvider,
@@ -11,11 +11,15 @@ import {
   listCapabilities,
   listSkills,
   resolveProviderCredentials,
+  saveAgent,
+  saveCapability,
+  saveSkill,
 } from '../storage/models'
 import { addMessage, createSession, listMessages } from '../storage/sessions'
 import { Agent } from '../orchestrator/agent'
 import {
   TeamJsonDetector,
+  buildCreateInstruction,
   buildRoutingInstruction,
   buildSkillBlocks,
   buildTeamGraph,
@@ -40,6 +44,9 @@ import { logger } from '../logger'
 
 const STREAM_CHANNEL = 'home:stream'
 const DEFAULT_USER_ID = 'local'
+
+/** 创建提案草稿暂存（draftId → CreateDraft）；用户确认后取出落库并删除。 */
+const pendingDrafts = new Map<string, CreateDraft>()
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
@@ -144,9 +151,13 @@ export function registerHomeHandlers(): void {
     // —— 意图路由指令段（§三之三 M + 铁律24）：注入角色/能力清单 + 组队 JSON 约定 ——
     // 主 Agent 据此判断直答 vs 输出组队 JSON；无可用角色/能力时不注入（不打扰人设）。
     const routingInstruction = buildRoutingInstruction(allAgents, allCapabilities)
-    const instructions = routingInstruction
+    const instructionsWithRouting = routingInstruction
       ? `${instructionsWithSkills}\n${routingInstruction}`
       : instructionsWithSkills
+
+    // —— 创建指令段：引导主 Agent 识别创建意图 → 多轮澄清 → propose_* 产出草稿。
+    // 始终注入（创建是主 Agent 基础能力，与用户当前是否已有资产无关）。
+    const instructions = `${instructionsWithRouting}\n${buildCreateInstruction()}`
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
@@ -164,7 +175,14 @@ export function registerHomeHandlers(): void {
     }
     const agent = new Agent(config, {
       llmOpts: { apiKey, baseURL, authHeader },
-      toolCtx: { sessionId: sid },
+      toolCtx: {
+        sessionId: sid,
+        // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
+        onPropose: (draft) => {
+          pendingDrafts.set(draft.draftId, draft)
+          emitStream({ type: 'proposal', draft })
+        },
+      },
     })
 
     // —— 编排图 BuildDeps（组队/能力直跑共用）——
@@ -333,5 +351,58 @@ export function registerHomeHandlers(): void {
 
   withHandler<void>('home:cancel', () => {
     logger.info('[home:cancel] 待 AbortController 接入（阶段6）')
+  })
+
+  // —— 聊天创建确认入库 ——
+  // 前端确认卡点「确认」：payload 可能被用户改过，故以前端回传的 payload 为准落库；
+  // draftId 用于从暂存取出核对 kind 并清理。确认后才真正 save*（铁律：确认入库才入库）。
+  withHandler<{ id: string }>('home:confirmCreate', async (_e, input) => {
+    const { draftId, kind, payload } = input as {
+      draftId: string
+      kind: CreateDraft['kind']
+      payload: CreateDraft['payload']
+    }
+    const cached = pendingDrafts.get(draftId)
+    if (cached && cached.kind !== kind) {
+      throw new Error(`草稿类型不匹配（缓存 ${cached.kind} / 请求 ${kind}）`)
+    }
+
+    let saved: { id: string }
+    if (kind === 'agent') {
+      const p = payload as Extract<CreateDraft, { kind: 'agent' }>['payload']
+      saved = saveAgent({
+        name: p.name,
+        description: p.description,
+        instructions: p.instructions,
+        outputConstraints: p.outputConstraints,
+        temperature: p.temperature,
+        maxTokens: p.maxTokens,
+        source: 'custom',
+      })
+    } else if (kind === 'capability') {
+      const p = payload as Extract<CreateDraft, { kind: 'capability' }>['payload']
+      saved = saveCapability({ name: p.name, description: p.description, graph: p.graph })
+    } else if (kind === 'skill') {
+      const p = payload as Extract<CreateDraft, { kind: 'skill' }>['payload']
+      saved = saveSkill({
+        name: p.name,
+        description: p.description,
+        content: p.content,
+        discipline: p.discipline,
+      })
+    } else {
+      throw new Error(`未知创建类型：${String(kind)}`)
+    }
+
+    pendingDrafts.delete(draftId)
+    logger.info(`[home:create] 已入库 ${kind}:`, saved.id)
+    return { id: saved.id }
+  })
+
+  // 前端确认卡点「取消」：丢弃草稿，不入库。
+  withHandler<void>('home:cancelCreate', (_e, input) => {
+    const { draftId } = input as { draftId: string }
+    pendingDrafts.delete(draftId)
+    logger.info('[home:create] 已取消草稿:', draftId)
   })
 }

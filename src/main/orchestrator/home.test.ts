@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Agent, Capability, Skill } from '@shared/types'
 import {
   TeamJsonDetector,
+  buildCreateInstruction,
   buildRoutingInstruction,
   buildSkillBlocks,
   resolveMentions,
@@ -224,5 +225,18 @@ describe('TeamJsonDetector（铁律24）', () => {
     const det = new TeamJsonDetector()
     det.feed('{"role_ids": []}')
     expect(det.decide().kind).toBe('direct')
+  })
+})
+
+describe('buildCreateInstruction', () => {
+  it('包含三类创建入口 + propose 工具约定 + 确认才入库提示', () => {
+    const s = buildCreateInstruction()
+    expect(s).toContain('propose_agent')
+    expect(s).toContain('propose_capability')
+    expect(s).toContain('propose_skill')
+    expect(s).toContain('确认')
+    expect(s).toContain('编排图')
+    // 引导先澄清再产出（避免一次就调工具）
+    expect(s).toContain('先澄清')
   })
 })

@@ -312,6 +312,142 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-success, #10b981);
 }
 
+/* —— 创建确认卡（聊天创建能力/角色/Skill）—— */
+.create-card {
+  min-width: 320px;
+  max-width: min(560px, 78vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.create-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-card__badge {
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.create-card__badge--agent {
+  background: color-mix(in oklch, var(--color-brand-500) 14%, transparent);
+  color: var(--color-brand-600);
+}
+
+.create-card__badge--capability {
+  background: color-mix(in oklch, var(--color-accent, #8b5cf6) 14%, transparent);
+  color: var(--color-accent, #8b5cf6);
+}
+
+.create-card__badge--skill {
+  background: color-mix(in oklch, var(--color-success, #10b981) 14%, transparent);
+  color: var(--color-success, #10b981);
+}
+
+.create-card__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-fg-1);
+}
+
+.create-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.create-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-card__label {
+  font-size: 0.76rem;
+  color: var(--color-fg-3);
+  font-weight: 500;
+}
+
+.create-card__input,
+.create-card__textarea {
+  border: 1px solid var(--color-border, color-mix(in oklch, var(--color-fg-3) 20%, transparent));
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  font-family: inherit;
+  color: var(--color-fg-1);
+  background: color-mix(in oklch, var(--color-bg, #fff) 60%, transparent);
+  outline: none;
+  resize: vertical;
+}
+
+.create-card__input:focus,
+.create-card__textarea:focus {
+  border-color: var(--color-brand-500);
+}
+
+.create-card__graph {
+  height: 220px;
+  border: 1px solid var(--color-border, color-mix(in oklch, var(--color-fg-3) 20%, transparent));
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.create-card__error {
+  font-size: 0.8rem;
+  color: var(--color-danger);
+}
+
+.create-card__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.create-card__btn {
+  border: 1px solid var(--color-border, color-mix(in oklch, var(--color-fg-3) 24%, transparent));
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-fg-1);
+}
+
+.create-card__btn--primary {
+  background: var(--color-brand-500);
+  border-color: var(--color-brand-500);
+  color: #fff;
+}
+
+.create-card__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.create-card__result {
+  font-size: 0.84rem;
+  padding: 8px 0 2px;
+}
+
+.create-card__result--saved {
+  color: var(--color-success, #10b981);
+}
+
+.create-card__result--cancelled {
+  color: var(--color-fg-3);
+}
+
+.create-card--saved .create-card__title,
+.create-card--cancelled .create-card__title {
+  opacity: 0.8;
+}
+
 .mention-composer__dropdown {
   position: absolute;
   bottom: calc(100% + 8px);

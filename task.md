@@ -161,6 +161,7 @@
 | ~~P1~~ | ~~GroupChat manager 运行时接线~~ ✅ `4dd76dc` | 4b.3 |
 | ~~P1~~ | ~~`repair_tool_pairs`~~ ✅ `4dd76dc`；context_mode 完整三态（`full`/`last_agent`/`custom+context_filter`）Sequential 下游接入待联调 | 铁律 16/18 |
 | ~~P0~~ | ~~首页直答 vs 组队 JSON 路由~~ ✅ `b192df4`（@芯片 + LLM 意图路由指令段 + 组队拼图跑 runner） | 铁律 24 |
+| ~~P1~~ | ~~聊天创建能力/角色/Skill~~ ✅（propose_* 工具产草稿 → 前端确认卡可编辑 → 确认才入库；能力由 LLM 生成 graph JSON） | 主 Agent 创建闭环 |
 | P1 | i18n 硬编码清零 + errors.* | 5.8 / 铁律 T2 |
 | P2 | Skill ContextProvider + 脚本 | 7.4 / 铁律 22/23 |
 | P2 | 崩溃草稿写盘 + UI | 6.4 |

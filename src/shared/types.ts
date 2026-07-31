@@ -199,11 +199,12 @@ export type LlmDelta =
   | { type: 'error'; error: string }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
 
-/** 首页流式事件（home:stream）——LlmDelta 超集 + 编排事件 + 会话 id */
+/** 首页流式事件（home:stream）——LlmDelta 超集 + 编排事件 + 会话 id + 创建提案 */
 export type HomeStreamEvent =
   | LlmDelta
   | { type: 'run_id'; sessionId: string }
   | { type: 'orch_event'; event: StreamEvent }
+  | { type: 'proposal'; draft: CreateDraft }
 
 /** 重试回调参数 */
 export interface RetryInfo {
@@ -384,6 +385,36 @@ export interface Capability {
   createdAt: number
   updatedAt: number
 }
+
+// ============================================================================
+// 聊天创建（主 Agent 经 propose_* 工具产出草稿 → 前端确认卡 → 用户确认入库）
+// 草稿不落库；用户确认后才经 home:confirmCreate 落库。payload 为可编辑字段集。
+// ============================================================================
+
+/** 创建提案草稿（前端确认卡数据源；payload 即对应类型的可入库字段） */
+export type CreateDraft =
+  | {
+      draftId: string
+      kind: 'agent'
+      payload: {
+        name: string
+        description?: string
+        instructions: string
+        outputConstraints?: string
+        temperature?: number
+        maxTokens?: number
+      }
+    }
+  | {
+      draftId: string
+      kind: 'capability'
+      payload: { name: string; description?: string; graph: WorkflowGraph }
+    }
+  | {
+      draftId: string
+      kind: 'skill'
+      payload: { name: string; description?: string; content: string; discipline?: string }
+    }
 
 /** 首页主助手人设（独立于角色，固定人格） */
 export interface Persona {

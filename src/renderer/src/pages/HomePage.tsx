@@ -6,9 +6,10 @@ import { unwrap } from '@renderer/api/client'
 import { IpcError } from '@renderer/api/client'
 import { Markdown } from '@renderer/components/Markdown'
 import { MentionComposer, type MentionComposerHandle } from '@renderer/components/MentionComposer'
+import { CreateConfirmCard, type CardStatus } from '@renderer/components/CreateConfirmCard'
 import { useAgents, useCapabilities, useSkills } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
-import type { SessionMessage } from '@shared/types'
+import type { CreateDraft, SessionMessage } from '@shared/types'
 
 interface ChatMessage {
   id: string
@@ -19,6 +20,10 @@ interface ChatMessage {
   retrying?: string
   thinking?: string
   thinkingCollapsed?: boolean // 回复完成后自动折叠
+  /** 创建提案草稿（渲染确认卡）；与 text 互斥 */
+  draft?: CreateDraft
+  /** 确认卡状态（pending 可交互；saved/cancelled 定格） */
+  cardStatus?: CardStatus
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
@@ -138,6 +143,18 @@ export function HomePage() {
               : m,
           ),
         )
+      } else if (delta.type === 'proposal') {
+        // 创建提案：在消息流插入确认卡（不落库，待用户确认）
+        setStreamMsgs((prev) => [
+          ...prev,
+          {
+            id: delta.draft.draftId,
+            role: 'assistant' as const,
+            text: '',
+            draft: delta.draft,
+            cardStatus: 'pending' as const,
+          },
+        ])
       }
     })
     return () => streamRef.current?.()
@@ -215,7 +232,17 @@ export function HomePage() {
               style={m.error ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
             >
               {m.thinking ? <ThinkingBlock text={m.thinking} collapsed={m.thinkingCollapsed} /> : null}
-              {m.retrying ? (
+              {m.draft ? (
+                <CreateConfirmCard
+                  draft={m.draft}
+                  status={m.cardStatus ?? 'pending'}
+                  onStatusChange={(status) =>
+                    setStreamMsgs((prev) =>
+                      prev.map((x) => (x.id === m.id ? { ...x, cardStatus: status } : x)),
+                    )
+                  }
+                />
+              ) : m.retrying ? (
                 <span style={{ color: 'var(--color-fg-2)', fontSize: '0.85rem' }}>{m.retrying}</span>
               ) : m.role === 'assistant' ? (
                 <Markdown>{m.text}</Markdown>
