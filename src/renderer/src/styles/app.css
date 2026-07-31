@@ -552,6 +552,8 @@ html[data-platform='darwin'] .titlebar__inner {
 .mention-composer__name {
   font-weight: 500;
   white-space: nowrap;
+  /* 未选中退为 fg-2：让选中项（brand-600 加粗）成为视觉焦点，主次不颠倒 */
+  color: var(--color-fg-2);
 }
 
 .mention-composer__desc {
