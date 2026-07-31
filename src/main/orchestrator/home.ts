@@ -193,18 +193,11 @@ export function buildRoutingInstruction(
 ): string {
   const lines: string[] = []
   if (agents.length > 0) {
-    lines.push('【可用角色】')
-    for (const a of agents) {
-      const desc = a.description ? `：${a.description}` : ''
-      lines.push(`- ${a.name}（id=${a.id}）${desc}`)
-    }
+    // 只列名（注入优化：去描述，显著减 prompt 体积；LLM 路由主要靠名字语义 + @提及）
+    lines.push('【可用角色】' + agents.map((a) => `${a.name}（id=${a.id}）`).join('、'))
   }
   if (capabilities.length > 0) {
-    lines.push('【可用能力】')
-    for (const c of capabilities) {
-      const desc = c.description ? `：${c.description}` : ''
-      lines.push(`- ${c.name}（id=${c.id}）${desc}`)
-    }
+    lines.push('【可用能力】' + capabilities.map((c) => `${c.name}（id=${c.id}）`).join('、'))
   }
   if (lines.length === 0) return ''
 
@@ -260,6 +253,37 @@ export function buildCreateInstruction(persona?: Persona | null): string {
     '5. 人设修改：propose_persona 的 instructions 是完整的新人设正文（全量替换）。改人设时必须基于【当前人设原文】修改，产出完整版，而非"增加以下内容"之类的片段。只改称呼/角色/语种时 instructions 不传，只带 alias/role/preferredLanguage——系统会自动保留人设原文，无需回传。',
     '6. 用户在卡片上可修改字段；用户确认后系统会自动入库，你无需重复调用。',
     ...personaAnchor,
+  ].join('\n')
+}
+
+/**
+ * 记忆策略指令段（铁律21 L3 激活）：告诉主 Agent 何时该记、何时该取。
+ * L3 长期记忆工具（memory_*）是被动工具——若不在 system prompt 明确策略，
+ * LLM 不会主动调用，L3 即成「死档」。本段把它激活：
+ *   - 何时取：用户引用过往（「我之前/我喜欢/你还记得」）或回答需要用户背景时，
+ *     先 memory_search 再作答。
+ *   - 何时记：用户透露稳定偏好/身份/项目约定/长期目标时，memory_retain。
+ *   - 不记：一次性、易变、仅当前会话相关的内容。
+ * @param existingKeys 当前已有记忆 key（注入让 LLM 避免重复写入，空数组则不提示）
+ */
+export function buildMemoryInstruction(existingKeys: string[] = []): string {
+  const keysHint =
+    existingKeys.length > 0
+      ? [
+          '',
+          `【已有记忆】（共 ${existingKeys.length} 条，避免重复写入；回答可引用时可先确认）：`,
+          existingKeys.slice(0, 20).join('、') + (existingKeys.length > 20 ? ' …' : ''),
+        ]
+      : []
+  return [
+    '',
+    '【长期记忆】你拥有一套跨会话的长期记忆（memory_* 工具），像人一样记住用户。策略：',
+    '1. 何时取用：当用户引用过往信息（「我之前说过」「我喜欢」「你还记得吗」「按惯例」），或当前回答明显需要结合用户的偏好/身份/项目背景时，先调 memory_search 检索相关记忆，再据此作答——不要凭空猜测或反问用户已告诉过你的事。',
+    '2. 何时记录：当用户在对话中透露跨会话仍有价值的稳定信息时，主动调 memory_retain 记下。值得记的：稳定偏好（如「喜欢晨跑」「不吃辣」）、身份信息（职业/称呼/所在地）、项目约定（技术栈/代码规范/部署方式）、长期目标。',
+    '3. 不要记：一次性请求、临时状态、易变信息（「今天很累」）、仅当前会话相关的上下文、以及你已经记住的内容（重复记忆前先 memory_search 确认）。',
+    '4. 记录方式：memory_retain 需指定 category（preference 偏好 / identity 身份 / project 项目约定 / goal 目标 / fact 其它），内容一条一个事实。更新已有记忆时用相同 key 重新写入即可覆盖。',
+    '5. 遗忘：仅当用户明确要求「忘掉/删除」某条记忆时，用 memory_forget。',
+    ...keysHint,
   ].join('\n')
 }
 

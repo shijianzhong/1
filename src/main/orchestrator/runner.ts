@@ -43,11 +43,15 @@ function createWorkflowContext(
     async yield_output(data) {
       const text = typeof data === 'string' ? data : JSON.stringify(data)
       ctx.output.push(text)
+      // 空文本不发 output 事件（防 final 替换把流式气泡清空成空气泡；
+      // 如 thinking-only 响应 finalText 为空的边缘场景）
+      if (!text) return
       ctx.onEvent({
         type: 'output',
         node_id: ctx.source ?? '',
         speaker: ctx.source ?? '',
         text,
+        final: true, // 终端完整输出（前端替换末条气泡，与流式增量区分去重）
       })
     },
     async add_event(e) {
@@ -82,11 +86,13 @@ function createChildContext(parent: WorkflowContextImpl, source: string): Workfl
     async yield_output(data) {
       const text = typeof data === 'string' ? data : JSON.stringify(data)
       parent.output.push(text)
+      if (!text) return
       parent.onEvent({
         type: 'output',
         node_id: source,
         speaker: source,
         text,
+        final: true,
       })
     },
     async add_event(e) {

@@ -21,6 +21,7 @@ import { Agent } from '../orchestrator/agent'
 import {
   TeamJsonDetector,
   buildCreateInstruction,
+  buildMemoryInstruction,
   buildRoutingInstruction,
   buildSkillBlocks,
   buildTeamGraph,
@@ -33,6 +34,7 @@ import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolDefs } from '../tools/registry'
+import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
 import type { BuildDeps } from '../orchestrator/builder'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -167,7 +169,8 @@ export function registerHomeHandlers(): void {
 
     // —— 创建指令段：引导主 Agent 识别创建/修改意图 → 多轮澄清 → propose_* 产出草稿。
     // 注入当前 persona 原文（<persona> 边界），防 LLM 把 L0/记忆/路由段误当人设固化。
-    const instructions = `${instructionsWithRouting}\n${buildCreateInstruction(persona)}`
+    // —— 记忆策略指令段（铁律21 L3 激活）：告诉主 Agent 何时记/何时取，附已有记忆 key 防重复。
+    const instructions = `${instructionsWithRouting}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}`
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式

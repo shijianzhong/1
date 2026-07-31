@@ -3,16 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import { useThemeStore } from '@renderer/store/theme'
 import { DEFAULT_THEME } from '@shared/types'
-import type { Persona, Provider, ThemeBackgroundConfig, ThemeConfig } from '@shared/types'
+import type { Persona, ThemeBackgroundConfig, ThemeConfig } from '@shared/types'
 import { Button } from '@renderer/components/ui/Button'
 import { Switch } from '@renderer/components/ui/Switch'
 import { Input } from '@renderer/components/ui/Input'
-import { Badge } from '@renderer/components/ui/Badge'
 import { unwrap } from '@renderer/api/client'
 import {
   usePersona,
   useSavePersona,
-  useProviders,
 } from '@renderer/api/hooks'
 
 // —— 设置页（§4 + §12.6.1）——
@@ -42,68 +40,35 @@ export function SettingsPage() {
   const saveTheme = useThemeStore((state) => state.save)
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
 
-  // —— 个人档案 + LLM 配置（供应商为中心，cc switch 范式）——
+  // —— 个人档案 + 主助手人设 ——
   const personaQ = usePersona()
   const savePersona = useSavePersona()
-  const providersQ = useProviders()
   const persona = personaQ.data ?? null
   const [profile, setProfile] = useState<NonNullable<Persona['profile']>>({
     alias: '',
     role: '',
     preferredLanguage: 'zh-CN',
   })
-  // 每供应商 key 输入
-  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
-  // 每供应商 key 是否已配置
-  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({})
+  // 主助手人设正文（Persona.instructions = 主 Agent 的灵魂设定）
+  const [instructions, setInstructions] = useState('')
 
   useEffect(() => {
     if (persona?.profile) setProfile(persona.profile)
   }, [persona?.profile])
 
-  // 查询每供应商 key 状态
   useEffect(() => {
-    for (const p of providersQ.data ?? []) {
-      if (!p.keyId) continue
-      void window.one.secrets
-        .getLLMConfig(p.keyId)
-        .then((r) => {
-          if ('data' in r) setKeyStatus((s) => ({ ...s, [p.id]: r.data.hasKey }))
-        })
-        .catch(() => {})
-    }
-  }, [providersQ.data])
+    if (persona?.instructions !== undefined) setInstructions(persona.instructions)
+  }, [persona?.instructions])
 
-  // profile 直接存 persona（更新 profile 字段）
+  // 保存个人档案 + 人设（两者一起存 persona）
   const saveProfile = async (): Promise<void> => {
-    const p: Persona = {
-      id: 'home',
+    void savePersona.mutateAsync({
       name: persona?.name ?? t('settings:profile.defaultName'),
-      instructions: persona?.instructions ?? '',
+      instructions,
       modelId: persona?.modelId,
       skillIds: persona?.skillIds,
       profile,
-      updatedAt: Date.now(),
-    }
-    void savePersona.mutateAsync({
-      name: p.name,
-      instructions: p.instructions,
-      modelId: p.modelId,
-      skillIds: p.skillIds,
-      profile: p.profile,
     } as never).catch(() => {})
-  }
-
-  // 保存供应商 key 到 vault
-  const onSaveKey = async (p: Provider): Promise<void> => {
-    const val = keyInputs[p.id]
-    if (!p.keyId || !val) return
-    await window.one.secrets
-      .setLLMConfig({ keyId: p.keyId, apiKey: val })
-      .then(unwrap)
-      .catch(() => {})
-    setKeyInputs((s) => ({ ...s, [p.id]: '' }))
-    setKeyStatus((s) => ({ ...s, [p.id]: true }))
   }
 
   // 背景图 dataUrl
@@ -189,6 +154,33 @@ export function SettingsPage() {
         <Button variant="secondary" size="sm" onClick={() => void saveProfile()}>
           {t('common:actions.save')}
         </Button>
+      </SectionCard>
+
+      {/* 主助手人设（Persona.instructions = 主 Agent 灵魂设定，等同 soul.md） */}
+      <SectionCard title={t('settings:persona.title')} subtitle={t('settings:persona.subtitle')}>
+        <textarea
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+          placeholder={t('settings:persona.placeholder')}
+          style={{
+            minHeight: 200,
+            resize: 'vertical',
+            border: '1px solid var(--color-border)',
+            borderRadius: 10,
+            padding: '10px 12px',
+            fontSize: '0.86rem',
+            fontFamily: 'inherit',
+            color: 'var(--color-fg-1)',
+            background: 'var(--color-bg-1)',
+            outline: 'none',
+            lineHeight: 1.6,
+          }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="secondary" size="sm" onClick={() => void saveProfile()}>
+            {t('common:actions.save')}
+          </Button>
+        </div>
       </SectionCard>
 
       {/* 预设 */}
@@ -345,56 +337,6 @@ export function SettingsPage() {
           max={130}
           onChange={(v) => update({ fontScale: v / 100 })}
         />
-      </SectionCard>
-
-      {/* LLM 配置（无登录，本地单用户）—— 模型列表 + key 管理 */}
-      {/* LLM 配置（供应商为中心）—— 显示供应商 + key 输入，完整编辑去模型页 */}
-      <SectionCard title={t('settings:llm.title')} subtitle={t('settings:llm.subtitle')}>
-        {(providersQ.data ?? []).length === 0 ? (
-          <p className="section-subtitle">{t('settings:llm.empty')}</p>
-        ) : (
-          (providersQ.data ?? []).map((p) => (
-            <div
-              key={p.id}
-              className="surface-panel"
-              style={{ borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{p.name}</span>
-                  {p.apiFormat ? (
-                    <Badge variant="brand" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                      {p.apiFormat}
-                    </Badge>
-                  ) : null}
-                  <p className="section-subtitle" style={{ margin: '4px 0 0' }}>
-                    {p.baseUrl ? `${p.baseUrl} · ` : ''}主:{p.models.primary ?? '-'}
-                    {p.models.reasoning ? ` · 推理:${p.models.reasoning}` : ''}
-                    {p.models.fast ? ` · 快答:${p.models.fast}` : ''}
-                  </p>
-                </div>
-              </div>
-              {/* key 输入 */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Input
-                  type="password"
-                  placeholder={keyStatus[p.id] ? '••••••••（已配置，留空不改）' : t('settings:llm.apiKey')}
-                  value={keyInputs[p.id] ?? ''}
-                  onChange={(e) => setKeyInputs((s) => ({ ...s, [p.id]: e.target.value }))}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void onSaveKey(p)}
-                  disabled={!keyInputs[p.id]}
-                >
-                  {t('common:actions.save')}
-                </Button>
-              </div>
-            </div>
-          ))
-        )}
       </SectionCard>
 
       {/* 关于 */}

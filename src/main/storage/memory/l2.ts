@@ -8,6 +8,8 @@ import { logger } from '../../logger'
 
 const L2_MAX_INJECT_CHARS = 1500
 const L2_RECENT_DIGESTS = 10
+/** L2 软上限：超出后删除最旧条目，防无限增长（观察点收口） */
+const L2_SOFT_CAP = 50
 
 /** 取用户的 L2 摘要列表（最近 N 条） */
 export function listL2(userId = 'local'): L2Digest[] {
@@ -18,18 +20,23 @@ export function listL2(userId = 'local'): L2Digest[] {
     .all(userId, L2_RECENT_DIGESTS) as L2Digest[]
 }
 
-/** 存 L2 摘要 */
+/** 存 L2 摘要，并按软上限修剪最旧条目 */
 export function saveL2(input: L2Digest): void {
-  getDb()
-    .prepare(
-      'INSERT INTO memory_l2 (user_id, session_id, digest, ts) VALUES (@userId, @sessionId, @digest, @ts)',
-    )
-    .run({
-      userId: input.userId,
-      sessionId: input.sessionId ?? null,
-      digest: input.digest,
-      ts: input.ts,
-    })
+  const db = getDb()
+  db.prepare(
+    'INSERT INTO memory_l2 (user_id, session_id, digest, ts) VALUES (@userId, @sessionId, @digest, @ts)',
+  ).run({
+    userId: input.userId,
+    sessionId: input.sessionId ?? null,
+    digest: input.digest,
+    ts: input.ts,
+  })
+  // 软上限修剪：保留最新 L2_SOFT_CAP 条，删超出部分（按 ts 升序删最旧）
+  db.prepare(
+    `DELETE FROM memory_l2 WHERE user_id = @userId AND rowid NOT IN (
+       SELECT rowid FROM memory_l2 WHERE user_id = @userId ORDER BY ts DESC LIMIT @cap
+     )`,
+  ).run({ userId: input.userId, cap: L2_SOFT_CAP })
 }
 
 /**

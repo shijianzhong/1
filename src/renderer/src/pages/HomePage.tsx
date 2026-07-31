@@ -143,17 +143,21 @@ export function HomePage() {
         if (ev.type === 'output') {
           setStreamMsgs((prev) => {
             const last = prev[prev.length - 1]
-            // 同 speaker 续接末条流式气泡；换 speaker 开新气泡并停掉之前所有流式态
+            // 同 speaker 的末条流式气泡：final 事件替换文本（终端完整输出，去掉已累加的增量重复），
+            // 增量事件累加文本。
             if (last?.role === 'assistant' && last.streaming && !last.draft && last.speaker === ev.speaker) {
-              return [...prev.slice(0, -1), { ...last, text: last.text + ev.text }]
+              const text = ev.final ? ev.text : last.text + ev.text
+              return [...prev.slice(0, -1), { ...last, text, streaming: !ev.final }]
             }
+            // final 事件到达时若末条不是该 speaker 的流式气泡，说明增量未建立气泡（如 groupchat 容器
+            // 非流式输出）→ 直接用完整文本新建成形气泡（streaming=false）。
             return [
               ...prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
               {
                 id: crypto.randomUUID(),
                 role: 'assistant' as const,
                 text: ev.text,
-                streaming: true,
+                streaming: !ev.final,
                 speaker: ev.speaker,
               },
             ]
@@ -196,7 +200,9 @@ export function HomePage() {
   const onSend = async (overrideText?: string): Promise<void> => {
     const text = (overrideText ?? composerRef.current?.getText() ?? '').trim()
     if (!text || sending) return
-    if (!overrideText) composerRef.current?.clear()
+    // 发送即清空输入框（overrideText 来自重试按钮，不来自 composer，清空无害）；
+    // 修复此前仅 !overrideText 才清空导致 Enter 发送后内容残留的问题。
+    composerRef.current?.clear()
     setError(null)
     setSending(true)
     // 重试时不清空已有流式消息（保留上下文），仅追加 user 消息
@@ -211,12 +217,8 @@ export function HomePage() {
 
     try {
       const result = await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
-      // 后端返回 runId=sessionId；若是新会话，存到 store 复用，后续多轮走同一会话
-      if (result.runId && result.runId !== sessionId) {
-        useChatStore.setState({ sessionId: result.runId })
-      }
-      // 把本轮流式产出的消息（user + assistant）拉成持久化历史，
-      // 清空流式态，避免重复
+      // 把本轮流式产出的消息（user + assistant）拉成持久化历史，清空流式态避免重复。
+      // selectSession 一次性 set sessionId+messages（含新会话），无需单独 setState。
       if (result.runId) {
         await useChatStore.getState().selectSession(result.runId)
         setStreamMsgs([])
@@ -327,7 +329,7 @@ export function HomePage() {
           onSend={(text) => void onSend(text)}
         />
         <button type="button" onClick={() => void onSend()} disabled={sending}>
-          {t('common:actions.send')}
+          {sending ? t('common:actions.sending') : t('common:actions.send')}
         </button>
       </div>
     </div>

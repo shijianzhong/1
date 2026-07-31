@@ -3,6 +3,8 @@ import { copyFileSync, existsSync, mkdirSync as fsMkdirSync, renameSync } from '
 import { dirname } from 'node:path'
 import { getCorruptDbPath, getDbBackupPath, getDbPath } from './paths'
 import { logger } from '../logger'
+// 循环导入安全：reindexL3Fts 仅在 getDb() 函数体内调用（非模块顶层），此时 l3.ts 已完成初始化
+import { reindexL3Fts } from './memory/l3'
 
 // —— SQLite 连接 + WAL + schema 迁移 + 启动校验 + 损坏恢复（§11.4 + §5.2.3）——
 
@@ -74,6 +76,19 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
 
       CREATE TABLE IF NOT EXISTS schema_version (
         version INTEGER PRIMARY KEY
+      );
+    `,
+  },
+  {
+    // v2：L3 全文检索（FTS5）。中文经预分词（单字+bigram 空格连接）写入 seg 列，
+    // unicode61 即可命中（原生 trigram 对 2 字中文失效、unicode61 对连续中文不分词）。
+    version: 2,
+    sql: `
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_l3_fts USING fts5(
+        seg,
+        user_id UNINDEXED,
+        key UNINDEXED,
+        tokenize='unicode61'
       );
     `,
   },
@@ -184,6 +199,19 @@ export function getDb(): Database.Database {
   backupCurrentDb()
 
   dbInstance = db
+
+  // L3 FTS 索引一致性自检：行数不一致（如 v2 迁移前存量未回填）则重建一次（幂等）
+  try {
+    const l3Count = (db.prepare('SELECT COUNT(*) as c FROM memory_l3').get() as { c: number }).c
+    const ftsCount = (db.prepare('SELECT COUNT(*) as c FROM memory_l3_fts').get() as { c: number }).c
+    if (l3Count !== ftsCount) {
+      reindexL3Fts()
+      logger.info(`[db] L3 FTS 索引重建（l3=${l3Count} fts=${ftsCount}）`)
+    }
+  } catch (error) {
+    logger.warn('[db] L3 FTS 自检失败（非致命）', error)
+  }
+
   startPeriodicBackup()
   return db
 }

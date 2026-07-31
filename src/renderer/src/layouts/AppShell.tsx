@@ -8,10 +8,12 @@ import {
   Plus,
   Settings,
   Sparkles,
+  Trash2,
   Wrench,
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSessions } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 
@@ -38,11 +40,13 @@ export function AppShell() {
   // EditorPage 自带 Inspector + NodePalette，AppShell 不再显示
   const showInspector = false
   const currentPage = navItems.find((item) => item.to === location.pathname) ?? navItems[0]
+  const qc = useQueryClient()
   const sessionsQ = useSessions()
   const chatSessions = useChatStore((s) => s.sessions)
   const currentSessionId = useChatStore((s) => s.sessionId)
   const selectSession = useChatStore((s) => s.selectSession)
   const newSession = useChatStore((s) => s.newSession)
+  const removeSession = useChatStore((s) => s.removeSession)
   const loadSessions = useChatStore((s) => s.loadSessions)
   // 首页加载会话列表
   useEffect(() => {
@@ -122,19 +126,43 @@ export function AppShell() {
                   <p className="side-list__empty">{t('common:empty.noSessions')}</p>
                 ) : (
                   recentItems.map((s) => (
-                    <button
+                    <div
                       key={s.id}
-                      type="button"
-                      onClick={() => void selectSession(s.id)}
                       className={`side-list__item${currentSessionId === s.id ? ' side-list__item--active' : ''}`}
                     >
-                      <span className="side-list__item-title">{s.title}</span>
-                      {s.updatedAt ? (
-                        <span className="side-list__item-time">
-                          {new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(s.updatedAt)}
-                        </span>
-                      ) : null}
-                    </button>
+                      <button
+                        type="button"
+                        className="side-list__item-main"
+                        onClick={() => void selectSession(s.id)}
+                      >
+                        <span className="side-list__item-title">{s.title}</span>
+                        {s.updatedAt ? (
+                          <span className="side-list__item-time">
+                            {new Intl.DateTimeFormat(undefined, {
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }).format(s.updatedAt)}
+                          </span>
+                        ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        className="side-list__item-delete"
+                        title={t('common:actions.delete')}
+                        aria-label={t('common:actions.delete')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!window.confirm(t('common:confirm.delete'))) return
+                          void removeSession(s.id).then(() => {
+                            void qc.invalidateQueries({ queryKey: ['sessions'] })
+                          })
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   ))
                 )}
               </div>

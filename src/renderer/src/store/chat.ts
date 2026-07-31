@@ -11,6 +11,8 @@ interface ChatState {
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
   newSession: () => Promise<string>
+  /** 删除会话；若删的是当前会话则清空聊天区 */
+  removeSession: (id: string) => Promise<void>
   setMessages: (msgs: SessionMessage[]) => void
   appendMessage: (msg: SessionMessage) => void
 }
@@ -25,9 +27,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ sessions: list })
   },
   selectSession: async (id) => {
-    set({ loadingSession: true, sessionId: id })
+    set({ loadingSession: true })
+    // 先取消息，再一次性 set sessionId+messages——避免分两次 set 导致
+    // HomePage 的 useEffect([sessionId]) 在 messages 未就位时先清空流式气泡（空白帧）。
     const msgs = await window.one.sessions.messages(id).then(unwrap).catch(() => [])
-    set({ messages: msgs, loadingSession: false })
+    set({ sessionId: id, messages: msgs, loadingSession: false })
   },
   newSession: async () => {
     // 不在这里创建（home:chat 时若 sessionId 为空会自动创建），
@@ -35,6 +39,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ sessionId: null, messages: [] })
     await get().loadSessions()
     return ''
+  },
+  removeSession: async (id) => {
+    await window.one.sessions.remove(id).then(unwrap)
+    const { sessionId } = get()
+    set((s) => ({
+      sessions: s.sessions.filter((x) => x.id !== id),
+      ...(sessionId === id ? { sessionId: null, messages: [] } : {}),
+    }))
   },
   setMessages: (msgs) => set({ messages: msgs }),
   appendMessage: (msg) =>

@@ -104,7 +104,7 @@ export type StreamEvent =
   | { type: 'node_started'; node_id: string }
   | { type: 'node_done'; node_id: string }
   | { type: 'node_error'; node_id: string; error: string }
-  | { type: 'output'; node_id: string; speaker: string; text: string }
+  | { type: 'output'; node_id: string; speaker: string; text: string; final?: boolean }
   | { type: 'tool_call'; node_id: string; tool: string; args: unknown }
   | { type: 'tool_result'; node_id: string; result: unknown }
   | { type: 'handoff'; from: string; to: string }

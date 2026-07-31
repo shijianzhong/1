@@ -58,7 +58,11 @@ export function renameSession(id: string, title: string): void {
 }
 
 export function removeSession(id: string): void {
-  getDb().prepare('DELETE FROM sessions WHERE id = ?').run(id)
+  const db = getDb()
+  // messages 走外键 ON DELETE CASCADE；memory_l1/l2 无外键，需手动级联（观察点：防孤儿数据）
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
+  db.prepare('DELETE FROM memory_l1 WHERE session_id = ?').run(id)
+  db.prepare('DELETE FROM memory_l2 WHERE session_id = ?').run(id)
 }
 
 export function touchSession(id: string): void {

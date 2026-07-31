@@ -58,15 +58,10 @@ export class AgentExecutor implements Executor {
           text,
         })
       },
-      onThinking: (text) => {
-        // thinking delta 通过 output 事件流式推前端（speaker=executor_id）
-        void ctx.add_event({
-          type: 'output',
-          node_id: this.id,
-          speaker: this.id,
-          text,
-        })
-      },
+      // thinking delta 不转发：编排场景 orch_event 流只有 output（正文）一类，
+      // 若把 thinking 混进 output 会被前端当正文渲染，且与 finalText（仅 text block）不一致。
+      // 主页单聊的 thinking 走独立 {type:'thinking'} 事件；编排内 thinking 暂不透传（MVP）。
+      onThinking: () => {},
     }
 
     const result = await this.agent.run(
