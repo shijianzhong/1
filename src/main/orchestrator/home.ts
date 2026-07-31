@@ -218,6 +218,70 @@ export function buildRoutingInstruction(
 }
 
 /**
+ * @能力 聚焦块：用户显式 @了某能力时注入，替代通用 buildRoutingInstruction。
+ * 路由目标已锁定该能力，主 Agent 的任务是二选一：
+ *   问能力本身（"你能做什么"/光秃秃 @）→ 用下方能力档案口头介绍，绝不跑 workflow、绝不输出 JSON；
+ *   要能力干活（给任务/资料/主题）→ 输出 {"capability_ids":["该能力id"]} 触发跑 workflow。
+ * 能力档案含 description + graph 结构摘要（阶段/参与角色），供介绍时有据可依。
+ */
+export function buildCapabilityFocusBlock(cap: Capability): string {
+  return [
+    '',
+    `【已聚焦能力】用户 @ 了能力「${cap.name}」（id=${cap.id}）。`,
+    '',
+    '<capability_profile>',
+    `名称：${cap.name}`,
+    cap.description ? `用途：${cap.description}` : '',
+    `结构：${summarizeCapabilityGraph(cap)}`,
+    '</capability_profile>',
+    '',
+    '判断规则：',
+    '1. 若用户在问这个能力本身（能做什么/是什么/介绍/怎么用，或只 @ 了它没提具体任务）',
+    '   → 依据 <capability_profile> 口头介绍它的整体能力、协作流程、适用场景，正常直答，绝不输出 JSON。',
+    '2. 若用户给了要它执行的具体任务（主题/资料/目标，如"帮我写一篇X""处理这份数据"）',
+    `   → 只输出一行组队 JSON：{"capability_ids": ["${cap.id}"]}，独占全文，前后不加任何解释、标点、markdown 围栏。`,
+  ]
+    .filter((l) => l !== '')
+    .join('\n')
+}
+
+/** 能力 graph 结构摘要：容器阶段 + 参与角色，供主 Agent 介绍能力时描述协作流程。 */
+function summarizeCapabilityGraph(cap: Capability): string {
+  const nodes = cap.graph?.nodes ?? []
+  if (nodes.length === 0) return '（空编排）'
+  const parts: string[] = []
+  for (const n of nodes) {
+    const d = (n.data ?? {}) as Record<string, unknown>
+    const label = typeof d.label === 'string' ? d.label : n.id
+    if (n.type === 'agent') {
+      // 顶层 agent（无 parent）才单列；容器内 participant 由容器行归并
+      if (!d.parentId) parts.push(`角色「${label}」`)
+    } else {
+      // 容器：kind + 参与者
+      const kids = nodes
+        .filter((c) => (c.data as Record<string, unknown>)?.parentId === n.id)
+        .map((c) => (c.data as Record<string, unknown>)?.label ?? c.id)
+      const kindLabel =
+        n.type === 'concurrent'
+          ? '并行'
+          : n.type === 'sequential'
+            ? '顺序'
+            : n.type === 'groupchat'
+              ? '群聊'
+              : n.type === 'handoff'
+                ? '接力'
+                : n.type
+      parts.push(
+        kids.length > 0
+          ? `${kindLabel}阶段「${label}」（含 ${kids.map((k) => `「${k}」`).join('、')}）`
+          : `${kindLabel}阶段「${label}」`,
+      )
+    }
+  }
+  return parts.length > 0 ? parts.join(' → ') : '（空编排）'
+}
+
+/**
  * 创建指令段（聊天创建/修改能力/角色/Skill/人设）。
  * 引导主 Agent：识别创建/修改意图 → 多轮澄清 → 调 propose_* 工具产出草稿 →
  * 告知用户「已生成预览，请在下方卡片确认」。草稿不落库，确认才入库。

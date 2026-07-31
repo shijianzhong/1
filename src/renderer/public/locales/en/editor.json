@@ -9,6 +9,9 @@
   "run": "Run",
   "running": "Running…",
   "runPrompt": "Enter orchestration start message:",
+  "runDialogTitle": "Run capability",
+  "runDialogDesc": "Enter the task to hand to this capability orchestration, then confirm to run the workflow.",
+  "runDialogPlaceholder": "e.g. Write a deep WeChat article about AI agents… (⌘/Ctrl + Enter to run)",
   "output": "Output",
   "status": {
     "idle": "Idle",
@@ -18,7 +21,13 @@
   },
   "inspector": {
     "title": "Inspector",
-    "hint": "Drag nodes to canvas, connect, then run. Runtime highlight shows here."
+    "hint": "Drag nodes to canvas, connect, then run. Runtime highlight shows here.",
+    "entry": {
+      "set": "Set as entry node",
+      "activeExplicit": "✓ Active entry (explicit)",
+      "activeDerived": "✓ Active entry (topology-derived, check to pin)",
+      "derivedHint": "Entry is topology-derived as \"{{name}}\". Check this node to set it explicitly."
+    }
   },
   "nodes": {
     "agent": "Single agent node",

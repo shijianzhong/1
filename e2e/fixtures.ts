@@ -15,9 +15,13 @@ export interface TestApp {
 
 export async function launchApp(): Promise<TestApp> {
   const userData = mkdtempSync(join(tmpdir(), 'one-e2e-'))
+  // Cursor/agent 环境注入 ELECTRON_RUN_AS_NODE=1 → Electron 以纯 Node 运行拒绝
+  // --remote-debugging-port → launch 失败。启动前剔除。
+  const { ELECTRON_RUN_AS_NODE: _drop, ...cleanEnv } = process.env
+  void _drop
   const app = await electron.launch({
-    args: [resolve('out/main/index.js')],
-    env: { ...process.env, NODE_ENV: 'test', ONE_USER_DATA: userData },
+    args: [resolve('out/main/index.cjs')],
+    env: { ...cleanEnv, NODE_ENV: 'test', ONE_USER_DATA: userData },
   })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')

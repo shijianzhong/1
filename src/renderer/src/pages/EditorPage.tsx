@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Background,
@@ -38,6 +38,12 @@ import { useAgents, useCapability, useSaveCapability, useSkills } from '@rendere
 import { Button } from '@renderer/components/ui/Button'
 import { Badge } from '@renderer/components/ui/Badge'
 import { Input } from '@renderer/components/ui/Input'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@renderer/components/ui/Dialog'
 import { AgentNodeView, type AgentNodeData, type AgentNodeStatus } from '@renderer/components/editor/AgentNodeView'
 import {
   ContainerNodeView,
@@ -149,6 +155,9 @@ function EditorCanvas() {
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [output, setOutput] = useState('')
+  // 运行输入弹层：点运行先弹玻璃态输入框（替代 window.prompt），确认后才跑 workflow
+  const [runDialogOpen, setRunDialogOpen] = useState(false)
+  const [runInput, setRunInput] = useState('')
 
   /** 记录最近一次加载/保存的图数据哈希，用于：
    *  1. 阻止 save → refetch → reload → save 的无限循环
@@ -434,7 +443,7 @@ function EditorCanvas() {
               maxTokens: payload.maxTokens,
               outputConstraints: payload.outputConstraints,
               status: 'idle' as AgentNodeStatus,
-              isEntry: nodes.filter((n) => n.type === 'agent').length === 0,
+              // 不再自动 isEntry：入口由拓扑推导兜底，用户可在 Inspector 显式指定
             } satisfies AgentNodeData)
           : ({
               kind: payload.kind as NodeType,
@@ -722,6 +731,18 @@ function EditorCanvas() {
     [],
   )
 
+  // —— 入口单选维护（§入口 hybrid）：设某节点为入口时清除其它所有节点的 isEntry ——
+  // 传 null 表示取消所有显式入口（回退拓扑推导）。运行期 resolveStartExecutor 显式优先、拓扑兜底。
+  const setEntryNode = useCallback((id: string | null) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const isEntry = n.id === id
+        // 只改动 isEntry 字段，避免覆盖其它 data
+        return { ...n, data: { ...n.data, isEntry } }
+      }),
+    )
+  }, [])
+
   // —— 显式保存 ——
   const onSaveNow = useCallback(async () => {
     if (!capabilityId || nodes.length === 0) return
@@ -754,8 +775,16 @@ function EditorCanvas() {
   }, [capabilityId, nodes, edges, saveCap, capQ.data])
 
   // —— 运行编排 ——
-  const onRun = useCallback(async () => {
+  // 点运行按钮 → 弹输入框（openRunDialog）；确认 → onRun(input) 真跑 workflow
+  const openRunDialog = useCallback(() => {
     if (running || nodes.length === 0) return
+    setRunInput('')
+    setRunDialogOpen(true)
+  }, [running, nodes.length])
+
+  const onRun = useCallback(async (input: string) => {
+    if (running || nodes.length === 0) return
+    if (!input.trim()) return
     setRunning(true)
     setOutput('')
     // 清除所有节点状态
@@ -779,12 +808,6 @@ function EditorCanvas() {
         condition: (e.data as { condition?: string })?.condition,
       })),
     }
-    const input = window.prompt(t('editor:runPrompt')) ?? ''
-    if (!input) {
-      setRunning(false)
-      return
-    }
-
     const unsub = window.one.orchestrate.onStream((event: StreamEvent) => {
       switch (event.type) {
         case 'node_started':
@@ -838,6 +861,35 @@ function EditorCanvas() {
   // —— 选中节点 ——
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
   const cap = capQ.data as Capability | undefined
+
+  // —— 生效入口计算（前端镜像 resolveStartExecutor：显式优先，拓扑兜底）——
+  // 返回实际生效入口节点 id（顶层节点；sequential 容器作入口时指容器自身——徽章显示在用户操作对象上）。
+  // 用于 Inspector 状态显示 + 节点徽章「入口/入口·推导」。
+  const entryInfo = (() => {
+    const topLevel = nodes.filter((n) => !n.parentId)
+    const hasIncoming = new Set(edges.map((e) => e.target))
+    const explicit = topLevel.filter((n) => (n.data as { isEntry?: boolean }).isEntry === true)
+    if (explicit.length > 0) {
+      return { id: explicit[0].id, explicit: true }
+    }
+    const topo = topLevel.filter((n) => !hasIncoming.has(n.id))
+    const derived = topo[0] ?? nodes[0]
+    return derived ? { id: derived.id, explicit: false } : null
+  })()
+  const effectiveEntryId = entryInfo?.id ?? null
+  const hasExplicitEntry = entryInfo?.explicit ?? false
+
+  // 派生显示节点：给生效入口节点注入 effectiveEntry 徽章标记（派生字段，不入库）。
+  // 保存仍用原始 nodes state（onSaveNow 读 nodes），effectiveEntry 仅画布渲染用。
+  const displayNodes = useMemo(
+    () =>
+      nodes.map((n) =>
+        n.id === effectiveEntryId
+          ? { ...n, data: { ...n.data, effectiveEntry: true, entryDerived: !hasExplicitEntry } }
+          : n,
+      ),
+    [nodes, effectiveEntryId, hasExplicitEntry],
+  )
 
   return (
     <div style={{ display: 'flex', height: '100%', gap: 12 }}>
@@ -973,7 +1025,7 @@ function EditorCanvas() {
             )}
           </Button>
           <Button
-            onClick={() => void onRun()}
+            onClick={openRunDialog}
             disabled={running || nodes.length === 0}
             className="w-full"
           >
@@ -981,6 +1033,45 @@ function EditorCanvas() {
             {running ? t('editor:running') : t('editor:run')}
           </Button>
         </div>
+
+        {/* 运行输入弹层（玻璃态，替代 window.prompt）：输入任务内容 → 确认跑 workflow */}
+        <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogTitle>{t('editor:runDialogTitle')}</DialogTitle>
+            <DialogDescription className="mt-1">
+              {t('editor:runDialogDesc')}
+            </DialogDescription>
+            <textarea
+              autoFocus
+              value={runInput}
+              onChange={(e) => setRunInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  setRunDialogOpen(false)
+                  void onRun(runInput)
+                }
+              }}
+              placeholder={t('editor:runDialogPlaceholder')}
+              rows={4}
+              className="mt-4 w-full resize-none rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-2)] px-3 py-2 text-sm text-[var(--color-fg-1)] outline-none placeholder:text-[var(--color-fg-3)] focus:border-[var(--color-brand-400)]"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setRunDialogOpen(false)}>
+                {t('common:actions.cancel')}
+              </Button>
+              <Button
+                disabled={!runInput.trim()}
+                onClick={() => {
+                  setRunDialogOpen(false)
+                  void onRun(runInput)
+                }}
+              >
+                <Play size={14} />
+                {t('editor:run')}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </aside>
 
       {/* ── Canvas ── */}
@@ -991,7 +1082,7 @@ function EditorCanvas() {
         onDragOver={(e) => e.preventDefault()}
       >
         <ReactFlow
-          nodes={nodes}
+          nodes={displayNodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -1060,6 +1151,9 @@ function EditorCanvas() {
             skills={skills}
             agents={agents}
             onUpdate={updateNodeData}
+            onSetEntry={setEntryNode}
+            effectiveEntryId={effectiveEntryId}
+            hasExplicitEntry={hasExplicitEntry}
             onDelete={onDeleteNode}
             t={t}
           />
@@ -1093,6 +1187,9 @@ function NodeInspector({
   skills,
   agents,
   onUpdate,
+  onSetEntry,
+  effectiveEntryId,
+  hasExplicitEntry,
   onDelete,
   t,
 }: {
@@ -1101,8 +1198,11 @@ function NodeInspector({
   skills: Array<{ id: string; name: string }>
   agents: Agent[]
   onUpdate: (id: string, patch: Record<string, unknown>) => void
+  onSetEntry: (id: string | null) => void
+  effectiveEntryId: string | null
+  hasExplicitEntry: boolean
   onDelete: (id: string) => void
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const data = node.data as Record<string, unknown> & {
     label?: string
@@ -1146,6 +1246,37 @@ function NodeInspector({
             onChange={(e) => onUpdate(node.id, { label: e.target.value })}
             style={{ marginTop: 4 }}
           />
+        </div>
+
+        {/* —— 入口设置（agent + 容器通用，单选语义）——
+            勾选 → onSetEntry(node.id)（自动清其它入口）；取消 → onSetEntry(null) 回退拓扑推导。
+            容器也可设入口：concurrent/groupchat/handoff 容器自身是 dispatcher/协调器作入口；
+            sequential 容器作入口时运行期自动从首 participant 进入（对用户透明）。 */}
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={data.isEntry ?? false}
+              onChange={(e) => onSetEntry(e.target.checked ? node.id : null)}
+            />
+            {t('editor:inspector.entry.set')}
+          </label>
+          {/* 生效入口状态提示 */}
+          {effectiveEntryId === node.id ? (
+            <p style={{ fontSize: '0.72rem', margin: '4px 0 0', color: 'var(--color-brand-500)' }}>
+              {hasExplicitEntry
+                ? t('editor:inspector.entry.activeExplicit')
+                : t('editor:inspector.entry.activeDerived')}
+            </p>
+          ) : !hasExplicitEntry && effectiveEntryId ? (
+            <p style={{ fontSize: '0.72rem', margin: '4px 0 0', color: 'var(--color-fg-3)' }}>
+              {t('editor:inspector.entry.derivedHint', {
+                name:
+                  (nodes.find((n) => n.id === effectiveEntryId)?.data as { label?: string })?.label ??
+                  effectiveEntryId,
+              })}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -1292,14 +1423,6 @@ function NodeInspector({
               </div>
             )}
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
-            <input
-              type="checkbox"
-              checked={data.isEntry ?? false}
-              onChange={(e) => onUpdate(node.id, { isEntry: e.target.checked })}
-            />
-            设为入口节点
-          </label>
         </div>
       ) : null}
 

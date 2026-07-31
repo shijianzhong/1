@@ -113,13 +113,81 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
     }
   }
 
-  // 单节点（无边或仅一个节点）→ 直接作为 startExecutor
-  const startExecutor = graph.nodes[0]?.id ?? ''
+  // 起始 executor：容器节点的运行期入口解析。
+  // - sequential 容器本身不注册 executor（仅画布分组，participant 经线性边串联），
+  //   入口 = 第一个 participant；否则 runner 按容器 id 找 executor 会「未找到，跳过」→ 空输出。
+  // - concurrent/groupchat 容器本身是注册的 executor（dispatcher/协调器），入口 = 容器 id。
+  // - 普通 agent 节点：入口 = 自身 id。
+  const startExecutor = resolveStartExecutor(graph)
   if (!startExecutor) {
     throw new Error('编排图无节点')
   }
 
   return { executors, startExecutor, edges, conditions, nodes }
+}
+
+/**
+ * 解析运行期起始 executor id。
+ *
+ * 入口判定（显式优先，拓扑兜底）：
+ * - 显式入口：顶层节点（无 data.parentId）中 data.isEntry === true 者，按 nodes 顺序取第一个。
+ *   用户可在画布给 agent / 容器勾选「设为入口」，显式控制起点；
+ * - 拓扑兜底：无显式入口时，顶层 + 无入边（不是任何 graph.edges[].target）者为候选，
+ *   按 nodes 顺序取第一个；再无（异常图）回退 nodes[0]。
+ *
+ * 入口 executor 解析（容器可能是入口，递归到真实可执行节点）：
+ * - sequential 容器：本身不注册 executor（participant 经线性边串联），入口 = 首个有效
+ *   participant，递归（participant 可能是嵌套容器）；
+ * - concurrent / groupchat / handoff 容器：本身是注册的 executor（dispatcher/协调器），
+ *   入口 = 容器自身 id；
+ * - agent：入口 = 自身 id。
+ */
+export function resolveStartExecutor(graph: WorkflowGraph): string {
+  if (graph.nodes.length === 0) return ''
+
+  const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
+  // 入边目标集合（含条件边——condition 在同一条 edge 上）
+  const hasIncoming = new Set(graph.edges.map((e) => e.target))
+  const isTopLevel = (n: GraphNode) => !(n.data as { parentId?: string }).parentId
+  const isEntry = (n: GraphNode) => (n.data as { isEntry?: boolean }).isEntry === true
+
+  // 显式入口优先（仅顶层节点可设，防 participant 误设）；拓扑兜底；异常回退 nodes[0]
+  const explicit = graph.nodes.filter((n) => isTopLevel(n) && isEntry(n))
+  const topoCandidates = graph.nodes.filter((n) => isTopLevel(n) && !hasIncoming.has(n.id))
+  const entry = explicit[0] ?? topoCandidates[0] ?? graph.nodes[0]
+
+  // 递归解析到真实 executor（防容器嵌套/循环引用）
+  const visited = new Set<string>()
+  const resolve = (node: GraphNode): string => {
+    if (visited.has(node.id)) return node.id // 循环引用兜底，返回当前 id 防死循环
+    visited.add(node.id)
+    if (node.type === 'sequential') {
+      const participants = (node.data as { participants?: string[] }).participants ?? []
+      for (const pid of participants) {
+        const child = nodeById.get(pid)
+        if (child) return resolve(child)
+      }
+      // sequential 无有效 participant → 找图中首个 agent 兜底
+      return graph.nodes.find((n) => n.type === 'agent')?.id ?? node.id
+    }
+    // concurrent/groupchat/handoff 容器自身是 executor；agent 即自身
+    return node.id
+  }
+  return resolve(entry)
+}
+
+/**
+ * 按 id 查找图节点，兼容「图节点 id」与「角色库 id」两种形态。
+ * 画布保存的参与者/聚合引用可能是角色源 id（sourceAgentId/agentId，如 agt_wechat_writing），
+ * 而图节点 id 是画布生成的（如 agent_ms76ai3a）。先按节点 id 精确匹配，找不到回退按角色 id 匹配。
+ */
+function findAgentNode(graph: WorkflowGraph, idOrAgentId: string): GraphNode | undefined {
+  const byId = graph.nodes.find((n) => n.id === idOrAgentId)
+  if (byId) return byId
+  return graph.nodes.find((n) => {
+    const d = n.data as { sourceAgentId?: string; agentId?: string }
+    return d.sourceAgentId === idOrAgentId || d.agentId === idOrAgentId
+  })
 }
 
 function buildNode(
@@ -164,10 +232,16 @@ function buildNode(
         .filter((o): o is AgentExecutorOptions => !!o)
       // 优先从 data.aggregator 取聚合 Agent id；回退到 ${node.id}__aggregator 命名约定
       const aggregatorId = (data.aggregator as string) ?? `${node.id}__aggregator`
-      const aggregatorNode = graph.nodes.find((n) => n.id === aggregatorId)
+      // aggregator 可能是图节点 id，也可能是角色库 id（sourceAgentId/agentId）——
+      // 画布保存时 aggregator 引用了角色源 id（如 agt_wechat_writing），而图节点 id 是
+      // 画布生成的（如 agent_ms76ai3a）。先按节点 id 找，找不到回退按角色 id 匹配（§兼容存量数据）。
+      const aggregatorNode = findAgentNode(graph, aggregatorId)
       const aggregator = aggregatorNode ? deps.resolveAgent(aggregatorNode) : null
       if (participantOpts.length === 0 || !aggregator) {
-        logger.warn(`[builder] concurrent ${node.id} 缺 participant 或 aggregator`)
+        logger.warn(
+          `[builder] concurrent ${node.id} 缺 participant 或 aggregator` +
+            (aggregator ? '' : `（aggregator=${aggregatorId} 未匹配到图节点/角色）`),
+        )
         return
       }
       buildConcurrent(node, participantOpts, aggregator, bctx)

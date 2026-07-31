@@ -946,6 +946,15 @@ html[data-platform='darwin'] .titlebar__inner {
   background: var(--color-brand-500);
   color: var(--color-bg-1);
   font-weight: 600;
+  z-index: 10;
+}
+
+/* 推导入口徽章：拓扑推导出的生效入口（非用户显式设置），描边淡底区分 */
+.rf-entry-badge--derived {
+  background: var(--color-bg-3);
+  color: var(--color-fg-2);
+  border: 1px dashed var(--color-brand-400);
+  font-weight: 500;
 }
 
 /* 选中状态 */

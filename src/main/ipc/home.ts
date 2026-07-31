@@ -23,6 +23,7 @@ import {
   buildCreateInstruction,
   buildMemoryInstruction,
   buildRoutingInstruction,
+  buildCapabilityFocusBlock,
   buildSkillBlocks,
   buildTeamGraph,
   resolveMentions,
@@ -143,6 +144,20 @@ export function registerHomeHandlers(): void {
     const allSkills = listSkills()
     const mentions = resolveMentions(message, allAgents, allCapabilities, allSkills)
 
+    // —— @提及意图分流（提前判定：决定路由指令形态 + 后续跑图路径）——
+    // focusCap：纯 @单能力 → 不直接跑图，改喂主 Agent 聚焦块（介绍能力 or 输出组队 JSON 跑图）。
+    // directAgent：纯 @角色 → 直跳跑角色图（问单角色就该它自己答，单调用无并发问题）。
+    const focusCap = mentions.capabilities.length === 1 &&
+      mentions.agents.length === 0 &&
+      mentions.skills.length === 0
+      ? getCapability(mentions.capabilities[0].id) ?? null
+      : null
+    const directAgent = mentions.agents.length >= 1 &&
+      mentions.capabilities.length === 0 &&
+      mentions.skills.length === 0
+      ? mentions.agents
+      : null
+
     // —— Skill 注入（§铁律22）：persona 绑定 skill + @skill 动态注入，inline 成 <skill> XML 块 ——
     const personaSkillIds = persona?.skillIds ?? []
     const personaSkills = personaSkillIds
@@ -162,7 +177,10 @@ export function registerHomeHandlers(): void {
 
     // —— 意图路由指令段（§三之三 M + 铁律24）：注入角色/能力清单 + 组队 JSON 约定 ——
     // 主 Agent 据此判断直答 vs 输出组队 JSON；无可用角色/能力时不注入（不打扰人设）。
-    const routingInstruction = buildRoutingInstruction(allAgents, allCapabilities)
+    // @单能力（focusCap）：改注入能力聚焦块——主 Agent 介绍能力 or 输出组队 JSON 跑图（不直接跑图）。
+    const routingInstruction = focusCap
+      ? buildCapabilityFocusBlock(focusCap)
+      : buildRoutingInstruction(allAgents, allCapabilities)
     const instructionsWithRouting = routingInstruction
       ? `${instructionsWithSkills}\n${routingInstruction}`
       : instructionsWithSkills
@@ -218,7 +236,9 @@ export function registerHomeHandlers(): void {
           enableThinking,
         )
         const cfg: AgentConfig = {
-          name: d.label ?? node.id,
+          // 铁律20：executor_id == 节点 id（runner 按节点 id 路由/查找），
+          // 不能用 d.label（角色显示名）——否则 executors.get(node.id) 找不到 → 空白气泡
+          name: node.id,
           description: d.description,
           instructions: d.instructions ?? '',
           modelId: d.modelId ?? modelId,
@@ -236,33 +256,16 @@ export function registerHomeHandlers(): void {
       },
     }
 
-    // —— @提及直跳（用户明确意图，比 LLM 路由更准，不过 LLM 判定）——
-    // mentions 已在上方 skill 注入前解析（含 agents/capabilities/skills）。
-    // 仅纯角色/纯能力触发直跳；含 @skill 时仍需走主 Agent（skill 已注入其上下文）。
-    const directCap = mentions.capabilities.length === 1 &&
-      mentions.agents.length === 0 &&
-      mentions.skills.length === 0
-      ? mentions.capabilities[0]
-      : null
-    const directAgent = mentions.agents.length >= 1 &&
-      mentions.capabilities.length === 0 &&
-      mentions.skills.length === 0
-      ? mentions.agents
-      : null
+    // —— @提及意图分流（focusCap/directAgent 已在上方判定）——
+    // focusCap：走主 Agent 路由（介绍能力 or 组队跑图），不在此直跳。
+    // directAgent：纯 @角色直跳跑图。
+    logger.info(
+      `[home:route] mentions: agents=[${mentions.agents.map((a) => a.name).join(',')}] ` +
+        `caps=[${mentions.capabilities.map((c) => c.name).join(',')}] skills=[${mentions.skills.map((s) => s.name).join(',')}] ` +
+        `→ ${focusCap ? 'focusCap(主Agent介绍/组队)' : directAgent ? 'directAgent' : '主Agent路由'}`,
+    )
 
     try {
-      if (directCap) {
-        // 单能力：直接跑能力图
-        emitStream({ type: 'run_id', sessionId: sid })
-        const cap = getCapability(directCap.id)
-        if (!cap) throw new Error(`能力 ${directCap.name} 不存在`)
-        const question = mentions.cleanText || message
-        const result = await runTeam(cap.graph, question, sid, buildDeps, emitStream)
-        addMessage({ sessionId: sid, role: 'assistant', content: result.output })
-        emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
-        return { runId: sid }
-      }
-
       if (directAgent) {
         // 单/多角色：拼图跑（单角色单 agent 图；多角色 groupchat）
         emitStream({ type: 'run_id', sessionId: sid })

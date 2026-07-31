@@ -4,6 +4,7 @@ import {
   TeamJsonDetector,
   buildCreateInstruction,
   buildRoutingInstruction,
+  buildCapabilityFocusBlock,
   buildSkillBlocks,
   resolveMentions,
 } from './home'
@@ -270,5 +271,77 @@ describe('buildCreateInstruction', () => {
     expect(buildCreateInstruction({ ...persona, instructions: '' })).not.toContain('<persona>')
     // 不传参兼容旧调用
     expect(buildCreateInstruction()).not.toContain('<persona>')
+  })
+})
+
+describe('buildCapabilityFocusBlock（@能力 聚焦：介绍 or 干活）', () => {
+  const cap: Capability = {
+    id: 'cap_x',
+    name: '内容生产闭环',
+    description: '多 Agent 协作：调研并发→拆解→写作→审稿。',
+    graph: {
+      nodes: [
+        {
+          id: 'cc1',
+          type: 'concurrent',
+          data: { kind: 'concurrent', label: '调研+拆解并发' },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'a1',
+          type: 'agent',
+          data: { kind: 'agent', label: '选题调研', parentId: 'cc1' },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'a2',
+          type: 'agent',
+          data: { kind: 'agent', label: '对标拆解', parentId: 'cc1' },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'a3',
+          type: 'agent',
+          data: { kind: 'agent', label: '公众号写作' },
+          position: { x: 0, y: 0 },
+        },
+      ],
+      edges: [],
+    },
+    createdAt: 0,
+    updatedAt: 0,
+  }
+
+  it('含能力名/id/description + 结构摘要（容器阶段含参与者，顶层角色单列）', () => {
+    const s = buildCapabilityFocusBlock(cap)
+    expect(s).toContain('内容生产闭环')
+    expect(s).toContain('id=cap_x')
+    expect(s).toContain('调研并发→拆解→写作→审稿')
+    expect(s).toContain('<capability_profile>')
+    // 容器阶段归并参与者
+    expect(s).toContain('并行阶段「调研+拆解并发」')
+    expect(s).toContain('「选题调研」')
+    expect(s).toContain('「对标拆解」')
+    // 顶层角色单列
+    expect(s).toContain('角色「公众号写作」')
+  })
+
+  it('明确二选一规则：问能力→介绍不输出 JSON；干活→输出该能力 capability_ids JSON', () => {
+    const s = buildCapabilityFocusBlock(cap)
+    expect(s).toContain('问这个能力本身')
+    expect(s).toContain('绝不输出 JSON')
+    expect(s).toContain('{"capability_ids": ["cap_x"]}')
+  })
+
+  it('空 graph → 结构摘要降级为空编排，不抛错', () => {
+    const empty = { ...cap, graph: { nodes: [], edges: [] } }
+    expect(buildCapabilityFocusBlock(empty)).toContain('（空编排）')
+  })
+
+  it('无 description → 省略用途行', () => {
+    const noDesc = { ...cap, description: undefined }
+    const s = buildCapabilityFocusBlock(noDesc)
+    expect(s).not.toContain('用途：')
+    expect(s).toContain('内容生产闭环')
   })
 })

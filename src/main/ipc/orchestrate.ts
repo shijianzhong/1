@@ -62,7 +62,9 @@ function makeResolveAgent(
       agentId?: string
     }
 
-    const agentName = data.label ?? node.id
+    // 铁律20：executor_id == 节点 id（runner 按节点 id 路由/查找）。
+    // 不能用 data.label（角色显示名）——否则 executors.get(node.id) 找不到 → 空白气泡
+    const agentName = node.id
 
     // —— 向后兼容：旧节点无快照配置时，从全局 Agent 回退读取 ——
     // 优先 sourceAgentId，回退 agentId（旧字段名）

@@ -9,6 +9,9 @@
   "run": "运行",
   "running": "运行中…",
   "runPrompt": "输入编排起始消息：",
+  "runDialogTitle": "运行能力",
+  "runDialogDesc": "输入要交给这个能力编排执行的任务内容，确认后开始运行 workflow。",
+  "runDialogPlaceholder": "例如：帮我写一篇关于 AI Agent 的公众号深度文…（⌘/Ctrl + Enter 快速运行）",
   "output": "运行输出",
   "status": {
     "idle": "待机",
@@ -18,7 +21,13 @@
   },
   "inspector": {
     "title": "Inspector",
-    "hint": "拖拽节点到画布建图，连线后点击运行。运行态高亮在此显示。"
+    "hint": "拖拽节点到画布建图，连线后点击运行。运行态高亮在此显示。",
+    "entry": {
+      "set": "设为入口节点",
+      "activeExplicit": "✓ 当前生效入口（显式）",
+      "activeDerived": "✓ 当前生效入口（拓扑推导，勾选可固定）",
+      "derivedHint": "当前入口由拓扑推导为「{{name}}」，勾选此节点可改为显式入口"
+    }
   },
   "nodes": {
     "agent": "单 Agent 节点",

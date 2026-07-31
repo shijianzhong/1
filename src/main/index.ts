@@ -1,3 +1,4 @@
+import './bootstrap-userdata' // 必须最先：ONE_USER_DATA 覆盖 userData，早于 storage 模块初始化
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
@@ -22,11 +23,6 @@ import {
 import { logger } from './logger'
 
 const isMac = process.platform === 'darwin'
-
-// —— E2E 测试隔离：ONE_USER_DATA env 覆盖 userData 目录（每测试独立 SQLite + vault）——
-if (process.env.ONE_USER_DATA) {
-  app.setPath('userData', process.env.ONE_USER_DATA)
-}
 
 // —— 全局错误兜底（§11.5）：不静默退出 ——
 process.on('uncaughtException', (error) => {

@@ -26,6 +26,10 @@ export interface AgentNodeData {
   model?: string
   status?: AgentNodeStatus
   isEntry?: boolean
+  /** 派生：当前生效入口标记（displayNodes 注入，不入库） */
+  effectiveEntry?: boolean
+  /** 派生：生效入口是否来自拓扑推导（true=推导，false=显式） */
+  entryDerived?: boolean
   [key: string]: unknown
 }
 
@@ -47,6 +51,9 @@ function AgentNodeViewImpl({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} className="rf-handle" />
 
       {d.isEntry ? <span className="rf-entry-badge">入口</span> : null}
+      {!d.isEntry && d.effectiveEntry && d.entryDerived ? (
+        <span className="rf-entry-badge rf-entry-badge--derived">入口·推导</span>
+      ) : null}
 
       <div className="rf-agent-node__header">
         <span className="rf-agent-node__icon">

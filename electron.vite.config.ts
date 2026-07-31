@@ -16,6 +16,11 @@ export default defineConfig({
       outDir: 'out/main',
       rollupOptions: {
         input: resolve('src/main/index.ts'),
+        output: {
+          // electron 37 实测 ESM named export 不可用（仅 default export）→ 主进程用 CJS 保住 named import
+          format: 'cjs',
+          entryFileNames: 'index.cjs',
+        },
       },
     },
   },
