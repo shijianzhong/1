@@ -140,16 +140,20 @@ body::before {
   min-height: 100vh;
 }
 
-/* —— 全局滚动条（细线 + 悬浮加深，三主题经 fg 变量自动适配）——
+/* —— 全局滚动条（默认隐藏，鼠标移入滚动区域才显示，三主题经 fg 变量适配）——
    Webkit/Chromium（Electron 内核）走 ::-webkit-scrollbar；
    Firefox 风格走 scrollbar-width/scrollbar-color 兜底。
-   thumb 用 fg-3 半透明，悬停滚动区加粗加深，拖动再深一档；
-   track 透明，不抢玻璃态通透感。 */
+   默认 thumb 透明（隐藏，不破坏通透感）；
+   悬停滚动区：thumb 显现（fg-3）并加粗 8px；
+   悬停 thumb / 拖动：加深（fg-2）更易抓取。track 恒透明。 */
 
-/* Firefox / 标准属性（防御性，Chromium 忽略） */
+/* Firefox / 标准属性（防御性，Chromium 忽略）：默认拇指也走半透明 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-fg-3) 45%, transparent) transparent;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: color-mix(in srgb, var(--color-fg-3) 55%, transparent) transparent;
 }
 
 /* Webkit / Chromium（Electron 主路径） */
@@ -162,29 +166,34 @@ body::before {
   background: transparent;
 }
 
+/* 默认：thumb 透明（隐藏） */
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-fg-3) 45%, transparent);
+  background: transparent;
   border-radius: 999px;
-  /* 透明边框把 thumb 往内收，视觉更细、与轨道间留缝 */
   background-clip: padding-box;
 }
 
-/* 悬停滚动区：thumb 加深（宽度由下方 hover 规则加粗） */
+/* 鼠标移入滚动区域：thumb 显现 + 滚动条加粗到 8px */
+*:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 *:hover::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-fg-2) 60%, transparent);
+  background: color-mix(in srgb, var(--color-fg-3) 55%, transparent);
+  background-clip: padding-box;
+}
+
+/* 悬停 thumb：加深 */
+*:hover::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-fg-2) 70%, transparent);
   background-clip: padding-box;
 }
 
 /* 拖动 thumb：再深一档 */
 ::-webkit-scrollbar-thumb:active {
-  background: color-mix(in srgb, var(--color-fg-2) 80%, transparent);
+  background: color-mix(in srgb, var(--color-fg-2) 85%, transparent);
   background-clip: padding-box;
-}
-
-/* 悬停滚动区时滚动条加粗到 8px（更易抓取） */
-*:hover::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
 }
 
 /* 角落（横竖滚动交汇）：透明 */
