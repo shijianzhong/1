@@ -139,3 +139,62 @@ body::before {
 #root {
   min-height: 100vh;
 }
+
+/* —— 全局滚动条（细线 + 悬浮加深，三主题经 fg 变量自动适配）——
+   Webkit/Chromium（Electron 内核）走 ::-webkit-scrollbar；
+   Firefox 风格走 scrollbar-width/scrollbar-color 兜底。
+   thumb 用 fg-3 半透明，悬停滚动区加粗加深，拖动再深一档；
+   track 透明，不抢玻璃态通透感。 */
+
+/* Firefox / 标准属性（防御性，Chromium 忽略） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-fg-3) 45%, transparent) transparent;
+}
+
+/* Webkit / Chromium（Electron 主路径） */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-fg-3) 45%, transparent);
+  border-radius: 999px;
+  /* 透明边框把 thumb 往内收，视觉更细、与轨道间留缝 */
+  background-clip: padding-box;
+}
+
+/* 悬停滚动区：thumb 加深（宽度由下方 hover 规则加粗） */
+*:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-fg-2) 60%, transparent);
+  background-clip: padding-box;
+}
+
+/* 拖动 thumb：再深一档 */
+::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--color-fg-2) 80%, transparent);
+  background-clip: padding-box;
+}
+
+/* 悬停滚动区时滚动条加粗到 8px（更易抓取） */
+*:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* 角落（横竖滚动交汇）：透明 */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 不用上下/左右箭头按钮（现代极简风） */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
