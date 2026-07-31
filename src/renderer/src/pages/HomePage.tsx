@@ -24,6 +24,8 @@ interface ChatMessage {
   draft?: CreateDraft
   /** 确认卡状态（pending 可交互；saved/cancelled 定格） */
   cardStatus?: CardStatus
+  /** 编排发言者（orch_event output 气泡，executor_id == agent name） */
+  speaker?: string
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
@@ -134,13 +136,44 @@ export function HomePage() {
           }
           return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.error, error: true }]
         })
+      } else if (delta.type === 'orch_event') {
+        // 编排引擎事件（@直跳/组队跑 runner）：output 按 speaker 分泡流式渲染，
+        // node_error/failed 显示为错误气泡。node_started/node_done/handoff 暂不展示。
+        const ev = delta.event
+        if (ev.type === 'output') {
+          setStreamMsgs((prev) => {
+            const last = prev[prev.length - 1]
+            // 同 speaker 续接末条流式气泡；换 speaker 开新气泡并停掉之前所有流式态
+            if (last?.role === 'assistant' && last.streaming && !last.draft && last.speaker === ev.speaker) {
+              return [...prev.slice(0, -1), { ...last, text: last.text + ev.text }]
+            }
+            return [
+              ...prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+              {
+                id: crypto.randomUUID(),
+                role: 'assistant' as const,
+                text: ev.text,
+                streaming: true,
+                speaker: ev.speaker,
+              },
+            ]
+          })
+        } else if (ev.type === 'node_error' || ev.type === 'failed') {
+          const errText = ev.type === 'node_error' ? `${ev.node_id}: ${ev.error}` : ev.error
+          setStreamMsgs((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), role: 'assistant' as const, text: errText, error: true },
+          ])
+        }
       } else if (delta.type === 'message_stop') {
-        // 回复完成：停止流式 + 自动折叠 thinking
+        // 回复完成：停止所有流式态 + 末条自动折叠 thinking
         setStreamMsgs((prev) =>
           prev.map((m, i) =>
             i === prev.length - 1
               ? { ...m, streaming: false, retrying: undefined, thinkingCollapsed: true }
-              : m,
+              : m.streaming || m.retrying
+                ? { ...m, streaming: false, retrying: undefined }
+                : m,
           ),
         )
       } else if (delta.type === 'proposal') {
@@ -232,6 +265,7 @@ export function HomePage() {
               style={m.error ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
             >
               {m.thinking ? <ThinkingBlock text={m.thinking} collapsed={m.thinkingCollapsed} /> : null}
+              {m.speaker ? <div className="message__speaker">{m.speaker}</div> : null}
               {m.draft ? (
                 <CreateConfirmCard
                   draft={m.draft}

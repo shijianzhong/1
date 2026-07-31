@@ -224,6 +224,14 @@ html[data-platform='darwin'] .titlebar__inner {
   border: 1px solid var(--color-border);
 }
 
+/* 编排发言者标签（groupchat/组队时区分 agent，executor_id == agent name） */
+.message__speaker {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-brand-600);
+  margin-bottom: 4px;
+}
+
 .message__bubble--user {
   background: var(--color-brand-500);
   color: white;
@@ -303,13 +311,13 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .mention-chip--capability {
-  background: color-mix(in oklch, var(--color-accent, #8b5cf6) 14%, transparent);
-  color: var(--color-accent, #8b5cf6);
+  background: color-mix(in oklch, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
 }
 
 .mention-chip--skill {
-  background: color-mix(in oklch, var(--color-success, #10b981) 14%, transparent);
-  color: var(--color-success, #10b981);
+  background: color-mix(in oklch, var(--color-success) 14%, transparent);
+  color: var(--color-success);
 }
 
 /* —— 创建确认卡（聊天创建能力/角色/Skill）—— */
@@ -341,13 +349,13 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .create-card__badge--capability {
-  background: color-mix(in oklch, var(--color-accent, #8b5cf6) 14%, transparent);
-  color: var(--color-accent, #8b5cf6);
+  background: color-mix(in oklch, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
 }
 
 .create-card__badge--skill {
-  background: color-mix(in oklch, var(--color-success, #10b981) 14%, transparent);
-  color: var(--color-success, #10b981);
+  background: color-mix(in oklch, var(--color-success) 14%, transparent);
+  color: var(--color-success);
 }
 
 .create-card__title {
@@ -376,13 +384,13 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .create-card__input,
 .create-card__textarea {
-  border: 1px solid var(--color-border, color-mix(in oklch, var(--color-fg-3) 20%, transparent));
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 8px 10px;
   font-size: 0.86rem;
   font-family: inherit;
   color: var(--color-fg-1);
-  background: color-mix(in oklch, var(--color-bg, #fff) 60%, transparent);
+  background: color-mix(in oklch, var(--color-bg-1) 60%, transparent);
   outline: none;
   resize: vertical;
 }
@@ -394,7 +402,7 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .create-card__graph {
   height: 220px;
-  border: 1px solid var(--color-border, color-mix(in oklch, var(--color-fg-3) 20%, transparent));
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -410,7 +418,7 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .create-card__btn {
-  border: 1px solid var(--color-border, color-mix(in oklch, var(--color-fg-3) 24%, transparent));
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 6px 16px;
   font-size: 0.84rem;
@@ -436,7 +444,7 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .create-card__result--saved {
-  color: var(--color-success, #10b981);
+  color: var(--color-success);
 }
 
 .create-card__result--cancelled {
@@ -513,13 +521,13 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .mention-composer__badge--capability {
-  background: color-mix(in oklch, var(--color-accent, #8b5cf6) 16%, transparent);
-  color: var(--color-accent, #8b5cf6);
+  background: color-mix(in oklch, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
 }
 
 .mention-composer__badge--skill {
-  background: color-mix(in oklch, var(--color-success, #10b981) 16%, transparent);
-  color: var(--color-success, #10b981);
+  background: color-mix(in oklch, var(--color-success) 16%, transparent);
+  color: var(--color-success);
 }
 
 .mention-composer__group {

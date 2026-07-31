@@ -96,7 +96,7 @@ export class TeamJsonDetector {
 
   /** 取最终直答全文（decide 后调用；含尾窗残留） */
   flushDirect(): string {
-    return this.directBuffer + (this.teamStarted ? '' : '')
+    return this.directBuffer
   }
 
   /** 取组队 JSON 原文（decide 为 team 后调用，用于存档） */

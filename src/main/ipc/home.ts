@@ -45,8 +45,17 @@ import { logger } from '../logger'
 const STREAM_CHANNEL = 'home:stream'
 const DEFAULT_USER_ID = 'local'
 
-/** 创建提案草稿暂存（draftId → CreateDraft）；用户确认后取出落库并删除。 */
-const pendingDrafts = new Map<string, CreateDraft>()
+/** 创建提案草稿暂存（draftId → {draft, ts}）；确认/取消删除，超时（30min）惰性清理。 */
+const DRAFT_TTL_MS = 30 * 60 * 1000
+const pendingDrafts = new Map<string, { draft: CreateDraft; ts: number }>()
+
+/** 惰性清理超时草稿（随新提案/确认调用，防用户不点按钮直接离开导致的内存驻留） */
+function pruneDrafts(): void {
+  const now = Date.now()
+  for (const [id, entry] of pendingDrafts) {
+    if (now - entry.ts > DRAFT_TTL_MS) pendingDrafts.delete(id)
+  }
+}
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
@@ -179,7 +188,8 @@ export function registerHomeHandlers(): void {
         sessionId: sid,
         // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
         onPropose: (draft) => {
-          pendingDrafts.set(draft.draftId, draft)
+          pruneDrafts()
+          pendingDrafts.set(draft.draftId, { draft, ts: Date.now() })
           emitStream({ type: 'proposal', draft })
         },
       },
@@ -362,7 +372,8 @@ export function registerHomeHandlers(): void {
       kind: CreateDraft['kind']
       payload: CreateDraft['payload']
     }
-    const cached = pendingDrafts.get(draftId)
+    pruneDrafts()
+    const cached = pendingDrafts.get(draftId)?.draft
     if (cached && cached.kind !== kind) {
       throw new Error(`草稿类型不匹配（缓存 ${cached.kind} / 请求 ${kind}）`)
     }
