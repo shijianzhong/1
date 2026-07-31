@@ -179,6 +179,11 @@ function buildJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
       return { type: 'number' }
     case 'boolean':
       return { type: 'boolean' }
+    case 'enum': {
+      // z.enum(['a','b'])：zod v4 的 options 直接给可选值数组
+      const opts = (schema as unknown as { options?: unknown[] }).options
+      return { type: 'string', enum: opts ?? [] }
+    }
     case 'array':
       return { type: 'array', items: def.valueType ? buildJsonSchema(def.valueType) : {} }
     case 'optional':

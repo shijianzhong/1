@@ -14,6 +14,7 @@ import {
   saveAgent,
   saveCapability,
   saveSkill,
+  savePersona,
 } from '../storage/models'
 import { addMessage, createSession, listMessages } from '../storage/sessions'
 import { Agent } from '../orchestrator/agent'
@@ -164,9 +165,9 @@ export function registerHomeHandlers(): void {
       ? `${instructionsWithSkills}\n${routingInstruction}`
       : instructionsWithSkills
 
-    // —— 创建指令段：引导主 Agent 识别创建意图 → 多轮澄清 → propose_* 产出草稿。
-    // 始终注入（创建是主 Agent 基础能力，与用户当前是否已有资产无关）。
-    const instructions = `${instructionsWithRouting}\n${buildCreateInstruction()}`
+    // —— 创建指令段：引导主 Agent 识别创建/修改意图 → 多轮澄清 → propose_* 产出草稿。
+    // 注入当前 persona 原文（<persona> 边界），防 LLM 把 L0/记忆/路由段误当人设固化。
+    const instructions = `${instructionsWithRouting}\n${buildCreateInstruction(persona)}`
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
@@ -401,6 +402,27 @@ export function registerHomeHandlers(): void {
         content: p.content,
         discipline: p.discipline,
       })
+    } else if (kind === 'persona') {
+      // 人设更新：instructions 传了则全量替换，未传保留原文（只改档案场景）；
+      // profile 可选更新（未传字段保留原值）
+      const p = payload as Extract<CreateDraft, { kind: 'persona' }>['payload']
+      const existing = getPersona()
+      const mergedProfile = {
+        alias: p.profile?.alias ?? existing?.profile?.alias ?? '',
+        role: p.profile?.role ?? existing?.profile?.role ?? '',
+        preferredLanguage:
+          p.profile?.preferredLanguage ?? existing?.profile?.preferredLanguage ?? 'zh-CN',
+      }
+      const updated = savePersona({
+        id: 'home',
+        // 兜底名（persona 首次创建才有；与设置页 profile.defaultName 对齐）
+        name: existing?.name ?? '主助手',
+        instructions: p.instructions ?? existing?.instructions ?? '',
+        modelId: existing?.modelId,
+        skillIds: existing?.skillIds ?? [],
+        profile: mergedProfile,
+      })
+      saved = { id: updated.id }
     } else {
       throw new Error(`未知创建类型：${String(kind)}`)
     }

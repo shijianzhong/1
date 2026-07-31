@@ -57,6 +57,15 @@ describe('tools/registry', () => {
     expect(result.content).toContain('unknown_tool')
   })
 
+  it('z.enum 转 JSON Schema 带 enum 可选值（propose_persona preferredLanguage 依赖）', () => {
+    const schema = z.object({ lang: z.enum(['zh-CN', 'en']).optional() })
+    const def = registerTool('enum_tool', 'enum test', schema, async () => 'ok')
+    expect(def.def.input_schema).toMatchObject({
+      type: 'object',
+      properties: { lang: { type: 'string', enum: ['zh-CN', 'en'] } },
+    })
+  })
+
   it('工具第二次成功（重试恢复）', async () => {
     const schema = z.object({})
     const handler = vi

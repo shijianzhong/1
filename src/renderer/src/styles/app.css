@@ -358,6 +358,11 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-success);
 }
 
+.create-card__badge--persona {
+  background: color-mix(in oklch, var(--color-warning) 14%, transparent);
+  color: var(--color-warning);
+}
+
 .create-card__title {
   font-size: 0.9rem;
   font-weight: 600;

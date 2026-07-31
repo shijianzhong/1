@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { ReactFlow, Background, type Edge, type Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { unwrap } from '@renderer/api/client'
@@ -12,6 +13,14 @@ import type { CreateDraft, WorkflowGraph } from '@shared/types'
 
 export type CardStatus = 'pending' | 'saved' | 'cancelled'
 
+/** 确认入库后要失效的 React Query 缓存（否则管理页/设置页显示旧数据） */
+const INVALIDATE_KEYS: Record<CreateDraft['kind'], string[]> = {
+  agent: ['agents'],
+  capability: ['capabilities', 'capability'],
+  skill: ['skills'],
+  persona: ['persona'],
+}
+
 interface Props {
   draft: CreateDraft
   status: CardStatus
@@ -20,6 +29,7 @@ interface Props {
 
 export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
   const { t } = useTranslation(['home', 'common'])
+  const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // 可编辑字段（以 LLM 草稿为初值，用户确认前可改）
@@ -35,6 +45,9 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
       await window.one.home
         .confirmCreate({ draftId: draft.draftId, kind: draft.kind, payload })
         .then(unwrap)
+      for (const key of INVALIDATE_KEYS[draft.kind]) {
+        void qc.invalidateQueries({ queryKey: [key] })
+      }
       onStatusChange('saved')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -54,6 +67,12 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
   }
 
   const kindLabel = t(`home:create.kind.${draft.kind}`)
+  // persona 没有 name 字段，标题与按钮禁用条件需区分
+  const isPersona = draft.kind === 'persona'
+  const nonPersonaPayload = payload as Extract<CreateDraft, { kind: 'agent' | 'capability' | 'skill' }>['payload']
+  const personaPayload = payload as Extract<CreateDraft, { kind: 'persona' }>['payload']
+  // persona 的 instructions 可空（空 = 保留当前人设，仅更新档案），始终可确认
+  const canConfirm = isPersona ? true : !!nonPersonaPayload.name?.trim()
 
   return (
     <div className={`create-card create-card--${status}`}>
@@ -61,7 +80,7 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
         <span className={`create-card__badge create-card__badge--${draft.kind}`}>{kindLabel}</span>
         <span className="create-card__title">
           {status === 'saved'
-            ? t('home:create.savedTitle', { name: payload.name })
+            ? t('home:create.savedTitle', { name: isPersona ? kindLabel : nonPersonaPayload.name })
             : status === 'cancelled'
               ? t('home:create.cancelledTitle')
               : t('home:create.title', { kind: kindLabel })}
@@ -71,51 +90,65 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
       {status === 'pending' ? (
         <>
           <div className="create-card__body">
-            <Field label={t('home:create.field.name')}>
-              <input
-                className="create-card__input"
-                value={payload.name}
-                onChange={(e) => patch({ name: e.target.value })}
-              />
-            </Field>
-
-            <Field label={t('home:create.field.description')}>
-              <input
-                className="create-card__input"
-                value={payload.description ?? ''}
-                onChange={(e) => patch({ description: e.target.value })}
-              />
-            </Field>
-
-            {draft.kind === 'agent' ? (
-              <Field label={t('home:create.field.instructions')}>
+            {isPersona ? (
+              <Field label={t('home:create.field.personaInstructions')}>
                 <textarea
                   className="create-card__textarea"
-                  rows={6}
-                  value={(payload as Extract<CreateDraft, { kind: 'agent' }>['payload']).instructions}
+                  rows={10}
+                  value={personaPayload.instructions ?? ''}
+                  placeholder={t('home:create.field.personaKeepHint')}
                   onChange={(e) => patch({ instructions: e.target.value })}
                 />
               </Field>
-            ) : null}
+            ) : (
+              <>
+                <Field label={t('home:create.field.name')}>
+                  <input
+                    className="create-card__input"
+                    value={nonPersonaPayload.name}
+                    onChange={(e) => patch({ name: e.target.value })}
+                  />
+                </Field>
 
-            {draft.kind === 'skill' ? (
-              <Field label={t('home:create.field.content')}>
-                <textarea
-                  className="create-card__textarea"
-                  rows={8}
-                  value={(payload as Extract<CreateDraft, { kind: 'skill' }>['payload']).content}
-                  onChange={(e) => patch({ content: e.target.value })}
-                />
-              </Field>
-            ) : null}
+                <Field label={t('home:create.field.description')}>
+                  <input
+                    className="create-card__input"
+                    value={nonPersonaPayload.description ?? ''}
+                    onChange={(e) => patch({ description: e.target.value })}
+                  />
+                </Field>
 
-            {draft.kind === 'capability' ? (
-              <Field label={t('home:create.field.graph')}>
-                <GraphPreview
-                  graph={(payload as Extract<CreateDraft, { kind: 'capability' }>['payload']).graph}
-                />
-              </Field>
-            ) : null}
+                {draft.kind === 'agent' ? (
+                  <Field label={t('home:create.field.instructions')}>
+                    <textarea
+                      className="create-card__textarea"
+                      rows={6}
+                      value={(payload as Extract<CreateDraft, { kind: 'agent' }>['payload']).instructions}
+                      onChange={(e) => patch({ instructions: e.target.value })}
+                    />
+                  </Field>
+                ) : null}
+
+                {draft.kind === 'skill' ? (
+                  <Field label={t('home:create.field.content')}>
+                    <textarea
+                      className="create-card__textarea"
+                      rows={8}
+                      value={(payload as Extract<CreateDraft, { kind: 'skill' }>['payload']).content}
+                      onChange={(e) => patch({ content: e.target.value })}
+                    />
+                  </Field>
+                ) : null}
+
+                {draft.kind === 'capability' ? (
+                  <Field label={t('home:create.field.graph')}>
+                    <GraphPreview
+                      graph={(payload as Extract<CreateDraft, { kind: 'capability' }>['payload']).graph}
+                    />
+                  </Field>
+                ) : null}
+              </>
+            )}
           </div>
 
           {error ? <div className="create-card__error">{error}</div> : null}
@@ -125,7 +158,7 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
               type="button"
               className="create-card__btn create-card__btn--primary"
               onClick={() => void confirm()}
-              disabled={busy || !payload.name.trim()}
+              disabled={busy || !canConfirm}
             >
               {t('home:create.confirm')}
             </button>

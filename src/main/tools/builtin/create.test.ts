@@ -86,4 +86,58 @@ describe('tools/builtin/create', () => {
     expect(result.isError).toBe(false)
     expect(JSON.parse(result.content).ok).toBe(true)
   })
+
+  it('propose_persona：产出人设更新草稿（仅 instructions）', async () => {
+    const drafts: CreateDraft[] = []
+    const result = await executeTool(
+      'propose_persona',
+      { instructions: '你是简洁的助手，风格直接。' },
+      'tu_p1',
+      { onPropose: (d) => drafts.push(d) },
+    )
+    expect(result.isError).toBe(false)
+    expect(drafts[0]).toMatchObject({
+      kind: 'persona',
+      payload: { instructions: '你是简洁的助手，风格直接。' },
+    })
+    // 未传 profile 字段 → payload 不含 profile
+    expect((drafts[0].payload as { profile?: unknown }).profile).toBeUndefined()
+  })
+
+  it('propose_persona：含 profile 字段时产出带 profile 的草稿', async () => {
+    const drafts: CreateDraft[] = []
+    await executeTool(
+      'propose_persona',
+      { instructions: '新人设', alias: '小明', preferredLanguage: 'en' },
+      'tu_p2',
+      { onPropose: (d) => drafts.push(d) },
+    )
+    const p = drafts[0].payload as { instructions: string; profile?: { alias?: string } }
+    expect(p.instructions).toBe('新人设')
+    expect(p.profile?.alias).toBe('小明')
+  })
+
+  it('propose_persona：只改档案（不传 instructions）→ payload 不含 instructions', async () => {
+    const drafts: CreateDraft[] = []
+    const result = await executeTool(
+      'propose_persona',
+      { alias: '小明' },
+      'tu_p3',
+      { onPropose: (d) => drafts.push(d) },
+    )
+    expect(result.isError).toBe(false)
+    const p = drafts[0].payload as { instructions?: string; profile?: { alias?: string } }
+    expect(p.instructions).toBeUndefined()
+    expect(p.profile?.alias).toBe('小明')
+  })
+
+  it('propose_persona：空载荷（无 instructions 无档案）→ 返回错误 JSON 不产草稿', async () => {
+    const drafts: CreateDraft[] = []
+    const result = await executeTool('propose_persona', {}, 'tu_p4', {
+      onPropose: (d) => drafts.push(d),
+    })
+    expect(result.isError).toBe(false) // 工具不抛，错误经 content JSON 返回（铁律11）
+    expect(result.content).toContain('empty_payload')
+    expect(drafts).toHaveLength(0)
+  })
 })

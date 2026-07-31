@@ -126,4 +126,46 @@ export function registerCreateTools(): void {
       return emitPropose(ctx, draft)
     },
   )
+
+  registerTool(
+    'propose_persona',
+    '当用户想修改主助手的人设（人格、语气、职责定位）或更新用户档案（称呼/角色/偏好语种）时调用。产出草稿供用户确认后入库。改人设时 instructions 传完整新正文（全量替换，基于当前人设原文修改）；只改档案时 instructions 不传（系统保留当前人设）。',
+    z.object({
+      instructions: z.string().optional().describe('新的主助手人设正文（完整版，全量替换）。只改档案时不传。'),
+      alias: z.string().optional().describe('可选：更新用户称呼'),
+      role: z.string().optional().describe('可选：更新用户角色描述'),
+      preferredLanguage: z.enum(['zh-CN', 'en']).optional().describe('可选：更新偏好回复语种'),
+    }),
+    async (args, ctx) => {
+      const a = args as {
+        instructions?: string
+        alias?: string
+        role?: string
+        preferredLanguage?: 'zh-CN' | 'en'
+      }
+      // 空载荷守卫：至少要有 instructions 或一个档案字段（返回错误 JSON 不抛，铁律11）
+      const hasProfile = a.alias !== undefined || a.role !== undefined || a.preferredLanguage !== undefined
+      if (!a.instructions?.trim() && !hasProfile) {
+        return { ok: false, error: 'empty_payload', hint: '至少传 instructions 或一个档案字段（alias/role/preferredLanguage）' }
+      }
+      const draft: CreateDraft = {
+        draftId: newDraftId(),
+        kind: 'persona',
+        payload: {
+          // instructions 为空串视为未传（保留原文）
+          ...(a.instructions?.trim() ? { instructions: a.instructions } : {}),
+          ...(hasProfile
+            ? {
+                profile: {
+                  alias: a.alias,
+                  role: a.role,
+                  preferredLanguage: a.preferredLanguage,
+                },
+              }
+            : {}),
+        },
+      }
+      return emitPropose(ctx, draft)
+    },
+  )
 }

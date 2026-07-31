@@ -229,14 +229,46 @@ describe('TeamJsonDetector（铁律24）', () => {
 })
 
 describe('buildCreateInstruction', () => {
-  it('包含三类创建入口 + propose 工具约定 + 确认才入库提示', () => {
-    const s = buildCreateInstruction()
+  const persona = {
+    id: 'home',
+    name: '主助手',
+    instructions: '你是用户的智能助手，风格简洁。',
+    createdAt: 0,
+    updatedAt: 0,
+  }
+
+  it('包含四类创建/修改入口 + propose 工具约定 + 确认才入库提示', () => {
+    const s = buildCreateInstruction(persona)
     expect(s).toContain('propose_agent')
     expect(s).toContain('propose_capability')
     expect(s).toContain('propose_skill')
+    expect(s).toContain('propose_persona')
     expect(s).toContain('确认')
     expect(s).toContain('编排图')
     // 引导先澄清再产出（避免一次就调工具）
     expect(s).toContain('先澄清')
+    // 人设修改引导：全量替换 + 基于原文
+    expect(s).toContain('全量替换')
+    expect(s).toContain('人设修改')
+    // 称呼/角色/语种修改也走 propose_persona，instructions 不传
+    expect(s).toContain('叫我XX')
+    expect(s).toContain('用户档案')
+    expect(s).toContain('instructions 不传')
+  })
+
+  it('注入当前人设原文（<persona> 边界标记，防注入段污染固化）', () => {
+    const s = buildCreateInstruction(persona)
+    expect(s).toContain('<persona>')
+    expect(s).toContain('你是用户的智能助手，风格简洁。')
+    expect(s).toContain('</persona>')
+    // 明确警示标签外内容不是人设
+    expect(s).toContain('都不是人设')
+  })
+
+  it('无人设原文时不注入 <persona> 块', () => {
+    expect(buildCreateInstruction(null)).not.toContain('<persona>')
+    expect(buildCreateInstruction({ ...persona, instructions: '' })).not.toContain('<persona>')
+    // 不传参兼容旧调用
+    expect(buildCreateInstruction()).not.toContain('<persona>')
   })
 })

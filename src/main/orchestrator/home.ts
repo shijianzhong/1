@@ -4,6 +4,7 @@ import type {
   GraphNode,
   HomeStreamEvent,
   OrchMessage,
+  Persona,
   Skill,
   StreamEvent,
   WorkflowGraph,
@@ -224,24 +225,41 @@ export function buildRoutingInstruction(
 }
 
 /**
- * 创建指令段（聊天创建能力/角色/Skill）。
- * 引导主 Agent：识别创建意图 → 多轮澄清 → 调 propose_* 工具产出草稿 →
+ * 创建指令段（聊天创建/修改能力/角色/Skill/人设）。
+ * 引导主 Agent：识别创建/修改意图 → 多轮澄清 → 调 propose_* 工具产出草稿 →
  * 告知用户「已生成预览，请在下方卡片确认」。草稿不落库，确认才入库。
+ *
+ * persona 原文注入（防污染）：LLM 看到的 system prompt 是 L0+L2+skill+路由+本段
+ * 的拼装体，无法分离人设原文。把 persona.instructions 用 <persona> 边界标记附上，
+ * 作为 propose_persona 的修改基准——否则「叫我XX」场景会把注入段固化进 persona，
+ * 造成双重注入与新旧 L0 身份块矛盾。
  */
-export function buildCreateInstruction(): string {
+export function buildCreateInstruction(persona?: Persona | null): string {
+  const personaAnchor = persona?.instructions?.trim()
+    ? [
+        '',
+        '【当前人设原文】（<persona> 标签内是完整原文，propose_persona 的唯一修改基准；标签外的一切内容（身份块/记忆/技能/路由/本说明）都不是人设，严禁复制进 instructions）',
+        '<persona>',
+        persona.instructions,
+        '</persona>',
+      ]
+    : []
   return [
     '',
-    '【创建能力/角色/技能】你可以帮用户在对话中创建三类资产，创建后经用户确认才会入库：',
+    '【创建/修改能力/角色/技能/人设】你可以帮用户在对话中创建或修改以下四类资产，创建/修改后经用户确认才会入库：',
     '- 角色（Agent）：有人格与职责的对话角色，调 propose_agent。',
     '- 能力（Capability）：多角色协作的编排工作流，调 propose_capability。',
     '- 技能（Skill）：可复用的知识与纪律（SKILL.md），调 propose_skill。',
+    '- 人设（Persona）：你自己的灵魂设定（人格、语气、职责定位），调 propose_persona。该工具也可同时更新用户档案（称呼/角色/偏好语种）。',
     '',
-    '创建规则：',
-    '1. 识别意图：当用户表达"创建一个/帮我做一个/新增一个 X"且指向上述三类时，进入创建流程。',
-    '2. 先澄清再产出：通过追问明确需求（角色定位与职责、能力目标与参与角色与协作模式、技能用途与内容），不要一次就调工具。信息足够后才调用对应 propose_* 工具。',
+    '创建/修改规则：',
+    '1. 识别意图：当用户表达"创建一个/帮我做一个/新增一个 X"且指向上述四类时，进入创建流程。当用户说"改一下你的人设/你以后用xx风格回答/调整一下你的角色"时，进入人设修改流程。当用户说"叫我XX/我是做XX的/以后用英文回复"等想改称呼、角色或偏好语种时，也走 propose_persona。',
+    '2. 先澄清再产出：通过追问明确需求（角色定位与职责、能力目标与参与角色与协作模式、技能用途与内容、人设风格与语气），不要一次就调工具。信息足够后才调用对应 propose_* 工具。',
     '3. propose_* 只生成预览卡片，不会直接入库。调用后请告诉用户"已生成预览，请在下方卡片中确认或修改后入库"。',
     '4. 能力编排图 graph 约定：nodes 为 agent 节点（data 含 label + instructions，或引用已有角色）与编排容器节点（sequential/concurrent/groupchat/handoff，容器 data 含 participantIds 等）；edges 描述连线。必须产出结构合法的 graph。',
-    '5. 用户在卡片上可修改字段；用户确认后系统会自动入库，你无需重复调用。',
+    '5. 人设修改：propose_persona 的 instructions 是完整的新人设正文（全量替换）。改人设时必须基于【当前人设原文】修改，产出完整版，而非"增加以下内容"之类的片段。只改称呼/角色/语种时 instructions 不传，只带 alias/role/preferredLanguage——系统会自动保留人设原文，无需回传。',
+    '6. 用户在卡片上可修改字段；用户确认后系统会自动入库，你无需重复调用。',
+    ...personaAnchor,
   ].join('\n')
 }
 

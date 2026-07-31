@@ -415,6 +415,20 @@ export type CreateDraft =
       kind: 'skill'
       payload: { name: string; description?: string; content: string; discipline?: string }
     }
+  | {
+      draftId: string
+      kind: 'persona'
+      /** 人设更新：instructions 为新的人设正文（全量替换）；不传 = 保留当前人设（仅改档案） */
+      payload: {
+        instructions?: string
+        /** 可选：同时更新 profile（alias/role/language），未传则保留原值 */
+        profile?: {
+          alias?: string
+          role?: string
+          preferredLanguage?: 'zh-CN' | 'en'
+        }
+      }
+    }
 
 /** 首页主助手人设（独立于角色，固定人格） */
 export interface Persona {
