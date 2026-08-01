@@ -16,7 +16,8 @@
     "test:e2e": "npm run build && playwright test",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "package": "npm run build && electron-builder"
+    "vendor:opencli": "npm install --prefix vendor/opencli @jackwener/opencli --omit=dev",
+    "package": "npm run build && npm run vendor:opencli && electron-builder"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

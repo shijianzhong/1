@@ -71,11 +71,14 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
   }
 
   // 构建 concurrent 容器 → aggregator 映射（用于跳过视觉边）
+  // data.aggregator 可能是角色库 id（如 agt_wechat_writing）而图节点 id 是画布生成的
+  // （如 agent_ms76ai3a）——存解析后的节点 id，否则容器→aggregator 视觉边跳过失效，
+  // 该边会漏进运行时 edges（所幸 runner 已对 Concurrent 容器禁边 fan-out，双保险）。
   const containerAggregators = new Map<string, string>()
   for (const n of graph.nodes) {
     if (n.type === 'concurrent') {
       const agg = (n.data as { aggregator?: string })?.aggregator
-      if (agg) containerAggregators.set(n.id, agg)
+      if (agg) containerAggregators.set(n.id, findAgentNode(graph, agg)?.id ?? agg)
     }
   }
 
@@ -95,21 +98,31 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
   //    子节点显式边叠加会造成双投递，甚至与 pattern 边组成 hasCycle
   //    检测不到的运行时环（hasCycle 只查 graph.edges）
   for (const e of graph.edges) {
-    const skipAggregator = containerAggregators.get(e.source)
-    if (skipAggregator === e.target) {
+    // 端点兼容角色库 id（存量图可能存了 agt_xxx 而非画布节点 id）：
+    // 先解析到图节点 id，找不到保留原值（运行时查无 executor 会 warn 跳过）
+    const source = findAgentNode(graph, e.source)?.id ?? e.source
+    const target = findAgentNode(graph, e.target)?.id ?? e.target
+    const skipAggregator = containerAggregators.get(source)
+    if (skipAggregator === target) {
       continue // 视觉边，跳过
     }
-    if (childIds.has(e.source) || childIds.has(e.target)) {
+    if (childIds.has(source) || childIds.has(target)) {
       logger.warn(
-        `[builder] 跳过容器子节点显式边 ${e.source}→${e.target}（容器内部布线由 pattern 决定）`,
+        `[builder] 跳过容器子节点显式边 ${source}→${target}（容器内部布线由 pattern 决定）`,
       )
       continue
     }
+    // sequential 容器边界边改写：容器本身不注册 executor（仅画布分组），
+    // X→S 改投首 participant、S→Y 改由末 participant 发出（递归解嵌套）。
+    // 必须在 childIds 检查之后改写——改写出的 participant 是子节点，不能被误杀。
+    // 不改写的话容器边是死边：无 executor 触发 fan-out，流程断在容器边界。
+    const src = resolveSeqBoundary(nodes, source, 'last')
+    const tgt = resolveSeqBoundary(nodes, target, 'first')
     // 条件边（GraphEdge.condition）→ conditions；无 condition → 普通边
     if (e.condition && e.condition.trim()) {
-      bctx.addCondition(e.source, e.target, e.condition.trim())
+      bctx.addCondition(src, tgt, e.condition.trim())
     } else {
-      bctx.addEdge(e.source, e.target)
+      bctx.addEdge(src, tgt)
     }
   }
 
@@ -174,6 +187,28 @@ export function resolveStartExecutor(graph: WorkflowGraph): string {
     return node.id
   }
   return resolve(entry)
+}
+
+/**
+ * sequential 容器边界解析：容器不注册 executor，进出边需落到真实可执行节点。
+ * - 作为 target（入边）：递归取首 participant；
+ * - 作为 source（出边）：递归取末 participant；
+ * 非 sequential 节点 / 空容器 / 循环引用 → 原样返回。
+ * （participant 是 concurrent/groupchat/handoff 容器时返回容器自身——它们是注册的 executor。）
+ */
+function resolveSeqBoundary(
+  nodes: Map<string, GraphNode>,
+  id: string,
+  side: 'first' | 'last',
+  seen = new Set<string>(),
+): string {
+  const n = nodes.get(id)
+  if (!n || n.type !== 'sequential' || seen.has(id)) return id
+  seen.add(id)
+  const parts = (n.data as { participants?: string[] }).participants ?? []
+  const pick = side === 'first' ? parts[0] : parts[parts.length - 1]
+  if (!pick) return id
+  return resolveSeqBoundary(nodes, pick, side, seen)
 }
 
 /**

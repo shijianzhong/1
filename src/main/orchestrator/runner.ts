@@ -6,6 +6,7 @@ import type {
 } from '@shared/types'
 import type { Executor, RuntimeWorkflow } from './models'
 import { ConcurrentExecutor } from './patterns/concurrent'
+import { AgentExecutor } from './patterns/agent'
 import { logger } from '../logger'
 
 // —— Pregel superstep 执行模型（§三之三 E + 铁律7）——
@@ -13,6 +14,9 @@ import { logger } from '../logger'
 // 不是递归（GroupChat 的 should_respond=false 广播依赖 superstep 语义，§三 D）。
 
 const MAX_SUPERSTEPS = 50 // 防死循环兜底
+
+// executor cache 软上限：超出后保留首条 + 最近 N 条（见 deliverToExecutor）
+const CACHE_SOFT_CAP = 200
 
 interface WorkflowContextImpl extends WorkflowContext {
   source: string | null
@@ -151,6 +155,11 @@ export async function runWorkflow(
   // Concurrent fan-in 栅栏：跟踪已聚合的容器 id，防重复聚合
   const aggregatedConc = new Set<string>()
 
+  // executor 失败记录（id → 错误信息）：participant 失败时 fan-in 栅栏把它视为
+  // 「已结束」，容错聚合已有结果 + 失败标注——否则失败 participant 永远没有 assistant
+  // 产出，栅栏永不满足，pending 清空后 workflow 静默提前收敛、聚合结果整体丢失。
+  const failedNodes = new Map<string, string>()
+
   let iteration = 0
   while (iteration < MAX_SUPERSTEPS) {
     if (signal?.aborted) {
@@ -186,39 +195,56 @@ export async function runWorkflow(
         }
         // 为每个并发 executor 创建独立子上下文，避免 source 互相覆盖
         const executorCtx = createChildContext(ctx, targetId)
-        await deliverToExecutor(executor, envelopes, executorCtx, wf, onEvent, signal)
+        await deliverToExecutor(executor, envelopes, executorCtx, wf, onEvent, failedNodes, signal)
       }),
     )
 
     // —— Concurrent fan-in 栅栏（等齐再聚合，铁律：fan-in 等 all 到齐）——
     // 每个 superstep 结束后扫描 concurrent 容器：所有 participant 都已有
     // assistant 产出（cache 里 role==='assistant'）→ 拼合成一条消息投给 aggregator。
+    // 容错：participant 失败（failedNodes 有记录）视为「已结束」，聚合时标注失败原因，
+    // 不再等一个永远等不到的产出（旧行为：静默提前收敛、聚合丢失）。
     for (const [id, ex] of wf.executors) {
       if (!(ex instanceof ConcurrentExecutor)) continue
       if (aggregatedConc.has(id)) continue
       const participantIds = ex.participantIds
       const allDone = participantIds.every((pid) => {
+        if (failedNodes.has(pid)) return true
         const pEx = wf.executors.get(pid)
         return pEx?.cache.some((m) => m.role === 'assistant')
       })
       if (!allDone || participantIds.length === 0) continue
-      // 拼合各 participant 最后一条 assistant
+      // 拼合各 participant 最后一条 assistant；前缀原始任务（容器 cache 首条 user
+      // 消息），否则 aggregator 只拿到调研碎片、丢失用户最初意图
+      const firstUser = ex.cache.find((m) => m.role === 'user')
       const parts: string[] = []
       for (const pid of participantIds) {
+        const failReason = failedNodes.get(pid)
+        if (failReason !== undefined) {
+          parts.push(`【${pid}】\n（执行失败：${failReason}）`)
+          continue
+        }
         const pEx = wf.executors.get(pid)
         const lastAssistant = [...(pEx?.cache ?? [])]
           .reverse()
           .find((m) => m.role === 'assistant')
         parts.push(`【${pid}】\n${lastAssistant?.content ?? ''}`)
       }
-      const joined = parts.join('\n\n')
+      const joined =
+        (firstUser?.content ? `任务：${firstUser.content}\n\n` : '') + parts.join('\n\n')
       aggregatedConc.add(id)
-      ctx.pending.push({
-        source: id,
-        target: ex.aggregatorId,
-        message: { role: 'user', content: joined, shouldRespond: true },
-        targeted: true,
-      })
+      // 投递目标 = aggregator + 容器其它下游边（Set 去重；容器→aggregator 视觉边
+      // builder 已跳过，这里再兜底排除一次防双投）。
+      // 语义：容器的出边 = 「本阶段完成后流转到 X」，统一在等齐后投聚合结果。
+      const targets = new Set<string>([ex.aggregatorId, ...(wf.edges.get(id) ?? [])])
+      for (const target of targets) {
+        ctx.pending.push({
+          source: id,
+          target,
+          message: { role: 'user', content: joined, shouldRespond: true },
+          targeted: true,
+        })
+      }
     }
 
     iteration++
@@ -239,13 +265,20 @@ async function deliverToExecutor(
   ctx: WorkflowContextImpl,
   wf: RuntimeWorkflow,
   onEvent: (e: StreamEvent) => void,
-  _signal?: AbortSignal,
+  failedNodes: Map<string, string>,
+  signal?: AbortSignal,
 ): Promise<void> {
   onEvent({ type: 'node_started', node_id: executor.id })
 
   // extend cache（所有消息都进 cache，铁律15）
   const messages = envelopes.map((e) => e.message)
   executor.cache.push(...messages)
+  // cache 软上限：防长会话（GroupChat 多轮广播）单 executor cache 无界膨胀超
+  // context window。超限保留首条（原始任务锚点）+ 最近 N 条——对应 CLAUDE.md
+  // 「compaction 先用简单截断保留最近 N 条」的 MVP 取舍，完整 compaction 后置。
+  if (executor.cache.length > CACHE_SOFT_CAP) {
+    executor.cache = [executor.cache[0], ...executor.cache.slice(-(CACHE_SOFT_CAP - 1))]
+  }
 
   // shouldRespond 双语义（铁律15）：任一 envelope 显式 false 且全部显式 false
   // → 仅 extend cache（broadcast 模式）；否则默认 true 触发 handle。
@@ -258,55 +291,76 @@ async function deliverToExecutor(
     const req = { messages, shouldRespond }
     const eventStream = executor.handle(req, ctx)
     for await (const event of eventStream) {
+      // 取消提速：abort 到达时停止消费当前 executor 的事件流（for-await break
+      // 会调 generator.return() 终止流），不必等整个 chunk 流吐完
+      if (signal?.aborted) break
       onEvent(event)
     }
     onEvent({ type: 'node_done', node_id: executor.id })
+
+    // 已取消：不再 fan-out 触发下游——否则 abort 在 handle 期间到达时，
+    // 下游仍会被这次投递点燃，取消语义漏到下一个 superstep 顶部才生效
+    if (signal?.aborted) return
 
     // handle 后 fan-out 给下游（非定向消息走边）
     // broadcast（shouldRespond=false）仅 extend cache，不再 fan-out——
     // 否则 GroupChat 广播一次就会把下游全部触发（§三 D broadcast 语义）。
     if (!shouldRespond) return
+    // Concurrent 容器是纯 dispatcher（handle 只做 fan-out 分发，瞬间完成）：
+    // 它的 cache 末条还是「原始输入」，此时走边 fan-out 会把原始输入直接发给下游，
+    // 下游与 participant 同 superstep 并发开跑、拿不到调研结果（实测 bug：
+    // 写作 agent 与调研同跑，反手问用户要写什么）。下游统一由 fan-in 栅栏
+    // 等齐后投聚合结果（见主循环栅栏段）。
+    if (executor instanceof ConcurrentExecutor) return
     const edges = wf.edges.get(executor.id) ?? []
     const conditions = wf.conditions.get(executor.id) ?? []
     if (edges.length > 0 || conditions.length > 0) {
-      // 取 executor cache 最后产出作为下游输入
       const lastMsg = executor.cache[executor.cache.length - 1]
       if (lastMsg) {
+        // 转发载荷（§G full_conversation 保真）：AgentExecutor 把完整 cache 转发下游——
+        // 下游 extend 后能看到原始任务 + 所有上游产出，而非仅末条。
+        // （顺序管线「调研→拆解→写作」里，写作必须同时看到调研与拆解两份结果；
+        //  只转末条会让写作丢失调研上下文，退化去反问用户。）
+        // 容器 executor（groupchat/handoff）保持末条：其 cache 是整段聊天历史，全量转发会灌爆下游。
+        // 注意：菱形汇聚（两上游 cache 含相同前缀）会产生重复消息，MVP 接受（图多为线性）。
+        const payload: OrchMessage[] =
+          executor instanceof AgentExecutor
+            ? executor.cache
+            : [{ ...lastMsg, author: executor.id }]
+        const sendPayload = async (target: string): Promise<void> => {
+          for (const m of payload) {
+            await ctx.send_message(m, target)
+          }
+        }
         if (conditions.length > 0) {
-          // 条件边（switch-case 语义，§三之三 B）：求值谓词，走第一个匹配的；
-          // 全不命中 → 走无 condition 的普通边兜底（默认分支）。
+          // 条件边（switch-case 语义，§三之三 B）：谓词对本 executor 末条产出求值，
+          // 走第一个匹配的；全不命中 → 走无 condition 的普通边兜底（默认分支）。
           let matched = false
           for (const c of conditions) {
             if (evaluatePredicate(c.predicate, lastMsg.content)) {
-              await ctx.send_message(
-                { ...lastMsg, author: executor.id },
-                c.target,
-              )
+              await sendPayload(c.target)
               matched = true
               break
             }
           }
           if (!matched) {
             for (const target of edges) {
-              await ctx.send_message(
-                { ...lastMsg, author: executor.id },
-                target,
-              )
+              await sendPayload(target)
             }
           }
         } else {
           // 普通边：fan-out 给所有下游（下一 superstep deliver）
           for (const target of edges) {
-            await ctx.send_message(
-              { ...lastMsg, author: executor.id },
-              target,
-            )
+            await sendPayload(target)
           }
         }
       }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    // 记录失败：fan-in 栅栏据此容错聚合；下游普通边不 fan-out（上游失败下游无从继续），
+    // 前端经 node_error 事件可见
+    failedNodes.set(executor.id, message)
     onEvent({ type: 'node_error', node_id: executor.id, error: message })
   }
 }

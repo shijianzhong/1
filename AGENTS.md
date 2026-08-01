@@ -20,6 +20,6 @@
 
 **One**：把源项目 Proton（EClaw 智能助手，FastAPI + React Web 应用）重写为 Electron + React + 全 TypeScript 后端的纯桌面应用。后端全 TS 重写、纯桌面、前端重写不复用原 UI。
 
-## 当前进度一句话（2026-07-30）
+## 当前进度一句话（2026-08-01）
 
-M0–M3 与 M5 骨架、部分 M6（含 mac dmg）已落地；**主战场是 M4 编排保真收口**（shouldRespond / fan-in / manager / 首页组队路由）以及 i18n 清零、Skill/工具深化。细节见 `task.md`「已知缺口」。
+M0–M4 与 M5、部分 M6（含 mac dmg）已落地；review 高低优先项已批量收口（稳定性加固 + i18n 用户可见硬编码清零 + 主进程运行期加固）；**主战场是 Skill ContextProvider（铁律 22/23）、崩溃草稿 UI 闭环、工具生态深化（shell/MCP）与 i18n errors.\* 尾巴**。细节见 `task.md`「已知缺口」。

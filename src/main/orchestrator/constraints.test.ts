@@ -49,6 +49,19 @@ describe('repairToolPairs（铁律18）', () => {
     expect(out[1].isFunctionResult).toBe(true)
     expect(out[2].toolUseId).toBeUndefined() // 孤儿降级
   })
+
+  it('孤儿降级后 content 为空 → 占位文本兜底（防空 text 块触发 Anthropic 新校验错）', () => {
+    const msgs: OrchMessage[] = [
+      // assistant 纯 tool_use（无文本）在编排消息模型里是 content: ''
+      { role: 'assistant', author: 'A', content: '', toolUseId: 'tu_1' },
+      { role: 'user', content: '  ', isFunctionResult: true, toolUseId: 'tu_2' },
+    ]
+    const out = repairToolPairs(msgs)
+    expect(out[0].toolUseId).toBeUndefined()
+    expect(out[0].content.trim().length).toBeGreaterThan(0)
+    expect(out[1].isFunctionResult).toBeUndefined()
+    expect(out[1].content.trim().length).toBeGreaterThan(0)
+  })
 })
 
 describe('stripToolBlocksFilter', () => {

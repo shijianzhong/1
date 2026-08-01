@@ -4,15 +4,31 @@
     "title": "节点面板",
     "agents": "角色 Agent",
     "containers": "编排容器",
-    "noAgents": "暂无角色，点击前往创建"
+    "noAgents": "暂无角色，点击前往创建",
+    "seqLabel": "顺序 Sequential",
+    "seqDesc": "A → B → C 链式执行",
+    "concurrentLabel": "并发 Concurrent",
+    "concurrentDesc": "同时执行，结果聚合",
+    "groupchatLabel": "群聊 GroupChat",
+    "groupchatDesc": "多角色轮流发言",
+    "handoffLabel": "转交 Handoff",
+    "handoffDesc": "角色间自主交接",
+    "magenticLabel": "Magentic",
+    "magenticDesc": "复杂任务分解（MVP）"
   },
   "run": "运行",
   "running": "运行中…",
-  "runPrompt": "输入编排起始消息：",
-  "runDialogTitle": "运行能力",
-  "runDialogDesc": "输入要交给这个能力编排执行的任务内容，确认后开始运行 workflow。",
-  "runDialogPlaceholder": "例如：帮我写一篇关于 AI Agent 的公众号深度文…（⌘/Ctrl + Enter 快速运行）",
-  "output": "运行输出",
+  "stop": "停止",
+  "tabs": {
+    "inspector": "属性",
+    "chat": "运行对话"
+  },
+  "runChat": {
+    "empty": "输入任务开始运行当前能力编排。运行中各角色的发言会按说话人分气泡流式展示；角色向你提问时会在这里暂停等你的回答。",
+    "placeholder": "描述要交给这个能力做的事…（Enter 发送，Shift+Enter 换行）",
+    "history": "运行记录",
+    "historyEmpty": "还没有运行记录"
+  },
   "status": {
     "idle": "待机",
     "running": "运行中",
@@ -27,7 +43,30 @@
       "activeExplicit": "✓ 当前生效入口（显式）",
       "activeDerived": "✓ 当前生效入口（拓扑推导，勾选可固定）",
       "derivedHint": "当前入口由拓扑推导为「{{name}}」，勾选此节点可改为显式入口"
-    }
+    },
+    "nodeConfig": "节点配置",
+    "refreshFromTemplate": "从模板刷新",
+    "refreshFromTemplateHint": "从全局角色模板重新拉取配置（覆盖当前节点配置）",
+    "sourceTemplate": "源模板: {{id}}",
+    "descPlaceholder": "角色的简要描述",
+    "promptPlaceholder": "输入 system prompt",
+    "modelLabel": "模型",
+    "modelPlaceholder": "留空用默认",
+    "constraintsLabel": "输出约束",
+    "constraintsPlaceholder": "如：≤2500字",
+    "skillsLabel": "挂载技能",
+    "skillsEmpty": "暂无可用技能",
+    "containerConfig": "容器配置",
+    "typeLabel": "类型",
+    "childAgents": "子 Agent（{{count}}）",
+    "dropHint": "从左侧拖入 Agent 到此容器",
+    "selectorModeLabel": "选择模式",
+    "selectorRoundRobin": "轮流发言",
+    "selectorManager": "管理者选择",
+    "maxRounds": "最大轮数",
+    "startAgent": "起始 Agent",
+    "startAgentAuto": "自动选择",
+    "subtitle": "选中节点查看与编辑属性"
   },
   "nodes": {
     "agent": "单 Agent 节点",
@@ -49,5 +88,27 @@
     "desc": "描述",
     "emptyTitle": "还没有能力",
     "emptyHint": "点击新建能力开始编排你的 agent 工作流。"
+  },
+  "aside": {
+    "resize": "拖拽调整面板宽度"
+  },
+  "untitled": "未命名",
+  "save": {
+    "saving": "保存中…",
+    "saved": "已保存"
+  },
+  "nodeView": {
+    "entryBadge": "入口",
+    "entryBadgeDerived": "入口·推导",
+    "childCount_other": "{{count}} 个 Agent",
+    "dropHint": "把 Agent 拖到此容器内",
+    "resize": "拖拽调整大小",
+    "kind": {
+      "sequential": "顺序 Sequential",
+      "concurrent": "并发 Concurrent",
+      "groupchat": "群聊 GroupChat",
+      "handoff": "转交 Handoff",
+      "magentic": "Magentic"
+    }
   }
 }

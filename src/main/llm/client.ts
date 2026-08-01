@@ -74,8 +74,10 @@ export class LLMClient {
 
     // 标签解析器：中转代理不支持原生 thinking API 时，模型用 think 标签输出推理
     const tagParser = new ThinkingTagParser()
+    // content_block index → tool_use id 映射（start 登记真 id，delta/stop 查表对齐）
+    const toolIds = new Map<number, string>()
     for await (const event of stream) {
-      handleStreamEvent(event, onDelta, tagParser)
+      handleStreamEvent(event, onDelta, tagParser, toolIds)
     }
 
     const finalMessage = await stream.finalMessage()
@@ -168,16 +170,21 @@ function fromAnthropicContent(
 // —— 流式事件转 LlmDelta（§三之三 I：哪些 type 有输出）——
 // text_delta 经过 ThinkingTagParser：中转代理不支持原生 thinking API 时，
 // 模型用 think 标签包推理过程，解析器把标签内文本转成 thinking delta。
-function handleStreamEvent(
+// toolIds 维护 content_block index → tool_use id 映射：start 时登记 Anthropic 分配的
+// 真 id（toolu_*），后续 delta/stop 查表用同一 id——否则 start 是 toolu_*、delta/stop
+// 是 "0"/"1"（block index），消费端无法把增量关联到对应工具调用。
+export function handleStreamEvent(
   event: Anthropic.Beta.Messages.BetaRawMessageStreamEvent,
   onDelta: ((d: LlmDelta) => void) | undefined,
   tagParser: ThinkingTagParser,
+  toolIds: Map<number, string>,
 ): void {
   if (!onDelta) return
   switch (event.type) {
     case 'content_block_start': {
       const b = event.content_block
       if (b.type === 'tool_use') {
+        toolIds.set(event.index, b.id)
         onDelta({ type: 'tool_use_start', id: b.id, name: b.name })
       }
       break
@@ -196,19 +203,25 @@ function handleStreamEvent(
       } else if (d.type === 'input_json_delta') {
         onDelta({
           type: 'tool_use_delta',
-          id: event.index.toString(),
+          id: toolIds.get(event.index) ?? event.index.toString(),
           partial_json: d.partial_json,
         })
       }
       break
     }
-    case 'content_block_stop':
+    case 'content_block_stop': {
       // flush 标签解析器残留 buffer
       for (const delta of tagParser.flush()) {
         onDelta(delta)
       }
-      onDelta({ type: 'tool_use_stop', id: event.index.toString() })
+      // 只有 start 登记过的 tool_use 块才发 stop（text/thinking 块不发伪 tool_use_stop）
+      const toolId = toolIds.get(event.index)
+      if (toolId !== undefined) {
+        toolIds.delete(event.index)
+        onDelta({ type: 'tool_use_stop', id: toolId })
+      }
       break
+    }
     case 'message_delta':
       onDelta({
         type: 'message_stop',

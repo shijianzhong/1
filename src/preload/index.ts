@@ -102,6 +102,8 @@ export interface OneApi {
     run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string }) => Promise<IpcResult<{ runId: string; output: string }>>
     onStream: (cb: (e: import('@shared/types').StreamEvent) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
+    /** 作答 ask_user 提问（HITL 提问卡提交；home 组队运行也走本通道，同一应答队列） */
+    respond: (input: { requestId: string; response: string }) => Promise<IpcResult<void>>
   }
   app: {
     setAutoLaunch: (on: boolean) => Promise<IpcResult<boolean>>
@@ -198,6 +200,7 @@ const api: OneApi = {
       return () => ipcRenderer.off('orchestrate:stream', handler)
     },
     cancel: () => ipcRenderer.invoke('orchestrate:cancel'),
+    respond: (input) => ipcRenderer.invoke('orchestrate:respond', input),
   },
   app: {
     setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', on),

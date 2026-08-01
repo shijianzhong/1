@@ -36,11 +36,15 @@ export function repairToolPairs(messages: OrchMessage[]): OrchMessage[] {
     // 孤儿 tool_use（assistant 的 call 没有配对 result）→ 降级为纯文本
     if (!m.isFunctionResult && !toolResultIds.has(m.toolUseId)) {
       const { toolUseId: _drop, ...rest } = m
+      // 降级后 content 为空会产生空 text 块——Anthropic 同样拒绝（"text content
+      // blocks must be non-empty"），刚治好 2013 又触发新校验错。占位文本兜底。
+      if (!rest.content?.trim()) rest.content = '[工具调用]'
       return rest
     }
     // 孤儿 tool_result（user 的 result 没有配对 call）→ 降级为普通 user
     if (m.isFunctionResult && !toolUseIds.has(m.toolUseId)) {
       const { toolUseId: _drop, isFunctionResult: _drop2, ...rest } = m
+      if (!rest.content?.trim()) rest.content = '[工具结果]'
       return rest
     }
     return m

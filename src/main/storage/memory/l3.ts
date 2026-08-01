@@ -59,19 +59,23 @@ function buildMatchQuery(query: string): string {
 /** 写入/更新 L3 fact（按 user_id + key 唯一），并同步 FTS 索引 */
 export function saveL3(userId: string, key: string, value: string): void {
   const db = getDb()
-  db.prepare(
-    `INSERT INTO memory_l3 (user_id, key, value, ts)
-     VALUES (@userId, @key, @value, @ts)
-     ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, ts = excluded.ts`,
-  ).run({ userId, key, value, ts: Date.now() })
+  // 主表 + FTS 必须原子：两步之间崩溃会导致索引与主表不一致
+  // （启动时 db.ts 有行数自检兜底重建，但崩溃窗口期内检索会缺/重结果）
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO memory_l3 (user_id, key, value, ts)
+       VALUES (@userId, @key, @value, @ts)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, ts = excluded.ts`,
+    ).run({ userId, key, value, ts: Date.now() })
 
-  // 同步 FTS：先删旧行再插新行（contentless 模式靠 rowid 对应，这里手动维护）
-  db.prepare('DELETE FROM memory_l3_fts WHERE user_id = ? AND key = ?').run(userId, key)
-  db.prepare('INSERT INTO memory_l3_fts (seg, user_id, key) VALUES (?, ?, ?)').run(
-    tokenizeForFts(`${key} ${value}`),
-    userId,
-    key,
-  )
+    // 同步 FTS：先删旧行再插新行（contentless 模式靠 rowid 对应，这里手动维护）
+    db.prepare('DELETE FROM memory_l3_fts WHERE user_id = ? AND key = ?').run(userId, key)
+    db.prepare('INSERT INTO memory_l3_fts (seg, user_id, key) VALUES (?, ?, ?)').run(
+      tokenizeForFts(`${key} ${value}`),
+      userId,
+      key,
+    )
+  })()
 }
 
 /** 取单条 L3 */
@@ -156,19 +160,24 @@ export function searchL3(userId: string, query: string, limit = 5): L3Fact[] {
 /** 删除 L3（同步清 FTS） */
 export function removeL3(userId: string, key: string): void {
   const db = getDb()
-  db.prepare('DELETE FROM memory_l3 WHERE user_id = ? AND key = ?').run(userId, key)
-  db.prepare('DELETE FROM memory_l3_fts WHERE user_id = ? AND key = ?').run(userId, key)
+  db.transaction(() => {
+    db.prepare('DELETE FROM memory_l3 WHERE user_id = ? AND key = ?').run(userId, key)
+    db.prepare('DELETE FROM memory_l3_fts WHERE user_id = ? AND key = ?').run(userId, key)
+  })()
 }
 
 /** 一次性回填：把存量 memory_l3 全部重建进 FTS（迁移后调用幂等） */
 export function reindexL3Fts(): void {
   const db = getDb()
-  db.prepare('DELETE FROM memory_l3_fts').run()
   const rows = db.prepare('SELECT user_id as userId, key, value FROM memory_l3').all() as {
     userId: string
     key: string
     value: string
   }[]
   const ins = db.prepare('INSERT INTO memory_l3_fts (seg, user_id, key) VALUES (?, ?, ?)')
-  for (const r of rows) ins.run(tokenizeForFts(`${r.key} ${r.value}`), r.userId, r.key)
+  // 清空 + 回填单事务：原子（重建中途崩溃不留半截索引），且批量提交快一个量级
+  db.transaction(() => {
+    db.prepare('DELETE FROM memory_l3_fts').run()
+    for (const r of rows) ins.run(tokenizeForFts(`${r.key} ${r.value}`), r.userId, r.key)
+  })()
 }

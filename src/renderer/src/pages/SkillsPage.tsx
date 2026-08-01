@@ -15,6 +15,7 @@ import {
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
+import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 import type { Skill } from '@shared/types'
 
 // —— 技能管理页 ——
@@ -48,6 +49,7 @@ export function SkillsPage() {
   const pickFile = usePickSkillFile()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const skills: Skill[] = data ?? []
 
@@ -75,13 +77,18 @@ export function SkillsPage() {
   }
 
   const onRemove = async (id: string): Promise<void> => {
-    if (!window.confirm(t('common:confirm.delete'))) return
+    const ok = await confirmDialog({
+      title: t('common:confirm.delete'),
+      confirmText: t('common:actions.delete'),
+    })
+    if (!ok) return
     await removeSkill.mutateAsync(id)
   }
 
   /** 上传技能文件 → 解析 → 自动保存 */
   const onUpload = async (): Promise<void> => {
     setUploading(true)
+    setUploadError(null)
     try {
       const parsed = await pickFile.mutateAsync()
       if (!parsed) {
@@ -98,7 +105,7 @@ export function SkillsPage() {
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      window.alert(`上传失败：${msg}`)
+      setUploadError(t('common:skills.uploadFailed', { message: msg }))
     } finally {
       setUploading(false)
     }
@@ -125,8 +132,13 @@ export function SkillsPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="outline" onClick={() => void onUpload()} disabled={uploading}>
-            <Upload size={16} /> {uploading ? '上传中…' : '上传'}
+            <Upload size={16} /> {uploading ? t('common:skills.uploading') : t('common:skills.upload')}
           </Button>
+          {uploadError ? (
+            <p role="alert" style={{ alignSelf: 'center', margin: 0, fontSize: '0.8rem', color: 'var(--color-danger)' }}>
+              {uploadError}
+            </p>
+          ) : null}
           <Button onClick={openNew}>
             <Plus size={16} /> {t('common:actions.new')}
           </Button>
@@ -247,11 +259,11 @@ export function SkillsPage() {
                 {s.scriptPath ? (
                   <Badge variant="brand" style={{ fontSize: '0.7rem' }}>
                     <FileCode2 size={10} style={{ marginRight: 4 }} />
-                    含脚本
+                    {t('common:skills.hasScript')}
                   </Badge>
                 ) : null}
                 <Badge style={{ fontSize: '0.7rem' }}>
-                  {Math.ceil(s.content.length / 1000)}k 字
+                  {t('common:skills.sizeK', { count: Math.ceil(s.content.length / 1000) })}
                 </Badge>
               </div>
             </article>
@@ -275,12 +287,12 @@ export function SkillsPage() {
                     autoFocus
                   />
                 </Field>
-                <Field label="描述">
+                <Field label={t('common:columns.description')}>
                   <textarea
                     value={draft.description}
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                     style={descTextareaStyle}
-                    placeholder="技能的简要描述"
+                    placeholder={t('common:skills.descriptionPh')}
                     rows={5}
                   />
                 </Field>
@@ -289,12 +301,12 @@ export function SkillsPage() {
                     value={draft.content}
                     onChange={(e) => setDraft({ ...draft, content: e.target.value })}
                     style={{ ...contentTextareaStyle, flex: 1, minHeight: 0 }}
-                    placeholder="SKILL.md 内容，支持 frontmatter + Markdown…"
+                    placeholder={t('common:skills.contentPh')}
                   />
                 </Field>
                 {draft.scriptPath ? (
                   <p style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)', flexShrink: 0 }}>
-                    脚本路径：{draft.scriptPath}
+                    {t('common:skills.scriptPath', { path: draft.scriptPath })}
                   </p>
                 ) : null}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>

@@ -37,9 +37,6 @@ export function parseHandoffTarget(toolName: string): string | null {
   return toolName.slice(HANDOFF_TOOL_PREFIX.length)
 }
 
-/** MiddlewareTermination 信号（短路 tool-use 循环，铁律12） */
-export const HANDOFF_TERMINATION = Symbol('handoff_termination')
-
 /**
  * HandoffExecutor：容器节点，每个 participant clone 注入 handoff tools。
  * 收到 fan-in 的 handoff 路由消息后，转发给 target。

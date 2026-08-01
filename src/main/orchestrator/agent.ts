@@ -21,14 +21,30 @@ import { logger } from '../logger'
 
 const DEFAULT_MAX_ITERATIONS = 10
 
+/**
+ * 运行时上下文注入（system 末尾）：当前本地时间 + 时区。
+ * 「最近24小时/最近一周」这类时间相对意图，agent 必须知道"现在"才能判断内容过期。
+ */
+export function injectRuntimeContext(instructions: string): string {
+  const now = new Date()
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
+  const offsetMin = -now.getTimezoneOffset()
+  const sign = offsetMin >= 0 ? '+' : '-'
+  const abs = Math.abs(offsetMin)
+  const tz = `UTC${sign}${Math.floor(abs / 60)}${abs % 60 ? `:${pad(abs % 60)}` : ''}`
+  return `${instructions}\n\n<runtime_context>\n当前时间：${local}（${tz}）\n</runtime_context>`
+}
+
 export interface AgentDeps {
   /** LLM client 选项（apiKey/baseURL，从 vault + model config 解析） */
   llmOpts: LLMClientOptions
-  /** 工具执行上下文（sessionId / 创建提案回调等） */
+  /** 工具执行上下文（sessionId / 创建提案回调 / HITL 提问桥等） */
   toolCtx?: {
     sessionId?: string
     signal?: AbortSignal
     onPropose?: (draft: import('@shared/types').CreateDraft) => void
+    onAskUser?: (req: { question: string; context?: string }) => Promise<string>
   }
 }
 
@@ -67,7 +83,7 @@ export class Agent {
       logger.debug('[agent] thinking config:', this.config.thinking)
       const response = await client.stream({
         model: this.config.modelId,
-        system: this.config.instructions,
+        system: injectRuntimeContext(this.config.instructions),
         messages,
         tools: tools.length ? tools : undefined,
         maxTokens: this.config.defaultOptions.maxTokens, // 铁律8
@@ -128,6 +144,7 @@ export class Agent {
             sessionId: this.deps.toolCtx?.sessionId,
             signal: input.signal,
             onPropose: this.deps.toolCtx?.onPropose,
+            onAskUser: this.deps.toolCtx?.onAskUser,
           },
         )
         callbacks.onToolResult?.(tu.name, result.content)

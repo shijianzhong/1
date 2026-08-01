@@ -52,6 +52,10 @@ export function resolveIsDark(theme: ThemeConfig): boolean {
   )
 }
 
+// 玻璃底边框 alpha：DESIGN §2.1 固定设计值（12%），不随用户玻璃参数调——
+// 边框是「通透感」的结构线，独立于玻璃底色不透明度。命名常量以便主题系统统一调整。
+const GLASS_BORDER_BOTTOM_ALPHA = 0.12
+
 /**
  * 应用主题到 DOM（DESIGN §12.5）。
  * @param dataUrlByImageId  背景图 imageId → dataUrl 映射（由 store 经 IPC loadBackground 预取后传入）
@@ -89,7 +93,7 @@ export function applyThemeToDom(
   )
   root.style.setProperty(
     '--glass-border-bottom',
-    `rgba(${borderR}, ${borderG}, ${borderB}, 0.12)`,
+    `rgba(${borderR}, ${borderG}, ${borderB}, ${GLASS_BORDER_BOTTOM_ALPHA})`,
   )
   root.style.setProperty('--glass-blur', `${blur}px`)
   root.style.setProperty('--glass-blur-strong', `${blur + 8}px`)

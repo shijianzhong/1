@@ -38,20 +38,19 @@ one/
     │   ├── ipc/               # ipcMain.handle 注册中心（含 home / orchestrate）
     │   ├── orchestrator/      # 自研编排内核 @one/orchestrator（逻辑名，非独立 npm 包）
     │   │   ├── models.ts / builder.ts / runner.ts / agent.ts
+    │   │   ├── home.ts / constraints.ts / userInput.ts  # 首页组队路由 / context_filter / HITL 应答队列
     │   │   └── patterns/      # sequential/concurrent/groupchat/handoff/magentic
     │   ├── llm/               # Anthropic SDK 封装 + 重试 + thinking
     │   ├── storage/           # SQLite + JSON；含 memory/(L0/L1/L2/L3)，无用户隔离
     │   ├── secrets/           # LLM key 本地加密（safeStorage / vault）
     │   ├── skills/            # ZIP 上传解析（ContextProvider 钩子尚未独立模块化）
-    │   └── tools/             # 工具注册表（builtin 目前以 memory_* 为主）
+    │   └── tools/             # 工具注册表（builtin：memory / propose / ask_user / web / file / opencli）
     ├── preload/
     │   └── index.ts           # contextBridge 白名单 → window.one.*（产出 CJS）
     ├── renderer/              # React 前端（pages/components/api/store/styles/i18n）
     └── shared/
         └── types.ts           # 主/渲染共享契约（图模型 + 事件 schema）
 ```
-
-> 计划中的 `orchestrator/constraints.ts`、`orchestrator/home.ts` **尚未建文件**：条件边谓词在 `runner.ts`；首页主助手在 `ipc/home.ts`。
 
 ## 构建与测试命令
 
@@ -66,7 +65,7 @@ npm run test:e2e     # 先 build 再 Playwright Electron
 npm run rebuild      # better-sqlite3 对应当前 Electron ABI 重编
 ```
 
-## 当前阶段（2026-07-30 快照）
+## 当前阶段（2026-08-01 快照）
 
 > **权威勾选见 [`task.md`](./task.md)**；下文是 AI 协作速查摘要。分阶段定义见 [`docs/REWRITE_PLAN.md`](./docs/REWRITE_PLAN.md) §八。
 
@@ -76,19 +75,19 @@ npm run rebuild      # better-sqlite3 对应当前 Electron ABI 重编
 | 1 存储与配置 | ✅ M1 | SQLite + JSON CRUD、vault、管理页 |
 | 2 LLM + 单 Agent | ✅ M2 | `beta.messages.stream`、重试、首页流式聊天 |
 | 3 三级记忆 | ✅ M3 | L0–L3 + memory 工具；首页已注入 |
-| 4 编排引擎 | ⚠ M4 未收口 | Pregel runner + 四模式骨架已有；语义保真与联调见下「缺口」 |
-| 5 前端 UI | ✅ 骨架 M5 | 核心页/画布/主题可用；**i18n 硬编码清零未完成** |
+| 4 编排引擎 | ✅ M4 已收口 `4dd76dc` | Pregel runner + 四模式语义保真 + HITL（ask_user）；`context_mode` Sequential 下游接入待联调（M4 尾巴） |
+| 5 前端 UI | ✅ M5 | 核心页/画布/主题可用；**i18n 用户可见硬编码已清零**（2026-08-01，交叉校验零缺失）；`errors.*` 主进程 key 未齐 |
 | 6 原生与打磨 | ✅ 部分 M6 | 托盘/更新/mac dmg；草稿恢复 UI 未闭环；win 包未验 |
-| 7 工具与 MCP | ⏳ 持续 | 仅 memory_*；shell/文件/MCP 未做 |
+| 7 工具与 MCP | ⏳ 进行中 | memory/propose/ask_user/web/file/opencli 已落地（file_* 已全量异步化）；shell/browser_use/MCP/Skill ContextProvider 未做 |
 
 **当前优先缺口（勿当已完成）：**
 
-1. **编排保真**：runner 仍默认 `shouldRespond: true`（GroupChat 广播语义未通）；Concurrent fan-in 栅栏弱；GroupChat manager 降级 round_robin；`repair_tool_pairs` / 完整 `context_mode` 未齐。
-2. **首页意图路由**（铁律 24）：直答 vs `role_ids`/`capability_ids` 组队 JSON 未实现。
-3. **Skill**：IPC 内联 `<skill>` XML，缺独立 ContextProvider（`beforeRun`/`afterRun`）与 async 脚本执行。
-4. **i18n**：脚手架在，Editor/Agents/Skills/Home 等仍有硬编码中文；`errors.*` 主进程 key 未齐。
-5. **崩溃草稿**：哨兵/`listDrafts` 有，编辑器/聊天写盘 + 渲染层恢复 UI 未接。
-6. **工具生态**：builtin 几乎只有 memory；阶段 7 待做。
+1. **Skill**：IPC 内联 `<skill>` XML，缺独立 ContextProvider（`beforeRun`/`afterRun`）与 async 脚本执行。
+2. **崩溃草稿**：哨兵/`listDrafts` 有，编辑器/聊天写盘 + 渲染层恢复 UI 未接。
+3. **工具生态**：shell/browser_use/MCP 未做；opencli 写拦截改 `access: write` 自维护（7.1b）。
+4. **i18n 尾巴**：`errors.*` 主进程结构化错误 key 未齐（渲染层硬编码已清零）。
+
+> 2026-08-01 review 实证的稳定性项（Error Boundary / fan-in 容错 / WAL checkpoint 备份 / L3 事务 / opencli 限流 / tool_use delta ID / AbortController 加固）已全部修复，见 task.md 缺口表 ✅ 行。
 
 ---
 
@@ -153,7 +152,6 @@ T3. **防首屏闪白**：React 挂载前 `bootstrap-theme.ts` 同步从 localSt
 
 - Magentic 模式（源项目自己 NotImplementedError，MVP 跳过，用 groupchat+handoff 覆盖）
 - checkpoint 持久化（内存态即可）
-- request_info / human-in-the-loop（后置）
 - telemetry / OTel 层（空操作或纯日志）
 - compaction_strategy / tokenizer（先用简单截断保留最近 N 条）
 - MCP 工具（后置，先支持普通 function tool）

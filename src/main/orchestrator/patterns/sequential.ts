@@ -11,20 +11,12 @@ import { AgentExecutor } from './agent'
 // builder 职责：把 participants 按顺序连成线性边，每个包成 AgentExecutor。
 // 实际的 strip/wake 逻辑在 AgentExecutor.assembleMessages 里。
 
-export interface SequentialConfig {
-  participants: string[] // 顺序敏感
-  outputFrom?: 'all' | 'last' // 默认 last，仅末位 emit output
-  intermediateOutputFrom?: 'none' | 'all_other' // 默认 none
-}
-
 export function buildSequential(
   node: GraphNode,
   participants: AgentExecutorOptions[],
   bctx: BuilderContext,
 ): void {
-  const cfg = (node.data as { participants?: string[]; output_from?: string }).participants
-  void cfg
-
+  void node
   if (participants.length === 0) return
 
   // 每个 participant 包成 AgentExecutor，注册

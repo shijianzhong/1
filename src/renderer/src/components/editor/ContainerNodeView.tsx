@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef } from 'react'
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react'
 import { Boxes, GitBranch, Users, Cable, Wrench } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { NodeType } from '@shared/types'
 import type { AgentNodeStatus } from './AgentNodeView'
 
@@ -30,21 +31,19 @@ export interface ContainerNodeData {
   [key: string]: unknown
 }
 
-const CONTAINER_META: Record<
-  string,
-  { label: string; icon: typeof Boxes }
-> = {
-  sequential: { label: '顺序 Sequential', icon: GitBranch },
-  concurrent: { label: '并发 Concurrent', icon: Boxes },
-  groupchat: { label: '群聊 GroupChat', icon: Users },
-  handoff: { label: '转交 Handoff', icon: Cable },
-  magentic: { label: 'Magentic', icon: Wrench },
+const CONTAINER_META: Record<string, { icon: typeof Boxes }> = {
+  sequential: { icon: GitBranch },
+  concurrent: { icon: Boxes },
+  groupchat: { icon: Users },
+  handoff: { icon: Cable },
+  magentic: { icon: Wrench },
 }
 
 const MIN_W = 240
 const MIN_H = 140
 
 function ContainerNodeViewImpl({ id, data, selected }: NodeProps) {
+  const { t } = useTranslation(['editor'])
   const { setNodes } = useReactFlow()
   const nodeRef = useRef<HTMLDivElement>(null)
   const resizing = useRef<{
@@ -108,8 +107,8 @@ function ContainerNodeViewImpl({ id, data, selected }: NodeProps) {
 
   const d = data as ContainerNodeData
   const status = d.status ?? 'idle'
-  const meta = CONTAINER_META[d.kind] ?? CONTAINER_META.sequential
-  const Icon = meta.icon
+  const metaKey = d.kind in CONTAINER_META ? d.kind : 'sequential'
+  const Icon = CONTAINER_META[metaKey].icon
   const childCount = d.participants?.length ?? 0
 
   return (
@@ -126,23 +125,30 @@ function ContainerNodeViewImpl({ id, data, selected }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} className="rf-handle" />
 
-      {d.isEntry ? <span className="rf-entry-badge">入口</span> : null}
+      {/* 入口徽章仅顶层节点展示（运行期只认顶层 isEntry；嵌套容器的标记静默无效） */}
+      {d.isEntry && !(d as { parentId?: string }).parentId ? (
+        <span className="rf-entry-badge">{t('editor:nodeView.entryBadge')}</span>
+      ) : null}
       {!d.isEntry && d.effectiveEntry && d.entryDerived ? (
-        <span className="rf-entry-badge rf-entry-badge--derived">入口·推导</span>
+        <span className="rf-entry-badge rf-entry-badge--derived">
+          {t('editor:nodeView.entryBadgeDerived')}
+        </span>
       ) : null}
 
       <div className="rf-container-node__header">
         <span className="rf-container-node__icon">
           <Icon size={14} />
         </span>
-        <span className="rf-container-node__title">{meta.label}</span>
+        <span className="rf-container-node__title">
+          {t(`editor:nodeView.kind.${metaKey}`)}
+        </span>
       </div>
 
       <div className="rf-container-node__body">
         <p className="rf-container-node__hint">
           {childCount > 0
-            ? `${childCount} 个 Agent`
-            : '把 Agent 拖到此容器内'}
+            ? t('editor:nodeView.childCount', { count: childCount })
+            : t('editor:nodeView.dropHint')}
         </p>
       </div>
 
@@ -152,7 +158,7 @@ function ContainerNodeViewImpl({ id, data, selected }: NodeProps) {
       {selected && (
         <div
           onPointerDown={onPointerDown}
-          title="拖拽调整大小"
+          title={t('editor:nodeView.resize')}
           style={{
             position: 'absolute',
             right: 2,

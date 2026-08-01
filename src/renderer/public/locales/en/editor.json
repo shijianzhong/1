@@ -4,15 +4,31 @@
     "title": "Node palette",
     "agents": "Agents",
     "containers": "Containers",
-    "noAgents": "No agents yet, click to create"
+    "noAgents": "No agents yet, click to create",
+    "seqLabel": "Sequential",
+    "seqDesc": "A → B → C chain execution",
+    "concurrentLabel": "Concurrent",
+    "concurrentDesc": "Run in parallel, aggregate results",
+    "groupchatLabel": "GroupChat",
+    "groupchatDesc": "Multiple roles take turns speaking",
+    "handoffLabel": "Handoff",
+    "handoffDesc": "Agents hand off autonomously",
+    "magenticLabel": "Magentic",
+    "magenticDesc": "Complex task decomposition (MVP)"
   },
   "run": "Run",
   "running": "Running…",
-  "runPrompt": "Enter orchestration start message:",
-  "runDialogTitle": "Run capability",
-  "runDialogDesc": "Enter the task to hand to this capability orchestration, then confirm to run the workflow.",
-  "runDialogPlaceholder": "e.g. Write a deep WeChat article about AI agents… (⌘/Ctrl + Enter to run)",
-  "output": "Output",
+  "stop": "Stop",
+  "tabs": {
+    "inspector": "Inspector",
+    "chat": "Run chat"
+  },
+  "runChat": {
+    "empty": "Send a task to run this capability. Each role's speech streams in its own bubble; when a role asks you a question, the run pauses here for your answer.",
+    "placeholder": "Describe the task for this capability… (Enter to send, Shift+Enter for newline)",
+    "history": "Run history",
+    "historyEmpty": "No runs yet"
+  },
   "status": {
     "idle": "Idle",
     "running": "Running",
@@ -27,7 +43,30 @@
       "activeExplicit": "✓ Active entry (explicit)",
       "activeDerived": "✓ Active entry (topology-derived, check to pin)",
       "derivedHint": "Entry is topology-derived as \"{{name}}\". Check this node to set it explicitly."
-    }
+    },
+    "nodeConfig": "Node config",
+    "refreshFromTemplate": "Refresh from template",
+    "refreshFromTemplateHint": "Pull the latest config from the global agent template (overwrites this node)",
+    "sourceTemplate": "Source template: {{id}}",
+    "descPlaceholder": "Brief description of the role",
+    "promptPlaceholder": "Enter a system prompt",
+    "modelLabel": "Model",
+    "modelPlaceholder": "Empty for default",
+    "constraintsLabel": "Output constraints",
+    "constraintsPlaceholder": "e.g. ≤2500 chars",
+    "skillsLabel": "Attached skills",
+    "skillsEmpty": "No skills available",
+    "containerConfig": "Container config",
+    "typeLabel": "Type",
+    "childAgents": "Child agents ({{count}})",
+    "dropHint": "Drag agents in from the left panel",
+    "selectorModeLabel": "Selector mode",
+    "selectorRoundRobin": "Round robin",
+    "selectorManager": "Manager selects",
+    "maxRounds": "Max rounds",
+    "startAgent": "Start agent",
+    "startAgentAuto": "Auto select",
+    "subtitle": "Select a node to view and edit its properties"
   },
   "nodes": {
     "agent": "Single agent node",
@@ -49,5 +88,28 @@
     "desc": "Description",
     "emptyTitle": "No capabilities yet",
     "emptyHint": "Create one to start orchestrating your agent workflow."
+  },
+  "aside": {
+    "resize": "Drag to resize panel"
+  },
+  "untitled": "Untitled",
+  "save": {
+    "saving": "Saving…",
+    "saved": "Saved"
+  },
+  "nodeView": {
+    "entryBadge": "Entry",
+    "entryBadgeDerived": "Derived entry",
+    "childCount_one": "{{count}} agent",
+    "childCount_other": "{{count}} agents",
+    "dropHint": "Drop agents into this container",
+    "resize": "Drag to resize",
+    "kind": {
+      "sequential": "Sequential",
+      "concurrent": "Concurrent",
+      "groupchat": "GroupChat",
+      "handoff": "Handoff",
+      "magentic": "Magentic"
+    }
   }
 }

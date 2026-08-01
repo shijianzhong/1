@@ -139,6 +139,7 @@ describe('Sequential 黄金用例', () => {
     const bInput = bRunCall.messages as { role: string; content: string }[]
     // tool 块被剥
     expect(bInput.some((m) => m.content === 'tool_result_1')).toBe(false)
-    expect(bInput.some((m) => m.content === '正常消息')).toBe(true)
+    // 正常消息保留（full_conversation 转发下同角色连续消息会合并，用 includes 断言）
+    expect(bInput.some((m) => m.content.includes('正常消息'))).toBe(true)
   })
 })

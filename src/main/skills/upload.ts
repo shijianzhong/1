@@ -30,43 +30,48 @@ interface Frontmatter {
   [key: string]: unknown
 }
 
-/** 解析 YAML frontmatter（简易版，不引入额外依赖） */
+/** 解析 YAML frontmatter（简易版，不引入额外依赖；索引步进避免重复行误判） */
 function parseFrontmatter(text: string): { fm: Frontmatter | null; body: string } {
   const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/)
   if (!match) return { fm: null, body: text }
 
-  const yamlBlock = match[1]
+  const lines = match[1].split('\n')
   const body = match[2]
   const fm: Frontmatter = {}
 
-  for (const line of yamlBlock.split('\n')) {
-    const trimmed = line.trim()
+  let i = 0
+  while (i < lines.length) {
+    const trimmed = lines[i].trim()
+    i++
     if (!trimmed || trimmed.startsWith('#')) continue
     const colonIdx = trimmed.indexOf(':')
     if (colonIdx === -1) continue
     const key = trimmed.slice(0, colonIdx).trim()
     let value = trimmed.slice(colonIdx + 1).trim()
-    // 去引号
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1)
-    }
-    // 支持 > 块引用描述
-    if (value === '>' || value === '|') {
-      // 多行值：取后续缩进行
-      const lines = yamlBlock.split('\n')
-      const currentIdx = lines.indexOf(line)
-      const multiLines: string[] = []
-      for (let i = currentIdx + 1; i < lines.length; i++) {
-        if (lines[i].startsWith('  ') || lines[i].startsWith('\t')) {
-          multiLines.push(lines[i].trim())
-        } else {
-          break
-        }
+    if (!key) continue
+
+    // 块标量：| 字面（保留换行）/ > 折叠（空格连接）——取后续缩进行
+    if (value === '|' || value === '>') {
+      const folded = value === '>'
+      const block: string[] = []
+      while (i < lines.length && (lines[i].startsWith('  ') || lines[i].startsWith('\t'))) {
+        block.push(lines[i].trim())
+        i++
       }
-      value = multiLines.join(' ')
+      value = folded ? block.join(' ') : block.join('\n')
+    } else {
+      // 去引号
+      if (value.length >= 2 &&
+          ((value.startsWith('"') && value.endsWith('"')) ||
+           (value.startsWith("'") && value.endsWith("'")))) {
+        value = value.slice(1, -1)
+      } else {
+        // 行内注释（空格 + # 起始才算，值内 # 保留）
+        const hashIdx = value.indexOf(' #')
+        if (hashIdx !== -1) value = value.slice(0, hashIdx).trim()
+      }
     }
-    if (key) fm[key as keyof Frontmatter] = value
+    fm[key as keyof Frontmatter] = value
   }
 
   return { fm, body: body.trim() }

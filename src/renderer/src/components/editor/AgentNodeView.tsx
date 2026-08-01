@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Bot } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 // —— Agent 节点视觉（借鉴 Proton AgentNodeView）——
 // 实线边框、品牌色、显示角色名/模型/状态。
@@ -33,14 +34,8 @@ export interface AgentNodeData {
   [key: string]: unknown
 }
 
-const STATUS_LABEL: Record<AgentNodeStatus, string> = {
-  idle: '待机',
-  running: '运行中',
-  done: '完成',
-  error: '错误',
-}
-
 function AgentNodeViewImpl({ data, selected }: NodeProps) {
+  const { t } = useTranslation(['editor'])
   const d = data as AgentNodeData
   const status = d.status ?? 'idle'
 
@@ -50,9 +45,15 @@ function AgentNodeViewImpl({ data, selected }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} className="rf-handle" />
 
-      {d.isEntry ? <span className="rf-entry-badge">入口</span> : null}
+      {/* 入口徽章仅顶层节点展示：运行期只认顶层 isEntry，子节点的残留标记静默无效，
+          展示出来会误导（与 Inspector 隐藏子节点入口勾选一致） */}
+      {d.isEntry && !d.parentId ? (
+        <span className="rf-entry-badge">{t('editor:nodeView.entryBadge')}</span>
+      ) : null}
       {!d.isEntry && d.effectiveEntry && d.entryDerived ? (
-        <span className="rf-entry-badge rf-entry-badge--derived">入口·推导</span>
+        <span className="rf-entry-badge rf-entry-badge--derived">
+          {t('editor:nodeView.entryBadgeDerived')}
+        </span>
       ) : null}
 
       <div className="rf-agent-node__header">
@@ -63,7 +64,7 @@ function AgentNodeViewImpl({ data, selected }: NodeProps) {
       </div>
 
       <div className="rf-agent-node__meta">
-        <span className="rf-agent-node__status">{STATUS_LABEL[status]}</span>
+        <span className="rf-agent-node__status">{t(`editor:status.${status}`)}</span>
         {d.model ? (
           <span className="rf-agent-node__model">{d.model}</span>
         ) : null}

@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSessions } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
+import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 
 const navItems = [
   { to: '/', key: 'home', icon: Sparkles },
@@ -52,8 +53,13 @@ export function AppShell() {
   useEffect(() => {
     if (showSideList) void loadSessions()
   }, [showSideList, loadSessions])
+  // 侧栏只列主 Agent 会话：编辑器试跑记录（capabilityId 非空）是能力调试产物，
+  // 不进主对话历史（在编辑器「运行对话」tab 的历史下拉里回看）
   const recentItems = useMemo(
-    () => (chatSessions.length ? chatSessions : sessionsQ.data ?? []).slice(0, 20),
+    () =>
+      (chatSessions.length ? chatSessions : sessionsQ.data ?? [])
+        .filter((s) => !s.capabilityId)
+        .slice(0, 20),
     [chatSessions, sessionsQ.data],
   )
 
@@ -154,10 +160,16 @@ export function AppShell() {
                         aria-label={t('common:actions.delete')}
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (!window.confirm(t('common:confirm.delete'))) return
-                          void removeSession(s.id).then(() => {
-                            void qc.invalidateQueries({ queryKey: ['sessions'] })
-                          })
+                          void (async () => {
+                            const ok = await confirmDialog({
+                              title: t('common:confirm.delete'),
+                              confirmText: t('common:actions.delete'),
+                            })
+                            if (!ok) return
+                            void removeSession(s.id).then(() => {
+                              void qc.invalidateQueries({ queryKey: ['sessions'] })
+                            })
+                          })()
                         }}
                       >
                         <Trash2 size={13} />

@@ -27,6 +27,7 @@ import {
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
+import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 import type {
   ApiFormat,
   Provider,
@@ -160,8 +161,12 @@ export function ListPage({ i18nKey }: ListPageProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => {
-                          if (!window.confirm(t('common:confirm.delete'))) return
+                        onClick={async () => {
+                          const ok = await confirmDialog({
+                            title: t('common:confirm.delete'),
+                            confirmText: t('common:actions.delete'),
+                          })
+                          if (!ok) return
                           if (i18nKey === 'skills') void removeSkill.mutateAsync(item.id)
                           else if (i18nKey === 'models') {
                             const p = item as Provider
@@ -397,14 +402,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function ProviderMeta({ provider }: { provider: Provider }) {
+  const { t } = useTranslation(['common'])
   const parts: string[] = []
   if (provider.baseUrl) parts.push(provider.baseUrl)
   parts.push(provider.apiFormat)
   const ms = provider.models
   const modelParts: string[] = []
-  if (ms.primary) modelParts.push(`主:${ms.primary}`)
-  if (ms.reasoning) modelParts.push(`推理:${ms.reasoning}`)
-  if (ms.fast) modelParts.push(`快答:${ms.fast}`)
+  if (ms.primary) modelParts.push(t('common:providers.primaryShort', { model: ms.primary }))
+  if (ms.reasoning) modelParts.push(t('common:providers.reasoningShort', { model: ms.reasoning }))
+  if (ms.fast) modelParts.push(t('common:providers.fastShort', { model: ms.fast }))
   if (modelParts.length) parts.push(modelParts.join(' '))
   return <span>{parts.join(' · ')}</span>
 }

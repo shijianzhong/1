@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { HashRouter } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AppRoutes } from '@renderer/routes/index'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { ConfirmHost } from '@renderer/components/ui/ConfirmDialog'
 import { useThemeStore } from '@renderer/store/theme'
 import { isIpcFailure, type SystemPingResponse } from '@shared/types'
 
@@ -51,8 +53,11 @@ export default function App() {
   }
 
   return (
-    <HashRouter>
-      <AppRoutes />
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <AppRoutes />
+        <ConfirmHost />
+      </HashRouter>
+    </ErrorBoundary>
   )
 }

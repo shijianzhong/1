@@ -3,6 +3,7 @@ import type { Agent, Capability, Skill } from '@shared/types'
 import {
   TeamJsonDetector,
   buildCreateInstruction,
+  buildMemoryInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
   buildSkillBlocks,
@@ -264,6 +265,15 @@ describe('buildCreateInstruction', () => {
     expect(s).toContain('</persona>')
     // 明确警示标签外内容不是人设
     expect(s).toContain('都不是人设')
+  })
+
+  it('记忆策略：称呼/角色/语种让给 propose_persona（防 persona 与 L3 双源不一致）', () => {
+    const s = buildMemoryInstruction()
+    expect(s).toContain('memory_retain')
+    // 称呼不再属于 memory_retain 范围，明确走 propose_persona
+    expect(s).toContain('propose_persona')
+    expect(s).toContain('个人档案')
+    expect(s).not.toContain('职业/称呼')
   })
 
   it('无人设原文时不注入 <persona> 块', () => {

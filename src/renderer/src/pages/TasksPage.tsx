@@ -5,7 +5,7 @@ import type { TaskRecord } from '@shared/types'
 // —— 任务历史页（§5.2.3）——
 // 接真实 tasks SQLite 表，按创建时间倒序，展示状态/能力/时间。
 export function TasksPage() {
-  const { t } = useTranslation(['common'])
+  const { t, i18n } = useTranslation(['common'])
   const { data, isLoading, isError } = useTasks()
 
   return (
@@ -48,7 +48,7 @@ export function TasksPage() {
                     {task.capabilityId ?? t('common:list.tasks.title')} #{task.id.slice(-6)}
                   </h3>
                   <p className="section-subtitle">
-                    {new Intl.DateTimeFormat('zh-CN', {
+                    {new Intl.DateTimeFormat(i18n.language, {
                       month: '2-digit',
                       day: '2-digit',
                       hour: '2-digit',

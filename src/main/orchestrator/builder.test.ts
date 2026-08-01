@@ -57,7 +57,7 @@ describe('buildWorkflow 显式边过滤', () => {
     expect(wf.edges.get('B')).toBeUndefined()
   })
 
-  it('顶层节点显式边正常保留', () => {
+  it('顶层节点显式边正常保留（sequential 容器出边改写为末 participant 发出）', () => {
     const graph: WorkflowGraph = {
       nodes: [
         {
@@ -70,14 +70,49 @@ describe('buildWorkflow 显式边过滤', () => {
         agentNode('C'), // 顶层 agent
       ],
       edges: [
-        { source: 'seq1', target: 'C' }, // 容器 → 顶层 agent，合法
+        { source: 'seq1', target: 'C' }, // 容器 → 顶层 agent：改写为 A→C（容器无 executor，原样保留是死边）
         { source: 'A', target: 'C' }, // 子节点 → 顶层，跳过
       ],
     }
 
     const wf = buildWorkflow(graph, { resolveAgent: (n) => mockOpts(n.id) })
 
-    expect(wf.edges.get('seq1')).toEqual(['C'])
-    expect(wf.edges.get('A')).toBeUndefined()
+    expect(wf.edges.get('seq1')).toBeUndefined()
+    expect(wf.edges.get('A')).toEqual(['C'])
+  })
+
+  it('sequential 容器边界边改写：X→S 投首 participant，S→Y 由末 participant 发出，条件保留', () => {
+    const graph: WorkflowGraph = {
+      nodes: [
+        agentNode('X'),
+        {
+          id: 'S',
+          type: 'sequential',
+          data: { label: 'S', participants: ['A', 'B'] },
+          position: { x: 0, y: 0 },
+        },
+        agentNode('A', 'S'),
+        agentNode('B', 'S'),
+        agentNode('Y'),
+        agentNode('Z'),
+      ],
+      edges: [
+        { source: 'X', target: 'S' },
+        { source: 'S', target: 'Y' },
+        { source: 'S', target: 'Z', condition: 'contains:go' },
+      ],
+    }
+
+    const wf = buildWorkflow(graph, { resolveAgent: (n) => mockOpts(n.id) })
+
+    // 入边改写：X→S ⇒ X→首 participant A
+    expect(wf.edges.get('X')).toEqual(['A'])
+    // 出边改写：S→Y ⇒ 末 participant B→Y；条件边 S→Z ⇒ conditions 挂在 B 上
+    expect(wf.edges.get('B')).toEqual(['Y'])
+    expect(wf.conditions.get('B')).toEqual([{ predicate: 'contains:go', target: 'Z' }])
+    // pattern 线性边保留：A→B
+    expect(wf.edges.get('A')).toEqual(['B'])
+    // 容器自身无运行时边
+    expect(wf.edges.get('S')).toBeUndefined()
   })
 })

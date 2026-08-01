@@ -2,7 +2,7 @@ import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/pr
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, extname, join } from 'node:path'
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, nativeImage } from 'electron'
 import {
   DEFAULT_THEME,
   type SystemPingResponse,
@@ -66,11 +66,26 @@ async function saveTheme(theme: ThemeConfig): Promise<ThemeConfig> {
 }
 
 // —— 背景图管理（§12.6.1）——
+/** 背景图压缩上限：宽 1920px + JPEG 82。原图动辄几 MB，loadBackground 全量
+ *  base64 过 IPC 进渲染内存（P2-2），压缩后通常几百 KB */
+const BG_MAX_WIDTH = 1920
+const BG_JPEG_QUALITY = 82
+
 async function importBackground(filePath: string): Promise<{ imageId: string }> {
   const ext = extname(filePath).toLowerCase() || '.png'
   const imageId = randomUUID()
   const dir = getBackgroundDir()
   await mkdir(dir, { recursive: true })
+  // 静态图统一压缩成 JPEG（gif 保留原样：重编码会丢动画）
+  if (ext !== '.gif') {
+    const img = nativeImage.createFromPath(filePath)
+    if (!img.isEmpty()) {
+      const { width } = img.getSize()
+      const resized = width > BG_MAX_WIDTH ? img.resize({ width: BG_MAX_WIDTH }) : img
+      await writeFile(join(dir, `${imageId}.jpg`), resized.toJPEG(BG_JPEG_QUALITY))
+      return { imageId }
+    }
+  }
   const dest = join(dir, `${imageId}${ext}`)
   await copyFile(filePath, dest)
   return { imageId }

@@ -74,7 +74,12 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       }
     }
     mql.addEventListener('change', onChange)
-    systemModeUnsub = () => mql.removeEventListener('change', onChange)
+    systemModeUnsub = () => {
+      mql.removeEventListener('change', onChange)
+      // 复位句柄：否则 cleanup 后再次订阅（HMR 重挂载）会拿到已失效的旧
+      // cleanup 直接返回，系统主题监听永久丢失
+      systemModeUnsub = null
+    }
     return systemModeUnsub
   },
 }))

@@ -5,6 +5,11 @@ directories:
 files:
   - out/**
   - package.json
+# OpenCLI 随包分发：vendor/opencli 由 `npm run vendor:opencli` 生成（独立 prefix 安装，
+# 自含全部依赖）；运行时经 ELECTRON_RUN_AS_NODE 用主二进制执行，用户零安装。
+extraResources:
+  - from: vendor/opencli/node_modules
+    to: opencli/node_modules
 mac:
   category: public.app-category.productivity
   target:

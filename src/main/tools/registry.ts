@@ -21,6 +21,9 @@ export interface ToolContext {
   signal?: AbortSignal
   /** 创建提案回调（propose_* 工具 → home IPC emitStream 桥，由 home.ts 注入） */
   onPropose?: (draft: import('@shared/types').CreateDraft) => void
+  /** HITL 提问桥（ask_user 工具 → request_info 事件 + 挂起等待，由编排 IPC 注入）；
+   *  未注入 = 当前运行环境不可与用户交互，ask_user 返回 user_input_unavailable */
+  onAskUser?: (req: { question: string; context?: string }) => Promise<string>
 }
 
 export interface ToolResult {

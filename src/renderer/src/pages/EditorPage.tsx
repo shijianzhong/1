@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Background,
   Controls,
@@ -31,24 +31,26 @@ import {
   BookOpen,
   RefreshCw,
   Check,
+  History,
+  MessageSquare,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { unwrap } from '@renderer/api/client'
-import { useAgents, useCapability, useSaveCapability, useSkills } from '@renderer/api/hooks'
+import { useAgents, useCapability, useSaveCapability, useSessions, useSkills } from '@renderer/api/hooks'
 import { Button } from '@renderer/components/ui/Button'
 import { Badge } from '@renderer/components/ui/Badge'
 import { Input } from '@renderer/components/ui/Input'
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from '@renderer/components/ui/Dialog'
 import { AgentNodeView, type AgentNodeData, type AgentNodeStatus } from '@renderer/components/editor/AgentNodeView'
 import {
   ContainerNodeView,
   type ContainerNodeData,
 } from '@renderer/components/editor/ContainerNodeView'
+import { RunChatPanel } from '@renderer/components/editor/RunChatPanel'
+import { applyOrchEvent } from '@renderer/components/orchestra/reducer'
+import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra/types'
+import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import type { Capability, NodeType, StreamEvent, WorkflowGraph, Agent } from '@shared/types'
 
 // —— 能力编排画布（借鉴 Proton CapabilityEditorPage）——
@@ -61,15 +63,15 @@ const PALETTE_DRAG_KEY = 'application/reactflow'
 
 const CONTAINER_TYPES: Array<{
   type: Exclude<NodeType, 'agent'>
-  label: string
+  labelKey: string
   icon: typeof Boxes
-  desc: string
+  descKey: string
 }> = [
-  { type: 'sequential', label: '顺序 Sequential', icon: GitBranch, desc: 'A → B → C 链式执行' },
-  { type: 'concurrent', label: '并发 Concurrent', icon: Boxes, desc: '同时执行，结果聚合' },
-  { type: 'groupchat', label: '群聊 GroupChat', icon: Users, desc: '多角色轮流发言' },
-  { type: 'handoff', label: '转交 Handoff', icon: Cable, desc: '角色间自主交接' },
-  { type: 'magentic', label: 'Magentic', icon: Wrench, desc: '复杂任务分解（MVP）' },
+  { type: 'sequential', labelKey: 'palette.seqLabel', icon: GitBranch, descKey: 'palette.seqDesc' },
+  { type: 'concurrent', labelKey: 'palette.concurrentLabel', icon: Boxes, descKey: 'palette.concurrentDesc' },
+  { type: 'groupchat', labelKey: 'palette.groupchatLabel', icon: Users, descKey: 'palette.groupchatDesc' },
+  { type: 'handoff', labelKey: 'palette.handoffLabel', icon: Cable, descKey: 'palette.handoffDesc' },
+  { type: 'magentic', labelKey: 'palette.magenticLabel', icon: Wrench, descKey: 'palette.magenticDesc' },
 ]
 
 const CONTAINER_DEFAULT_SIZE = { width: 300, height: 180 }
@@ -142,6 +144,7 @@ export function EditorPage() {
 function EditorCanvas() {
   const { t } = useTranslation(['editor', 'common'])
   const { capabilityId } = useParams<{ capabilityId: string }>()
+  const [searchParams] = useSearchParams()
   const nav = useNavigate()
   const { screenToFlowPosition, getNodes } = useReactFlow()
   const capQ = useCapability(capabilityId)
@@ -154,10 +157,37 @@ function EditorCanvas() {
   const [running, setRunning] = useState(false)
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [output, setOutput] = useState('')
-  // 运行输入弹层：点运行先弹玻璃态输入框（替代 window.prompt），确认后才跑 workflow
-  const [runDialogOpen, setRunDialogOpen] = useState(false)
-  const [runInput, setRunInput] = useState('')
+  // —— 运行对话（与首页 @能力 运行同一聊天体系：能力运行中可能与用户交互）——
+  // 右侧栏 tabs：inspector 属性 / chat 运行对话；composer 第一条消息即任务输入。
+  const [rightTab, setRightTab] = useState<'inspector' | 'chat'>('inspector')
+  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([])
+  // —— 右栏宽度：聊天内容（markdown/卡片）340px 太窄需横向滚动——
+  // 左缘拖拽手柄可调（300–760）；切到对话 tab 且用户未手动调过 → 自动放宽到 520。
+  const [asideW, setAsideW] = useState(340)
+  const asideManualRef = useRef(false)
+  const speakerName = useSpeakerNames()
+
+  const switchRightTab = useCallback((tab: 'inspector' | 'chat') => {
+    if (tab === 'chat' && !asideManualRef.current) setAsideW(520)
+    setRightTab(tab)
+  }, [])
+
+  const onAsideDragStart = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault()
+    asideManualRef.current = true
+    const startX = e.clientX
+    const startW = asideW
+    // 手柄在 aside 左缘：向左拖 → 变宽
+    const onMove = (ev: MouseEvent): void => {
+      setAsideW(Math.min(760, Math.max(300, startW + (startX - ev.clientX))))
+    }
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [asideW])
 
   /** 记录最近一次加载/保存的图数据哈希，用于：
    *  1. 阻止 save → refetch → reload → save 的无限循环
@@ -169,6 +199,41 @@ function EditorCanvas() {
 
   const agents: Agent[] = agentsQ.data ?? []
   const skills = skillsQ.data ?? []
+
+  // —— 试跑记录回看：加载指定运行会话到运行对话 tab（只读回看；
+  //    再次发送 = 新对话新运行（新建 session），不续写该会话）——
+  const loadedSessionRef = useRef<string | null>(null)
+  const loadRunSession = useCallback(async (sid: string) => {
+    try {
+      const msgs = await window.one.sessions.messages(sid).then(unwrap)
+      loadedSessionRef.current = sid
+      setChatMsgs(toChatMessages(msgs))
+      if (!asideManualRef.current) setAsideW(520)
+      setRightTab('chat')
+    } catch (e) {
+      console.warn('[editor] 加载运行会话失败', e)
+    }
+  }, [])
+
+  // ?session=xxx 深链回看（历史下拉/外部跳转共用 loadRunSession）
+  const sessionParam = searchParams.get('session')
+  useEffect(() => {
+    if (!sessionParam || sessionParam === loadedSessionRef.current) return
+    void loadRunSession(sessionParam)
+  }, [sessionParam, loadRunSession])
+
+  // 本能力的试跑记录（capabilityId 关联会话；不进主 Agent 会话列表，这里回看）
+  const qc = useQueryClient()
+  const sessionsQ = useSessions()
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const runHistory = useMemo(
+    () =>
+      (sessionsQ.data ?? [])
+        .filter((s) => s.capabilityId === capabilityId)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 20),
+    [sessionsQ.data, capabilityId],
+  )
 
   // —— 加载已有能力图 ——
   useEffect(() => {
@@ -321,7 +386,7 @@ function EditorCanvas() {
       const cap = capQ.data as Capability | undefined
       void saveCap.mutateAsync({
         id: capabilityId,
-        name: cap?.name ?? '未命名',
+        name: cap?.name ?? t('editor:untitled'),
         description: cap?.description,
         graph,
       })
@@ -418,6 +483,7 @@ function EditorCanvas() {
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
       const container = containerAt(position)
       const isAgent = payload.kind === 'agent'
+      const containerMeta = isAgent ? undefined : CONTAINER_TYPES.find((c) => c.type === payload.kind)
 
       const nodeId = isAgent
         ? `agent_${Date.now().toString(36)}`
@@ -447,7 +513,7 @@ function EditorCanvas() {
             } satisfies AgentNodeData)
           : ({
               kind: payload.kind as NodeType,
-              label: CONTAINER_TYPES.find((c) => c.type === payload.kind)?.label ?? payload.kind,
+              label: containerMeta ? t(`editor:${containerMeta.labelKey}`) : payload.kind,
               status: 'idle' as AgentNodeStatus,
               participants: [],
               dropHover: false,
@@ -499,7 +565,7 @@ function EditorCanvas() {
         )
       }
     },
-    [screenToFlowPosition, containerAt, nodes],
+    [screenToFlowPosition, containerAt, nodes, t],
   )
 
   // —— 拖动节点时高亮容器 ——
@@ -767,26 +833,28 @@ function EditorCanvas() {
     const cap = capQ.data as Capability | undefined
     await saveCap.mutateAsync({
       id: capabilityId,
-      name: cap?.name ?? '未命名',
+      name: cap?.name ?? t('editor:untitled'),
       description: cap?.description,
       graph,
     })
     setSavedAt(Date.now())
-  }, [capabilityId, nodes, edges, saveCap, capQ.data])
+  }, [capabilityId, nodes, edges, saveCap, capQ.data, t])
 
-  // —— 运行编排 ——
-  // 点运行按钮 → 弹输入框（openRunDialog）；确认 → onRun(input) 真跑 workflow
-  const openRunDialog = useCallback(() => {
-    if (running || nodes.length === 0) return
-    setRunInput('')
-    setRunDialogOpen(true)
-  }, [running, nodes.length])
+  // —— 运行编排（聊天化：composer 输入即任务，与首页 @能力 运行同一体系）——
+  // 点运行按钮 → 切到「运行对话」tab；每次发送 = 重新开始一个新对话（清空上一场
+  // 消息 + 新建 session）：能力运行无状态，turn 间不共享 executor cache。
+  // 流事件同时驱动画布节点高亮 + 聊天气泡（applyOrchEvent 共享 reducer）。
+  const openRunChat = useCallback(() => {
+    if (nodes.length === 0) return
+    switchRightTab('chat')
+  }, [nodes.length, switchRightTab])
 
   const onRun = useCallback(async (input: string) => {
-    if (running || nodes.length === 0) return
-    if (!input.trim()) return
+    const text = input.trim()
+    if (running || nodes.length === 0 || !text) return
     setRunning(true)
-    setOutput('')
+    // 新对话：清空上一场消息，user 消息入流（与首页发送一致：先入气泡再请求）
+    setChatMsgs([{ id: crypto.randomUUID(), role: 'user', text }])
     // 清除所有节点状态
     setNodes((nds) =>
       nds.map((n) => ({
@@ -808,7 +876,29 @@ function EditorCanvas() {
         condition: (e.data as { condition?: string })?.condition,
       })),
     }
+
+    // 会话持久化：每次运行新建 session（capabilityId 关联，标记为能力试跑记录——
+    // 不进主 Agent 会话列表，在本页「运行对话」历史下拉回看）；
+    // 主进程在 orchestrate:run 内落用户输入 + 聚合输出。
+    let sid: string | null = null
+    if (capabilityId) {
+      try {
+        const s = await window.one.sessions
+          .create({ title: text.slice(0, 20), capabilityId })
+          .then(unwrap)
+        sid = s.id
+        // 刷新试跑记录下拉（新记录立即可见）
+        void qc.invalidateQueries({ queryKey: ['sessions'] })
+      } catch (e) {
+        // session 创建失败不阻塞运行（仅不持久化）
+        console.warn('[editor] 创建运行会话失败，本次不落库', e)
+      }
+    }
+
     const unsub = window.one.orchestrate.onStream((event: StreamEvent) => {
+      // 1. 聊天气泡（共享 reducer：output 分泡 / 错误 / HITL 提问卡）
+      setChatMsgs((prev) => applyOrchEvent(prev, event))
+      // 2. 画布节点状态高亮
       switch (event.type) {
         case 'node_started':
           setActiveNodeId(event.node_id)
@@ -838,9 +928,6 @@ function EditorCanvas() {
             ),
           )
           break
-        case 'output':
-          setOutput((prev) => prev + event.text)
-          break
         case 'done':
         case 'failed':
           setRunning(false)
@@ -850,13 +937,27 @@ function EditorCanvas() {
     })
 
     try {
-      await window.one.orchestrate.run({ graph, input }).then(unwrap)
-    } catch {
+      await window.one.orchestrate.run({ graph, input: text, sessionId: sid ?? undefined }).then(unwrap)
+      // 兜底复位：done 事件若晚于 unsub 到达，running 不能卡死
       setRunning(false)
+      setActiveNodeId(null)
+    } catch (e) {
+      // IPC 层失败（未配置供应商等）：错误气泡（与首页错误呈现一致）
+      setChatMsgs((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: e instanceof Error ? e.message : String(e),
+          error: true,
+        },
+      ])
+      setRunning(false)
+      setActiveNodeId(null)
     } finally {
       unsub()
     }
-  }, [nodes, edges, running, t])
+  }, [nodes, edges, running, capabilityId, qc])
 
   // —— 选中节点 ——
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
@@ -993,10 +1094,10 @@ function EditorCanvas() {
                 draggable
                 onDragStart={(e) => onPaletteDragStart(e, { kind: c.type })}
                 className="rf-palette-item rf-palette-item--container"
-                title={c.desc}
+                title={t(`editor:${c.descKey}`)}
               >
                 <Icon size={14} style={{ flexShrink: 0 }} />
-                <span className="rf-palette-item__label">{c.label}</span>
+                <span className="rf-palette-item__label">{t(`editor:${c.labelKey}`)}</span>
               </div>
             )
           })}
@@ -1012,20 +1113,20 @@ function EditorCanvas() {
           >
             {saveCap.isPending ? (
               <>
-                <RefreshCw size={14} className="animate-spin" /> 保存中…
+                <RefreshCw size={14} className="animate-spin" /> {t('editor:save.saving')}
               </>
             ) : savedAt && Date.now() - savedAt < 3000 ? (
               <>
-                <Check size={14} /> 已保存
+                <Check size={14} /> {t('editor:save.saved')}
               </>
             ) : (
               <>
-                <Save size={14} /> 保存
+                <Save size={14} /> {t('common:actions.save')}
               </>
             )}
           </Button>
           <Button
-            onClick={openRunDialog}
+            onClick={openRunChat}
             disabled={running || nodes.length === 0}
             className="w-full"
           >
@@ -1033,45 +1134,6 @@ function EditorCanvas() {
             {running ? t('editor:running') : t('editor:run')}
           </Button>
         </div>
-
-        {/* 运行输入弹层（玻璃态，替代 window.prompt）：输入任务内容 → 确认跑 workflow */}
-        <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogTitle>{t('editor:runDialogTitle')}</DialogTitle>
-            <DialogDescription className="mt-1">
-              {t('editor:runDialogDesc')}
-            </DialogDescription>
-            <textarea
-              autoFocus
-              value={runInput}
-              onChange={(e) => setRunInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  setRunDialogOpen(false)
-                  void onRun(runInput)
-                }
-              }}
-              placeholder={t('editor:runDialogPlaceholder')}
-              rows={4}
-              className="mt-4 w-full resize-none rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-2)] px-3 py-2 text-sm text-[var(--color-fg-1)] outline-none placeholder:text-[var(--color-fg-3)] focus:border-[var(--color-brand-400)]"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setRunDialogOpen(false)}>
-                {t('common:actions.cancel')}
-              </Button>
-              <Button
-                disabled={!runInput.trim()}
-                onClick={() => {
-                  setRunDialogOpen(false)
-                  void onRun(runInput)
-                }}
-              >
-                <Play size={14} />
-                {t('editor:run')}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </aside>
 
       {/* ── Canvas ── */}
@@ -1124,57 +1186,121 @@ function EditorCanvas() {
         ) : null}
       </div>
 
-      {/* ── Inspector ── */}
+      {/* ── 右侧栏：属性 Inspector / 运行对话 tabs（左缘拖拽调宽）── */}
       <aside
         className="glass-panel"
         style={{
-          width: 340,
+          width: asideW,
+          flexShrink: 0,
+          position: 'relative',
           borderRadius: 20,
           padding: 16,
-          display: 'grid',
+          display: 'flex',
+          flexDirection: 'column',
           gap: 12,
-          alignContent: 'start',
-          overflow: 'auto',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <p className="section-title" style={{ fontSize: '0.9rem' }}>
-            {t('editor:inspector.title')}
-          </p>
+        <div
+          className="aside-resizer"
+          onMouseDown={onAsideDragStart}
+          title={t('editor:aside.resize')}
+        />
+        {/* tab 头 */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => switchRightTab('inspector')}
+            className={`editor-tab${rightTab === 'inspector' ? ' editor-tab--active' : ''}`}
+          >
+            <SlidersHorizontal size={13} /> {t('editor:tabs.inspector')}
+          </button>
+          <button
+            type="button"
+            onClick={() => switchRightTab('chat')}
+            className={`editor-tab${rightTab === 'chat' ? ' editor-tab--active' : ''}`}
+          >
+            <MessageSquare size={13} /> {t('editor:tabs.chat')}
+          </button>
           {running ? <Badge variant="brand">{t('editor:running')}</Badge> : null}
+          {/* 试跑记录回看（本能力的运行会话，不进主 Agent 会话列表） */}
+          {rightTab === 'chat' ? (
+            <div style={{ marginLeft: 'auto', position: 'relative' }}>
+              <button
+                type="button"
+                className="editor-tab"
+                title={t('editor:runChat.history')}
+                onClick={() => setHistoryOpen((o) => !o)}
+              >
+                <History size={13} />
+              </button>
+              {historyOpen ? (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 39 }}
+                    onClick={() => setHistoryOpen(false)}
+                  />
+                  <div className="run-history glass-panel">
+                    {runHistory.length === 0 ? (
+                      <p className="run-history__empty">{t('editor:runChat.historyEmpty')}</p>
+                    ) : (
+                      runHistory.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className="run-history__item"
+                          onClick={() => {
+                            setHistoryOpen(false)
+                            void loadRunSession(s.id)
+                          }}
+                        >
+                          <span className="run-history__title">{s.title}</span>
+                          <span className="run-history__time">
+                            {new Intl.DateTimeFormat(undefined, {
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }).format(s.updatedAt)}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
-        {selectedNode ? (
-          <NodeInspector
-            node={selectedNode}
-            nodes={nodes}
-            skills={skills}
-            agents={agents}
-            onUpdate={updateNodeData}
-            onSetEntry={setEntryNode}
-            effectiveEntryId={effectiveEntryId}
-            hasExplicitEntry={hasExplicitEntry}
-            onDelete={onDeleteNode}
-            t={t}
-          />
-        ) : (
-          <p className="section-subtitle">{t('editor:inspector.hint')}</p>
-        )}
-
-        {/* 运行输出 */}
-        {output ? (
-          <div
-            className="surface-panel"
-            style={{ borderRadius: 12, padding: 12, fontSize: '0.85rem', maxHeight: 300, overflow: 'auto' }}
-          >
-            <p className="section-subtitle" style={{ fontSize: '0.75rem', marginBottom: 8 }}>
-              {t('editor:output')}
-            </p>
-            <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'var(--font-mono, monospace)' }}>
-              {output}
-            </pre>
+        {rightTab === 'inspector' ? (
+          <div style={{ display: 'grid', gap: 12, alignContent: 'start', overflow: 'auto', flex: 1, minHeight: 0 }}>
+            {selectedNode ? (
+              <NodeInspector
+                node={selectedNode}
+                nodes={nodes}
+                skills={skills}
+                agents={agents}
+                onUpdate={updateNodeData}
+                onSetEntry={setEntryNode}
+                effectiveEntryId={effectiveEntryId}
+                hasExplicitEntry={hasExplicitEntry}
+                onDelete={onDeleteNode}
+                t={t}
+              />
+            ) : (
+              <p className="section-subtitle">{t('editor:inspector.hint')}</p>
+            )}
           </div>
-        ) : null}
+        ) : (
+          <RunChatPanel
+            messages={chatMsgs}
+            speakerName={speakerName}
+            running={running}
+            onSend={(text) => void onRun(text)}
+            onStop={() => void window.one.orchestrate.cancel()}
+          />
+        )}
       </aside>
     </div>
   )
@@ -1226,6 +1352,8 @@ function NodeInspector({
   }
   const isAgent = node.type === 'agent'
   const status = data.status ?? 'idle'
+  const containerMeta = isAgent ? undefined : CONTAINER_TYPES.find((c) => c.type === data.kind)
+  const containerTypeLabel = containerMeta ? t(`editor:${containerMeta.labelKey}`) : data.kind
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -1240,7 +1368,7 @@ function NodeInspector({
           </span>
         </div>
         <div>
-          <label className="rf-inspector-label">名称</label>
+          <label className="rf-inspector-label">{t('common:columns.name')}</label>
           <Input
             value={data.label ?? ''}
             onChange={(e) => onUpdate(node.id, { label: e.target.value })}
@@ -1248,43 +1376,48 @@ function NodeInspector({
           />
         </div>
 
-        {/* —— 入口设置（agent + 容器通用，单选语义）——
+        {/* —— 入口设置（agent + 容器通用，单选语义；仅顶层节点可设）——
             勾选 → onSetEntry(node.id)（自动清其它入口）；取消 → onSetEntry(null) 回退拓扑推导。
             容器也可设入口：concurrent/groupchat/handoff 容器自身是 dispatcher/协调器作入口；
-            sequential 容器作入口时运行期自动从首 participant 进入（对用户透明）。 */}
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={data.isEntry ?? false}
-              onChange={(e) => onSetEntry(e.target.checked ? node.id : null)}
-            />
-            {t('editor:inspector.entry.set')}
-          </label>
-          {/* 生效入口状态提示 */}
-          {effectiveEntryId === node.id ? (
-            <p style={{ fontSize: '0.72rem', margin: '4px 0 0', color: 'var(--color-brand-500)' }}>
-              {hasExplicitEntry
-                ? t('editor:inspector.entry.activeExplicit')
-                : t('editor:inspector.entry.activeDerived')}
-            </p>
-          ) : !hasExplicitEntry && effectiveEntryId ? (
-            <p style={{ fontSize: '0.72rem', margin: '4px 0 0', color: 'var(--color-fg-3)' }}>
-              {t('editor:inspector.entry.derivedHint', {
-                name:
-                  (nodes.find((n) => n.id === effectiveEntryId)?.data as { label?: string })?.label ??
-                  effectiveEntryId,
-              })}
-            </p>
-          ) : null}
-        </div>
+            sequential 容器作入口时运行期自动从首 participant 进入（对用户透明）。
+            容器子节点（data.parentId）不显示：运行期 resolveStartExecutor 只认顶层
+            isEntry，给 participant 设入口会被静默忽略（实测误导：用户给调研子节点
+            设入口以为只跑调研，实际入口是并发容器整体）。 */}
+        {!(data as { parentId?: string }).parentId ? (
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={data.isEntry ?? false}
+                onChange={(e) => onSetEntry(e.target.checked ? node.id : null)}
+              />
+              {t('editor:inspector.entry.set')}
+            </label>
+            {/* 生效入口状态提示 */}
+            {effectiveEntryId === node.id ? (
+              <p style={{ fontSize: '0.72rem', margin: '4px 0 0', color: 'var(--color-brand-500)' }}>
+                {hasExplicitEntry
+                  ? t('editor:inspector.entry.activeExplicit')
+                  : t('editor:inspector.entry.activeDerived')}
+              </p>
+            ) : !hasExplicitEntry && effectiveEntryId ? (
+              <p style={{ fontSize: '0.72rem', margin: '4px 0 0', color: 'var(--color-fg-3)' }}>
+                {t('editor:inspector.entry.derivedHint', {
+                  name:
+                    (nodes.find((n) => n.id === effectiveEntryId)?.data as { label?: string })?.label ??
+                    effectiveEntryId,
+                })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Agent 特有属性 */}
       {isAgent ? (
         <div className="surface-panel" style={{ borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p className="rf-inspector-section" style={{ margin: 0 }}>节点配置</p>
+            <p className="rf-inspector-section" style={{ margin: 0 }}>{t('editor:inspector.nodeConfig')}</p>
             {data.sourceAgentId ? (
               <button
                 type="button"
@@ -1314,23 +1447,23 @@ function NodeInspector({
                   padding: '3px 8px',
                   cursor: 'pointer',
                 }}
-                title="从全局角色模板重新拉取配置（覆盖当前节点配置）"
+                title={t('editor:inspector.refreshFromTemplateHint')}
               >
-                <RefreshCw size={11} /> 从模板刷新
+                <RefreshCw size={11} /> {t('editor:inspector.refreshFromTemplate')}
               </button>
             ) : null}
           </div>
           {data.sourceAgentId ? (
             <p style={{ fontSize: '0.7rem', color: 'var(--color-fg-3)', margin: 0 }}>
-              源模板: {data.sourceAgentId}
+              {t('editor:inspector.sourceTemplate', { id: data.sourceAgentId })}
             </p>
           ) : null}
           <div>
-            <label className="rf-inspector-label">描述</label>
+            <label className="rf-inspector-label">{t('editor:capabilities.desc')}</label>
             <Input
               value={data.description ?? ''}
               onChange={(e) => onUpdate(node.id, { description: e.target.value })}
-              placeholder="角色的简要描述"
+              placeholder={t('editor:inspector.descPlaceholder')}
               style={{ marginTop: 4 }}
             />
           </div>
@@ -1339,7 +1472,7 @@ function NodeInspector({
             <textarea
               value={data.instructions ?? ''}
               onChange={(e) => onUpdate(node.id, { instructions: e.target.value })}
-              placeholder="输入 system prompt"
+              placeholder={t('editor:inspector.promptPlaceholder')}
               style={{
                 marginTop: 4,
                 width: '100%',
@@ -1355,29 +1488,29 @@ function NodeInspector({
             />
           </div>
           <div>
-            <label className="rf-inspector-label">模型</label>
+            <label className="rf-inspector-label">{t('editor:inspector.modelLabel')}</label>
             <Input
               value={data.model ?? ''}
               onChange={(e) => onUpdate(node.id, { model: e.target.value, modelId: e.target.value })}
-              placeholder="留空用默认"
+              placeholder={t('editor:inspector.modelPlaceholder')}
               style={{ marginTop: 4 }}
             />
           </div>
           <div>
-            <label className="rf-inspector-label">输出约束</label>
+            <label className="rf-inspector-label">{t('editor:inspector.constraintsLabel')}</label>
             <Input
               value={data.outputConstraints ?? ''}
               onChange={(e) => onUpdate(node.id, { outputConstraints: e.target.value })}
-              placeholder="如：≤2500字"
+              placeholder={t('editor:inspector.constraintsPlaceholder')}
               style={{ marginTop: 4 }}
             />
           </div>
           {/* 挂载技能 */}
           <div>
-            <label className="rf-inspector-label">挂载技能</label>
+            <label className="rf-inspector-label">{t('editor:inspector.skillsLabel')}</label>
             {skills.length === 0 ? (
               <p style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)', margin: '4px 0 0' }}>
-                暂无可用技能
+                {t('editor:inspector.skillsEmpty')}
               </p>
             ) : (
               <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
@@ -1429,22 +1562,22 @@ function NodeInspector({
       {/* Container 特有属性 */}
       {!isAgent ? (
         <div className="surface-panel" style={{ borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}>
-          <p className="rf-inspector-section">容器配置</p>
+          <p className="rf-inspector-section">{t('editor:inspector.containerConfig')}</p>
           <div>
-            <label className="rf-inspector-label">类型</label>
+            <label className="rf-inspector-label">{t('editor:inspector.typeLabel')}</label>
             <p style={{ fontSize: '0.8rem', margin: '4px 0 0', color: 'var(--color-fg-1)' }}>
-              {CONTAINER_TYPES.find((c) => c.type === data.kind)?.label ?? data.kind}
+              {containerTypeLabel}
             </p>
           </div>
 
           {/* 子节点列表 */}
           <div>
             <label className="rf-inspector-label">
-              子 Agent（{(data.participants ?? []).length}）
+              {t('editor:inspector.childAgents', { count: (data.participants ?? []).length })}
             </label>
             {(data.participants ?? []).length === 0 ? (
               <p style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)', margin: '4px 0 0' }}>
-                从左侧拖入 Agent 到此容器
+                {t('editor:inspector.dropHint')}
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 4, marginTop: 4 }}>
@@ -1474,18 +1607,18 @@ function NodeInspector({
           {data.kind === 'groupchat' ? (
             <>
               <div>
-                <label className="rf-inspector-label">选择模式</label>
+                <label className="rf-inspector-label">{t('editor:inspector.selectorModeLabel')}</label>
                 <select
                   value={data.selectorMode ?? 'round_robin'}
                   onChange={(e) => onUpdate(node.id, { selectorMode: e.target.value })}
                   style={selectStyle}
                 >
-                  <option value="round_robin">轮流发言</option>
-                  <option value="manager">管理者选择</option>
+                  <option value="round_robin">{t('editor:inspector.selectorRoundRobin')}</option>
+                  <option value="manager">{t('editor:inspector.selectorManager')}</option>
                 </select>
               </div>
               <div>
-                <label className="rf-inspector-label">最大轮数</label>
+                <label className="rf-inspector-label">{t('editor:inspector.maxRounds')}</label>
                 <Input
                   type="number"
                   value={String(data.maxRounds ?? 6)}
@@ -1499,13 +1632,13 @@ function NodeInspector({
           {/* Handoff 配置 */}
           {data.kind === 'handoff' ? (
             <div>
-              <label className="rf-inspector-label">起始 Agent</label>
+              <label className="rf-inspector-label">{t('editor:inspector.startAgent')}</label>
               <select
                 value={data.startAgent ?? ''}
                 onChange={(e) => onUpdate(node.id, { startAgent: e.target.value })}
                 style={selectStyle}
               >
-                <option value="">自动选择</option>
+                <option value="">{t('editor:inspector.startAgentAuto')}</option>
                 {(data.participants ?? []).map((pid) => (
                   <option key={pid} value={pid}>{pid}</option>
                 ))}

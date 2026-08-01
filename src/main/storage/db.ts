@@ -219,17 +219,28 @@ export function getDb(): Database.Database {
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000 // 30min 周期备份
 let backupTimer: NodeJS.Timeout | null = null
 
-/** 周期备份（§11.4：损坏恢复从 .bak 恢复） */
+/**
+ * 完整快照备份（§11.4：损坏恢复从 .bak 恢复）。
+ * WAL 模式下已提交数据可能还在 db-wal 里未 checkpoint——只拷主库文件会得到
+ * 缺最近写入的「假备份」，恢复时丢数据。先 TRUNCATE checkpoint 把 WAL 合并回
+ * 主库再拷贝，才是完整快照（单进程单连接，无 BUSY 风险；30min 一次同步阻塞可接受）。
+ */
+function backupDatabase(): void {
+  if (!dbInstance) return
+  const dbPath = getDbPath()
+  if (!existsSync(dbPath)) return
+  dbInstance.pragma('wal_checkpoint(TRUNCATE)')
+  copyFileSync(dbPath, getDbBackupPath())
+}
+
+/** 周期备份 */
 function startPeriodicBackup(): void {
   if (backupTimer) clearInterval(backupTimer)
   backupTimer = setInterval(() => {
-    if (dbInstance) {
-      try {
-        const dbPath = getDbPath()
-        if (existsSync(dbPath)) copyFileSync(dbPath, getDbBackupPath())
-      } catch (error) {
-        logger.warn('[db] 周期备份失败', error)
-      }
+    try {
+      backupDatabase()
+    } catch (error) {
+      logger.warn('[db] 周期备份失败', error)
     }
   }, BACKUP_INTERVAL_MS)
 }
@@ -243,8 +254,7 @@ export function closeDb(): void {
   if (dbInstance) {
     // 退出前再备份一次
     try {
-      const dbPath = getDbPath()
-      if (existsSync(dbPath)) copyFileSync(dbPath, getDbBackupPath())
+      backupDatabase()
     } catch (error) {
       logger.warn('[db] 退出备份失败', error)
     }

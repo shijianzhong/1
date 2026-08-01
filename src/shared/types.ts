@@ -110,6 +110,11 @@ export type StreamEvent =
   | { type: 'handoff'; from: string; to: string }
   | { type: 'failed'; error: string }
   | { type: 'done' }
+  // —— HITL 人机交互（ask_user 工具桥，对照原框架 request_info）——
+  // request_info：编排内 agent 向用户提问，工作流挂起等待；渲染层渲染提问卡。
+  | { type: 'request_info'; request_id: string; node_id: string; question: string; context?: string }
+  // request_resolved：用户已作答（response 非空）或提问失效（response 空 = 超时/取消），卡片定格。
+  | { type: 'request_resolved'; request_id: string; node_id: string; response: string }
 
 export interface RunResult {
   runId: string

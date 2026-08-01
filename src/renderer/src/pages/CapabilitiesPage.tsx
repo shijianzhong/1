@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogClose,
 } from '@renderer/components/ui/Dialog'
+import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 import type { Capability } from '@shared/types'
 
 // —— 能力列表（§3 + EClaw CapabilitiesPage 范式）——
@@ -57,7 +58,11 @@ export function CapabilitiesPage() {
 
   const onRemove = async (e: React.MouseEvent, id: string): Promise<void> => {
     e.stopPropagation()
-    if (!window.confirm(t('common:confirm.delete'))) return
+    const ok = await confirmDialog({
+      title: t('common:confirm.delete'),
+      confirmText: t('common:actions.delete'),
+    })
+    if (!ok) return
     await removeCap.mutateAsync(id)
   }
 

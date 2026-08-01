@@ -18,7 +18,7 @@ import type { LLMClientOptions } from '../../llm/client'
 export interface AgentExecutorOptions {
   config: AgentConfig
   llmOpts: LLMClientOptions
-  toolCtx?: { sessionId?: string; signal?: AbortSignal }
+  toolCtx?: Agent['deps']['toolCtx']
   /** 可选注入 Agent（测试用 mock）；不传则内部 new Agent */
   agent?: Agent
 }
@@ -90,10 +90,15 @@ export class AgentExecutor implements Executor {
     for (const m of this.cache) {
       // tool 块过滤（骨架简化：tool_result 角色跳过，防 2013）
       if (m.role === 'tool' || m.isFunctionResult) continue
-      messages.push({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content,
-      })
+      const role = m.role === 'assistant' ? ('assistant' as const) : ('user' as const)
+      // full_conversation extend 后 cache 会有连续同角色（原始 user + 多跳 assistant），
+      // Anthropic 要求 user/assistant 严格交替 → 连续同角色合并为一条（防 400）
+      const last = messages[messages.length - 1]
+      if (last && last.role === role && typeof last.content === 'string') {
+        last.content = `${last.content}\n\n${m.content}`
+      } else {
+        messages.push({ role, content: m.content })
+      }
     }
 
     // wake_on_upstream：末条 assistant 且 author≠self → 追加 user 唤醒（§G）

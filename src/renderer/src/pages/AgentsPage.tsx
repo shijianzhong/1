@@ -15,6 +15,7 @@ import {
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
+import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 import type { Agent } from '@shared/types'
 
 // —— 角色管理页（借鉴 Proton AgentsPage 范式）——
@@ -90,7 +91,11 @@ export function AgentsPage() {
   }
 
   const onRemove = async (id: string): Promise<void> => {
-    if (!window.confirm(t('common:confirm.delete'))) return
+    const ok = await confirmDialog({
+      title: t('common:confirm.delete'),
+      confirmText: t('common:actions.delete'),
+    })
+    if (!ok) return
     await removeAgent.mutateAsync(id)
   }
 
@@ -233,7 +238,7 @@ export function AgentsPage() {
                   )
                 })}
                 {a.source === 'custom' ? (
-                  <Badge style={{ fontSize: '0.7rem' }}>自定义</Badge>
+                  <Badge style={{ fontSize: '0.7rem' }}>{t('common:agents.custom')}</Badge>
                 ) : null}
               </div>
             </article>
@@ -257,11 +262,11 @@ export function AgentsPage() {
                     autoFocus
                   />
                 </Field>
-                <Field label="描述">
+                <Field label={t('common:columns.description')}>
                   <Input
                     value={draft.description}
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                    placeholder="角色的简要描述"
+                    placeholder={t('common:agents.descriptionPh')}
                   />
                 </Field>
                 <Field label={t('common:columns.instructions')}>
@@ -269,15 +274,15 @@ export function AgentsPage() {
                     value={draft.instructions}
                     onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
                     style={textareaStyle}
-                    placeholder="角色的系统提示词，定义其行为和能力…"
+                    placeholder={t('common:agents.instructionsPh')}
                   />
                 </Field>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <Field label="模型 ID">
+                  <Field label={t('common:columns.modelId')}>
                     <Input
                       value={draft.modelId}
                       onChange={(e) => setDraft({ ...draft, modelId: e.target.value })}
-                      placeholder="留空用默认供应商模型"
+                      placeholder={t('common:agents.modelIdPh')}
                     />
                   </Field>
                   <Field label="Temperature">
@@ -301,17 +306,17 @@ export function AgentsPage() {
                     min="1024"
                   />
                 </Field>
-                <Field label="输出约束">
+                <Field label={t('common:agents.outputConstraints')}>
                   <Input
                     value={draft.outputConstraints}
                     onChange={(e) => setDraft({ ...draft, outputConstraints: e.target.value })}
-                    placeholder="如：≤2500字"
+                    placeholder={t('common:agents.outputConstraintsPh')}
                   />
                 </Field>
-                <Field label="挂载技能">
+                <Field label={t('common:agents.skills')}>
                   {skills.length === 0 ? (
                     <p style={{ fontSize: '0.8rem', color: 'var(--color-fg-3)', margin: '4px 0 0' }}>
-                      暂无可用技能，请先在技能页创建
+                      {t('common:agents.noSkills')}
                     </p>
                   ) : (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>

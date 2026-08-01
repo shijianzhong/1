@@ -91,16 +91,6 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-brand-500);
 }
 
-.side-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 24px 20px;
-  border-right: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.52);
-  backdrop-filter: blur(12px);
-}
-
 .main-area {
   position: relative;
   display: flex;
@@ -209,7 +199,7 @@ html[data-platform='darwin'] .titlebar__inner {
   display: grid;
   place-items: center;
   background: var(--color-brand-500);
-  color: white;
+  color: var(--color-on-brand);
   flex-shrink: 0;
 }
 
@@ -234,7 +224,7 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .message__bubble--user {
   background: var(--color-brand-500);
-  color: white;
+  color: var(--color-on-brand);
 }
 
 .composer {
@@ -259,7 +249,7 @@ html[data-platform='darwin'] .titlebar__inner {
   border: 0;
   border-radius: 999px;
   background: var(--color-brand-500);
-  color: white;
+  color: var(--color-on-brand);
   padding: 10px 18px;
   cursor: pointer;
   transition: opacity 0.15s ease;
@@ -441,7 +431,7 @@ html[data-platform='darwin'] .titlebar__inner {
 .create-card__btn--primary {
   background: var(--color-brand-500);
   border-color: var(--color-brand-500);
-  color: #fff;
+  color: var(--color-on-brand);
 }
 
 .create-card__btn:disabled {
@@ -643,14 +633,10 @@ html[data-platform='darwin'] .titlebar__inner {
   gap: 12px;
   padding: 16px 12px;
   border-right: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
   min-height: 0;
   overflow: hidden;
-}
-
-:root.dark .side-list {
-  background: rgba(20, 22, 28, 0.52);
 }
 
 .side-list__new {
@@ -663,7 +649,7 @@ html[data-platform='darwin'] .titlebar__inner {
   border: 0;
   border-radius: 12px;
   background: var(--color-brand-500);
-  color: white;
+  color: var(--color-on-brand);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -1085,4 +1071,280 @@ html[data-platform='darwin'] .titlebar__inner {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin: 0;
+}
+
+/* ── 编辑器右栏 tabs（属性 / 运行对话）── */
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-fg-3);
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.editor-tab:hover {
+  color: var(--color-fg-1);
+  background: var(--color-bg-2);
+}
+
+.editor-tab--active {
+  color: var(--color-brand-500);
+  background: color-mix(in srgb, var(--color-brand-500) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-brand-500) 35%, transparent);
+}
+
+/* ── 编辑器右栏拖拽调宽手柄（左缘）── */
+.aside-resizer {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 30;
+}
+
+.aside-resizer::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 48px;
+  border-radius: 2px;
+  background: var(--color-fg-3);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.aside-resizer:hover::after,
+.aside-resizer:active::after {
+  opacity: 0.5;
+}
+
+/* ── 窄栏聊天气泡防横向滚动：长内容折行，代码块/表格内部自滚 ── */
+.message {
+  min-width: 0;
+}
+
+.message__bubble {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.message__bubble :where(pre, table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.message__bubble :where(code) {
+  word-break: break-word;
+}
+
+/* ── 试跑记录历史下拉（编辑器运行对话 tab）── */
+.run-history {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 240px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 14px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  z-index: 40;
+}
+
+.run-history__empty {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--color-fg-3);
+}
+
+.run-history__item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.run-history__item:hover {
+  background: var(--color-bg-2);
+}
+
+.run-history__title {
+  font-size: 0.8rem;
+  color: var(--color-fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history__time {
+  font-size: 0.7rem;
+  color: var(--color-fg-3);
+}
+
+/* ── 运行对话 composer 按钮 ── */
+.run-chat__send,
+.run-chat__stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.run-chat__send {
+  background: var(--color-brand-500);
+  color: var(--color-on-brand);
+}
+
+.run-chat__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.run-chat__stop {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+
+/* ── HITL 提问卡（ask_user）── */
+.ask-user-card {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.ask-user-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-brand-500);
+}
+
+.ask-user-card__question {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--color-fg-1);
+}
+
+.ask-user-card__context {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-fg-3);
+}
+
+.ask-user-card__form {
+  display: grid;
+  gap: 6px;
+}
+
+.ask-user-card__form textarea {
+  width: 100%;
+  resize: none;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  color: var(--color-fg-1);
+  outline: none;
+  font-family: inherit;
+}
+
+.ask-user-card__form textarea:focus {
+  border-color: var(--color-brand-400);
+}
+
+.ask-user-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ask-user-card__btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.ask-user-card__btn--primary {
+  border: 0;
+  background: var(--color-brand-500);
+  color: var(--color-on-brand);
+}
+
+.ask-user-card__btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ask-user-card__btn--ghost {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+  color: var(--color-fg-2);
+}
+
+.ask-user-card__btn--ghost:hover {
+  background: var(--color-bg-3);
+}
+
+.ask-user-card__error {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-danger);
+}
+
+.ask-user-card__answer {
+  font-size: 0.82rem;
+  color: var(--color-fg-1);
+  background: var(--color-bg-2);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.ask-user-card__answer-label {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--color-brand-500);
+  margin-bottom: 2px;
+}
+
+.ask-user-card__expired {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-fg-3);
+  font-style: italic;
 }

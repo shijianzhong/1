@@ -4,6 +4,10 @@ import { withHandler } from './handler'
 // —— 原生能力 IPC（§六）——
 // 通知 + 开机自启 + nativeTheme 明暗跟随。
 
+// nativeTheme 是进程级单例 EventEmitter：重复注册（dev HMR 重载模块）会叠加
+// 监听器导致同一系统主题变化推送 N 次，模块级守卫只挂一次
+let themeListenerAttached = false
+
 export function registerNativeHandlers(getMainWindow: () => BrowserWindow | null): void {
   // —— 开机自启 ——
   withHandler<boolean>('app:setAutoLaunch', (_e, onRaw) => {
@@ -34,10 +38,13 @@ export function registerNativeHandlers(getMainWindow: () => BrowserWindow | null
   })
 
   // 主进程监听系统主题变化，推送给渲染层（与渲染层 matchMedia 互为兜底）
-  nativeTheme.on('updated', () => {
-    const win = getMainWindow()
-    win?.webContents.send('app:systemColorModeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
-  })
+  if (!themeListenerAttached) {
+    themeListenerAttached = true
+    nativeTheme.on('updated', () => {
+      const win = getMainWindow()
+      win?.webContents.send('app:systemColorModeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+    })
+  }
 
   // —— 显示/隐藏窗口（托盘/快捷键外部调用）——
   withHandler<void>('app:show', () => {

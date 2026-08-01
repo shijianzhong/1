@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { APIError, AuthenticationError, BadRequestError } from '@anthropic-ai/sdk'
 import type { LlmRequest, LlmResponse } from '@shared/types'
 import { logger } from '../logger'
@@ -67,11 +68,17 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       reject(signal.reason ?? new Error('aborted'))
       return
     }
-    const t = setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => {
+    const onAbort = (): void => {
       clearTimeout(t)
-      reject(signal.reason ?? new Error('aborted'))
-    })
+      reject(signal!.reason ?? new Error('aborted'))
+    }
+    const t = setTimeout(() => {
+      // 正常到时也要摘掉 abort 监听——否则长寿命 signal（整场运行共享）上
+      // 每次重试 sleep 都累积一个闭包监听器，且回调闭包持有 t 阻止 GC
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -129,14 +136,9 @@ function makeCacheKey(modelId: string, opts: LLMClientOptions): string {
   return `${modelId}|${opts.baseURL ?? ''}|${opts.authHeader ?? ''}|${keyHash}`
 }
 
-/** 简单哈希 apiKey，避免明文存入 Map key */
+/** 哈希 apiKey（sha256 截 96bit），避免明文存入 Map key */
 function hashApiKey(key: string): string {
-  let h = 0
-  for (let i = 0; i < key.length; i++) {
-    h = ((h << 5) - h) + key.charCodeAt(i)
-    h |= 0
-  }
-  return `h${(h >>> 0).toString(36)}`
+  return `h${createHash('sha256').update(key).digest('base64url').slice(0, 16)}`
 }
 
 export function getClient(modelId: string, opts: LLMClientOptions): RetryingClient {

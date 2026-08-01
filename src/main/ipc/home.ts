@@ -36,6 +36,11 @@ import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolDefs } from '../tools/registry'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
+import {
+  newRequestId,
+  rejectAllUserInputs,
+  waitForUserInput,
+} from '../orchestrator/userInput'
 import type { BuildDeps } from '../orchestrator/builder'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -49,8 +54,13 @@ import { logger } from '../logger'
 const STREAM_CHANNEL = 'home:stream'
 const DEFAULT_USER_ID = 'local'
 
+/** 当前聊天的 AbortController（home:cancel 用；组队运行内 ask_user 挂起也受它取消） */
+let currentAbortController: AbortController | null = null
+
 /** 创建提案草稿暂存（draftId → {draft, ts}）；确认/取消删除，超时（30min）惰性清理。 */
 const DRAFT_TTL_MS = 30 * 60 * 1000
+/** 草稿驻留硬上限：正常流程单 figure 确认即删到不了上限；防异常 propose 风暴撑内存 */
+const MAX_PENDING_DRAFTS = 100
 const pendingDrafts = new Map<string, { draft: CreateDraft; ts: number }>()
 
 /** 惰性清理超时草稿（随新提案/确认调用，防用户不点按钮直接离开导致的内存驻留） */
@@ -211,11 +221,26 @@ export function registerHomeHandlers(): void {
         // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
         onPropose: (draft) => {
           pruneDrafts()
+          // 超上限挤掉最旧草稿（Map 迭代序即插入序）
+          if (pendingDrafts.size >= MAX_PENDING_DRAFTS && !pendingDrafts.has(draft.draftId)) {
+            const oldest = pendingDrafts.keys().next().value
+            if (oldest) pendingDrafts.delete(oldest)
+          }
           pendingDrafts.set(draft.draftId, { draft, ts: Date.now() })
           emitStream({ type: 'proposal', draft })
         },
       },
     })
+
+    // 取消控制器：贯穿主 Agent 流式 / 组队 runner / ask_user 挂起（home:cancel 生效）。
+    // 并发防御：单窗口 + 渲染层 sending 守卫下不会并发，但若发生（重复 IPC 调用），
+    // 先取消上一次运行——否则旧运行失去取消句柄成僵尸
+    if (currentAbortController) {
+      logger.warn('[home] 已有运行中的聊天，自动取消旧运行')
+      currentAbortController.abort()
+    }
+    currentAbortController = new AbortController()
+    const { signal } = currentAbortController
 
     // —— 编排图 BuildDeps（组队/能力直跑共用）——
     const buildDeps: BuildDeps = {
@@ -250,7 +275,26 @@ export function registerHomeHandlers(): void {
         const opts: AgentExecutorOptions = {
           config: cfg,
           llmOpts: { apiKey, baseURL, authHeader },
-          toolCtx: { sessionId: sid },
+          toolCtx: {
+            sessionId: sid,
+            signal,
+            // HITL 提问桥：事件经 orch_event 包装（与 runTeam 的流式事件同路），
+            // respond 收口在 orchestrate:respond（同一 userInput 队列）
+            onAskUser: async ({ question, context }) => {
+              const requestId = newRequestId()
+              const emit = (event: import('@shared/types').StreamEvent): void =>
+                emitStream({ type: 'orch_event', event })
+              emit({ type: 'request_info', request_id: requestId, node_id: node.id, question, context })
+              try {
+                const answer = await waitForUserInput(requestId, { nodeId: node.id, question }, signal)
+                emit({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: answer })
+                return answer
+              } catch (e) {
+                emit({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: '' })
+                throw e
+              }
+            },
+          },
         }
         return opts
       },
@@ -276,7 +320,7 @@ export function registerHomeHandlers(): void {
         )
         if (!graph) throw new Error('组队图构建失败')
         const question = mentions.cleanText || message
-        const result = await runTeam(graph, question, sid, buildDeps, emitStream)
+        const result = await runTeam(graph, question, sid, buildDeps, emitStream, signal)
         addMessage({ sessionId: sid, role: 'assistant', content: result.output })
         emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
         return { runId: sid }
@@ -289,7 +333,7 @@ export function registerHomeHandlers(): void {
       let finalThinking = ''
 
       const result = await agent.run(
-        { messages: l1Messages, runId: sid },
+        { messages: l1Messages, runId: sid, signal },
         {
           onText: (text) => {
             const safe = detector.feed(text)
@@ -317,7 +361,7 @@ export function registerHomeHandlers(): void {
         emitStream({ type: 'run_id', sessionId: sid })
         const graph = buildTeamGraph(decision.json, getAgent, getCapability)
         if (graph) {
-          const teamResult = await runTeam(graph, message, sid, buildDeps, emitStream)
+          const teamResult = await runTeam(graph, message, sid, buildDeps, emitStream, signal)
           addMessage({
             sessionId: sid,
             role: 'assistant',
@@ -361,13 +405,23 @@ export function registerHomeHandlers(): void {
       emitStream({ type: 'error', error: msg })
       emitStream({ type: 'message_stop', stop_reason: 'error' })
       throw e
+    } finally {
+      // 聊天结束（含异常/取消）：驳回残留挂起提问 + 清控制器，防泄漏到下一场。
+      // 只清自己的控制器：若期间新运行已接管（入口自动取消旧运行），不动新句柄
+      rejectAllUserInputs('run_finished')
+      if (currentAbortController?.signal === signal) currentAbortController = null
     }
 
     return { runId: sid }
   })
 
   withHandler<void>('home:cancel', () => {
-    logger.info('[home:cancel] 待 AbortController 接入（阶段6）')
+    rejectAllUserInputs('aborted') // 先驳回挂起提问，让工具侧收尾
+    if (currentAbortController) {
+      currentAbortController.abort()
+      currentAbortController = null
+      logger.info('[home:cancel] 已取消当前聊天/组队运行')
+    }
   })
 
   // —— 聊天创建确认入库 ——

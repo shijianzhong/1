@@ -19,6 +19,8 @@
   --color-warning: #e0a93c;
   --color-danger: #e15f5f;
   --color-info: #5ba8e8;
+  /* 品牌色上的文字色：brand-500 恒为饱和点缀色，三主题统一白 */
+  --color-on-brand: #ffffff;
   --glass-bg: rgba(255, 255, 255, 0.6);
   --glass-bg-strong: rgba(255, 255, 255, 0.78);
   --glass-border-top: rgba(255, 255, 255, 0.95);
@@ -95,6 +97,7 @@
   --color-warning: var(--color-warning);
   --color-danger: var(--color-danger);
   --color-info: var(--color-info);
+  --color-on-brand: var(--color-on-brand);
   --glass-bg: var(--glass-bg);
   --glass-bg-strong: var(--glass-bg-strong);
   --glass-border-top: var(--glass-border-top);

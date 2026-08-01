@@ -39,6 +39,14 @@ export function SettingsPage() {
   const theme = useThemeStore((state) => state.theme)
   const saveTheme = useThemeStore((state) => state.save)
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
+  // 版本号自主进程 ping 读（app.getVersion()），不硬编码
+  const [appVersion, setAppVersion] = useState('')
+  useEffect(() => {
+    window.one.system.ping()
+      .then(unwrap)
+      .then((r) => setAppVersion(r.appVersion))
+      .catch(() => {})
+  }, [])
 
   // —— 个人档案 + 主助手人设 ——
   const personaQ = usePersona()
@@ -147,8 +155,8 @@ export function SettingsPage() {
               padding: '0 10px',
             }}
           >
-            <option value="zh-CN">中文</option>
-            <option value="en">English</option>
+            <option value="zh-CN">{t('settings:profile.langZh')}</option>
+            <option value="en">{t('settings:profile.langEn')}</option>
           </select>
         </Row>
         <Button variant="secondary" size="sm" onClick={() => void saveProfile()}>
@@ -342,7 +350,7 @@ export function SettingsPage() {
       {/* 关于 */}
       <SectionCard title={t('settings:about.title')}>
         <Row label={t('settings:about.version')}>
-          <span style={{ color: 'var(--color-fg-2)', fontSize: '0.875rem' }}>0.1.0</span>
+          <span style={{ color: 'var(--color-fg-2)', fontSize: '0.875rem' }}>{appVersion || '—'}</span>
         </Row>
         <Button variant="ghost" size="sm" onClick={() => void window.one.system.ping().then(unwrap).then(() => {}).catch(() => {})}>
           {t('settings:about.checkUpdate')}
@@ -411,8 +419,9 @@ function SliderRow({
   max: number
   onChange: (v: number) => void
 }) {
+  const { t } = useTranslation(['settings'])
   return (
-    <Row label={`${label}（${value}）`}>
+    <Row label={t('settings:appearance.sliderValue', { label, value })}>
       <input
         type="range"
         min={min}
