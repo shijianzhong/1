@@ -163,6 +163,72 @@ html[data-platform='darwin'] .titlebar__inner {
   border-radius: 20px;
 }
 
+/* ── 新建对话欢迎屏（垂直水平居中，有消息后隐藏）── */
+.welcome-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  margin: auto;          /* flex 子项 auto margin 实现垂直 + 水平居中 */
+  max-width: 520px;
+  padding: 24px 0;
+}
+
+.welcome-screen__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-fg-1);
+}
+
+.welcome-screen__subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-fg-2);
+  line-height: 1.6;
+}
+
+.welcome-screen__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.welcome-screen__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 8px;
+  border-radius: 16px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.welcome-screen__card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+
+.welcome-screen__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.welcome-screen__label {
+  font-size: 0.78rem;
+  color: var(--color-fg-2);
+  line-height: 1.4;
+}
+
+.welcome-screen__hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-fg-3);
+}
+
 .chat-shell {
   display: flex;
   flex-direction: column;
@@ -230,10 +296,19 @@ html[data-platform='darwin'] .titlebar__inner {
 .composer {
   margin-top: auto;
   display: flex;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 999px;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 20px;
   align-items: center;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-2);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.composer:focus-within {
+  border-color: var(--color-brand-400);
+  box-shadow: var(--shadow-3), 0 0 0 3px color-mix(in oklch, var(--color-brand-500) 10%, transparent);
 }
 
 .composer input {
@@ -247,12 +322,23 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .composer button {
   border: 0;
-  border-radius: 999px;
+  border-radius: 14px;
   background: var(--color-brand-500);
   color: var(--color-on-brand);
-  padding: 10px 18px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: background-color 150ms ease, transform 100ms ease, opacity 0.15s ease;
+}
+
+.composer button:hover:not(:disabled) {
+  background: var(--color-brand-600);
+  transform: translateY(-1px);
+}
+
+.composer button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .composer button:disabled {

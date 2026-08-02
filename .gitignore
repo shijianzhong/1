@@ -13,3 +13,8 @@ blob-report/
 /.vitest
 vendor/
 logs/
+
+# misc
+.tmp-*.html
+.trae-html-share-packages/
+one-code-review/

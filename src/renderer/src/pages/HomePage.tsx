@@ -13,6 +13,35 @@ import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
 
+/** 新建对话欢迎屏：展示主 Agent 能力概览，有消息后自动隐藏 */
+function WelcomeScreen() {
+  const { t } = useTranslation(['home'])
+  const capItems = [
+    { icon: '💬', key: 'chat' },
+    { icon: '👥', key: 'team' },
+    { icon: '🧩', key: 'create' },
+    { icon: '🧠', key: 'memory' },
+    { icon: '📁', key: 'file' },
+    { icon: '🌐', key: 'web' },
+  ] as const
+
+  return (
+    <section className="welcome-screen">
+      <h1 className="welcome-screen__title">{t('welcome.title')}</h1>
+      <p className="welcome-screen__subtitle">{t('welcome.subtitle')}</p>
+      <div className="welcome-screen__grid">
+        {capItems.map((item) => (
+          <div key={item.key} className="welcome-screen__card surface-panel">
+            <span className="welcome-screen__icon">{item.icon}</span>
+            <span className="welcome-screen__label">{t(`welcome.cap.${item.key}`)}</span>
+          </div>
+        ))}
+      </div>
+      <p className="welcome-screen__hint">{t('welcome.hint')}</p>
+    </section>
+  )
+}
+
 export function HomePage() {
   const { t } = useTranslation(['common', 'home'])
   const sessionId = useChatStore((s) => s.sessionId)
@@ -188,10 +217,7 @@ export function HomePage() {
           isNearBottomRef.current = distance < 80
         }}
       >
-        <section className="glass-panel placeholder-card" style={{ borderRadius: 28, padding: 24 }}>
-          <p className="section-title">{t('home:welcome')}</p>
-          <p className="section-subtitle">{t('home:description')}</p>
-        </section>
+        {messages.length === 0 && <WelcomeScreen />}
 
         {messages.map((m) => (
           <MessageItem
@@ -217,7 +243,7 @@ export function HomePage() {
         ))}
       </div>
 
-      <div className="glass-panel composer">
+      <div className="composer">
         <MentionComposer
           ref={composerRef}
           agents={agentsQ.data ?? []}
