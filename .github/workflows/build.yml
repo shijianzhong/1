@@ -30,17 +30,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
-        env:
-          # better-sqlite3 needs rebuild; ensure python3 available on all platforms
-          npm_config_build_from_source: 'true'
 
-      - name: Build & Package
-        run: npm run package
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Prepare vendor/opencli
+        run: |
+          mkdir -p vendor/opencli
+          npm run vendor:opencli
+
+      - name: Package (electron-builder)
+        run: npx electron-builder
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
