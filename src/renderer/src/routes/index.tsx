@@ -6,6 +6,7 @@ import { HomePage } from '@renderer/pages/HomePage'
 import { AgentsPage } from '@renderer/pages/AgentsPage'
 import { SkillsPage } from '@renderer/pages/SkillsPage'
 import { ListPage } from '@renderer/pages/ListPage'
+import { RegistryPage } from '@renderer/pages/RegistryPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
 import { TasksPage } from '@renderer/pages/TasksPage'
 
@@ -19,6 +20,7 @@ export function AppRoutes() {
         <Route path="/capability/:capabilityId" element={<EditorPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/skills" element={<SkillsPage />} />
+        <Route path="/registry" element={<RegistryPage />} />
         <Route path="/models" element={<ListPage i18nKey="models" />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/settings" element={<SettingsPage />} />

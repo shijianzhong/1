@@ -24,11 +24,11 @@ import {
   buildMemoryInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
-  buildSkillBlocks,
   buildTeamGraph,
   resolveMentions,
   runTeam,
 } from '../orchestrator/home'
+import { SkillContextProvider } from '../skills/provider'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
@@ -168,22 +168,23 @@ export function registerHomeHandlers(): void {
       ? mentions.agents
       : null
 
-    // —— Skill 注入（§铁律22）：persona 绑定 skill + @skill 动态注入，inline 成 <skill> XML 块 ——
+    // —— Skill 注入（铁律22，task 7.4）：SkillContextProvider.beforeRun ——
+    // persona 绑定 skill + @skill 动态注入：<skill> XML 块（限长 24000 + 脚本清单）
+    // + discipline 输出纪律段拼入 instructions；缺失 skill 由 provider warn 跳过。
+    const skillProviders: SkillContextProvider[] = []
     const personaSkillIds = persona?.skillIds ?? []
-    const personaSkills = personaSkillIds
-      .map((sid) => {
-        const s = getSkill(sid)
-        if (!s) logger.warn(`[home] persona 绑定的 skill ${sid} 不存在，跳过`)
-        return s
-      })
-      .filter((s): s is NonNullable<typeof s> => !!s)
     // @skill 与 persona 绑定 skill 去重（同 id 不重复注入）
-    const boundIds = new Set(personaSkills.map((s) => s.id))
+    const boundIds = new Set(personaSkillIds)
     const mentionSkills = mentions.skills.filter((s) => !boundIds.has(s.id))
-    const skillBlocks = buildSkillBlocks([...personaSkills, ...mentionSkills])
-    const instructionsWithSkills = skillBlocks.length > 0
-      ? `${instructionsWithL0}\n\n${skillBlocks.join('\n\n')}`
-      : instructionsWithL0
+    const homeSkillProvider = new SkillContextProvider(
+      (sid) => mentionSkills.find((s) => s.id === sid) ?? getSkill(sid),
+    )
+    skillProviders.push(homeSkillProvider)
+    const { instructions: instructionsWithSkills } = homeSkillProvider.beforeRun({
+      agentName: 'home',
+      skillIds: [...personaSkillIds, ...mentionSkills.map((s) => s.id)],
+      instructions: instructionsWithL0,
+    })
 
     // —— 意图路由指令段（§三之三 M + 铁律24）：注入角色/能力清单 + 组队 JSON 约定 ——
     // 主 Agent 据此判断直答 vs 输出组队 JSON；无可用角色/能力时不注入（不打扰人设）。
@@ -260,12 +261,25 @@ export function registerHomeHandlers(): void {
           apiFormat,
           enableThinking,
         )
+        // —— Skill 注入（铁律22，task 7.4）：组队图节点经 SkillContextProvider 注入 ——
+        // （此前首页组队节点完全没注入 skill，与编辑器编排行为不齐）
+        const nodeSkillProvider = new SkillContextProvider((sid) => getSkill(sid))
+        skillProviders.push(nodeSkillProvider)
+        const { instructions: nodeInstructions } = nodeSkillProvider.beforeRun({
+          agentName: node.id,
+          skillIds: d.skillIds ?? [],
+          instructions: d.instructions ?? '',
+        })
+        // outputConstraints 注入 instructions（与编辑器编排对齐，运行时才吃得到）
+        const finalNodeInstructions = d.outputConstraints
+          ? `${nodeInstructions}\n\n【输出约束】\n${d.outputConstraints}`
+          : nodeInstructions
         const cfg: AgentConfig = {
           // 铁律20：executor_id == 节点 id（runner 按节点 id 路由/查找），
           // 不能用 d.label（角色显示名）——否则 executors.get(node.id) 找不到 → 空白气泡
           name: node.id,
           description: d.description,
-          instructions: d.instructions ?? '',
+          instructions: finalNodeInstructions,
           modelId: d.modelId ?? modelId,
           tools: listToolDefs(),
           defaultOptions: { maxTokens: d.maxTokens ?? 16384, temperature: d.temperature },
@@ -409,6 +423,8 @@ export function registerHomeHandlers(): void {
       // 聊天结束（含异常/取消）：驳回残留挂起提问 + 清控制器，防泄漏到下一场。
       // 只清自己的控制器：若期间新运行已接管（入口自动取消旧运行），不动新句柄
       rejectAllUserInputs('run_finished')
+      // SkillContextProvider.afterRun（铁律22）：运行结束审计
+      for (const p of skillProviders) p.afterRun()
       if (currentAbortController?.signal === signal) currentAbortController = null
     }
 

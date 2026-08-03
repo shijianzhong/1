@@ -25,7 +25,9 @@ import {
   JsonSingleton,
   generateId,
 } from './json-store'
+import { rm } from 'node:fs/promises'
 import { getKey } from '../secrets/vault'
+import { getSkillUploadTempDir } from '../skills/upload'
 import type {
   Agent,
   ApiFormat,
@@ -119,15 +121,17 @@ export function getCapability(id: string): Capability | null {
   return capabilitiesStore.get(id)
 }
 
-export function saveCapability(input: unknown): Capability {
+export function saveCapability(input: unknown, opts?: { now?: number }): Capability {
   const parsed = CapabilityInputSchema.parse(input)
-  const now = Date.now()
+  const now = opts?.now ?? Date.now() // 见 saveAgent 注释
   const existing = parsed.id ? getCapability(parsed.id) : null
   const next: Capability = {
     id: existing?.id ?? generateId('cap_'),
     name: parsed.name,
     description: parsed.description,
     graph: parsed.graph,
+    // 编辑保存不带 registry 字段时保留既有溯源（导入/发布才显式写入）
+    registry: parsed.registry ?? existing?.registry,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -152,9 +156,11 @@ export function getAgent(id: string): Agent | null {
   return agentsStore.get(id)
 }
 
-export function saveAgent(input: unknown): Agent {
+export function saveAgent(input: unknown, opts?: { now?: number }): Agent {
   const parsed = AgentInputSchema.parse(input)
-  const now = Date.now()
+  // registry 导入方注入统一的 now：使 provenance.importedAt 与 updatedAt 严格相等，
+  // 保证「本地已修改」判定（updatedAt > importedAt）在导入后不会误报
+  const now = opts?.now ?? Date.now()
   const existing = parsed.id ? getAgent(parsed.id) : null
   const next: Agent = {
     id: existing?.id ?? generateId('agt_'),
@@ -167,6 +173,7 @@ export function saveAgent(input: unknown): Agent {
     maxTokens: parsed.maxTokens ?? 16384,
     outputConstraints: parsed.outputConstraints,
     source: parsed.source ?? 'custom',
+    registry: parsed.registry ?? existing?.registry,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -191,17 +198,19 @@ export function getSkill(id: string): Skill | null {
   return skillsStore.get(id)
 }
 
-export function saveSkill(input: unknown): Skill {
+export function saveSkill(input: unknown, opts?: { now?: number }): Skill {
   const parsed = SkillInputSchema.parse(input)
-  const now = Date.now()
+  const now = opts?.now ?? Date.now() // 见 saveAgent 注释
   const existing = parsed.id ? getSkill(parsed.id) : null
   const next: Skill = {
     id: existing?.id ?? generateId('skl_'),
     name: parsed.name,
     description: parsed.description,
     content: parsed.content,
-    discipline: parsed.discipline,
+    // 编辑表单不携带 discipline 时保留既有值（防编辑保存误清 propose_skill/导入写入的纪律段）
+    discipline: parsed.discipline ?? existing?.discipline,
     scriptPath: parsed.scriptPath,
+    registry: parsed.registry ?? existing?.registry,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -210,6 +219,12 @@ export function saveSkill(input: unknown): Skill {
 }
 
 export function removeSkill(id: string): void {
+  // 顺带清理上传/导入留下的解压临时目录（skl_upload_ 前缀，防磁盘积累孤立文件）
+  const scriptPath = getSkill(id)?.scriptPath
+  if (scriptPath) {
+    const tempDir = getSkillUploadTempDir(scriptPath)
+    if (tempDir) void rm(tempDir, { recursive: true, force: true }).catch(() => {})
+  }
   skillsStore.remove(id)
 }
 

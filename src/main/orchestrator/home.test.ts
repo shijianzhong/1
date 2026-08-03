@@ -6,7 +6,6 @@ import {
   buildMemoryInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
-  buildSkillBlocks,
   resolveMentions,
 } from './home'
 
@@ -145,28 +144,7 @@ describe('resolveMentions', () => {
   })
 })
 
-describe('buildSkillBlocks（铁律22）', () => {
-  it('inline 成 <skill> XML 块，含 description', () => {
-    const out = buildSkillBlocks([skill('s1', '品牌规范', '# 内容', '品牌写作规范')])
-    expect(out.length).toBe(1)
-    expect(out[0]).toContain('<skill name="品牌规范"')
-    expect(out[0]).toContain('description: 品牌写作规范')
-    expect(out[0]).toContain('# 内容')
-    expect(out[0]).toContain('</skill>')
-  })
-
-  it('超 24000 字截断', () => {
-    const long = 'x'.repeat(25000)
-    const out = buildSkillBlocks([skill('s1', '长skill', long)])
-    expect(out[0]).toContain('超长截断')
-    expect(out[0].length).toBeLessThan(long.length)
-  })
-
-  it('无 description → 不带 desc 行', () => {
-    const out = buildSkillBlocks([skill('s1', '规范', '内容')])
-    expect(out[0]).not.toContain('description:')
-  })
-})
+// skill <skill> XML 注入测试已迁至 skills/provider.test.ts（task 7.4）
 
 describe('TeamJsonDetector（铁律24）', () => {
   it('直答文本原样流出', () => {

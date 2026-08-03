@@ -49,7 +49,7 @@ export interface OneApi {
     get: (id: string) => Promise<IpcResult<Skill | null>>
     save: (input: Partial<Skill> & { name: string; content: string }) => Promise<IpcResult<Skill>>
     remove: (id: string) => Promise<IpcResult<void>>
-    pickFile: () => Promise<IpcResult<{ name: string; description?: string; content: string; scriptPath?: string } | null>>
+    pickFile: () => Promise<IpcResult<{ name: string; description?: string; content: string; discipline?: string; scriptPath?: string } | null>>
   }
   models: {
     list: () => Promise<IpcResult<ModelConfig[]>>
@@ -104,6 +104,25 @@ export interface OneApi {
     cancel: () => Promise<IpcResult<void>>
     /** 作答 ask_user 提问（HITL 提问卡提交；home 组队运行也走本通道，同一应答队列） */
     respond: (input: { requestId: string; response: string }) => Promise<IpcResult<void>>
+  }
+  registry: {
+    getConfig: () => Promise<IpcResult<import('@shared/types').RegistryConfig>>
+    /** 设置页保存源/repo 配置（主进程校验 + 缓存失效），返回生效配置 */
+    saveConfig: (cfg: import('@shared/types').RegistryConfig) => Promise<IpcResult<import('@shared/types').RegistryConfig>>
+    /** force=true 绕过 10 分钟内存缓存强制刷新 */
+    getIndex: (force?: boolean) => Promise<IpcResult<{ index: import('@shared/types').RegistryIndex; stale: boolean }>>
+    getManifest: (kind: import('@shared/types').RegistryAssetKind, id: string) => Promise<IpcResult<unknown>>
+    planImport: (input: { kind: import('@shared/types').RegistryAssetKind; id: string }) => Promise<IpcResult<import('@shared/types').RegistryImportPlan>>
+    applyImport: (input: { kind: import('@shared/types').RegistryAssetKind; id: string; materializeAgents?: boolean }) => Promise<IpcResult<import('@shared/types').RegistryImportResult>>
+    planExport: (input: { kind: import('@shared/types').RegistryAssetKind; localId: string }) => Promise<IpcResult<import('@shared/types').RegistryExportPlan>>
+    /** 弹目录选择器；用户取消返回 null，成功返回落盘目录与文件清单并自动 reveal */
+    applyExport: (items: import('@shared/types').RegistryExportConfirmItem[]) => Promise<IpcResult<import('@shared/types').RegistryExportResult | null>>
+    /** 打开 Registry 贡献页（fork + 手动 PR 引导） */
+    openContribute: () => Promise<IpcResult<void>>
+    /** 方式 B：导出目录内容经 GitHub API 自动 fork + 提交 PR（需写权限 Token；成功自动打开 PR 页） */
+    submitPr: (input: { dir: string; files: string[]; items: import('@shared/types').RegistryExportConfirmItem[] }) => Promise<IpcResult<{ prUrl: string; prNumber: number; reused?: boolean }>>
+    /** 仓库 star/fork 统计（匿名 60/h 配额，有 token 自动附带） */
+    getRepoStats: () => Promise<IpcResult<{ stars: number; forks: number }>>
   }
   app: {
     setAutoLaunch: (on: boolean) => Promise<IpcResult<boolean>>
@@ -201,6 +220,19 @@ const api: OneApi = {
     },
     cancel: () => ipcRenderer.invoke('orchestrate:cancel'),
     respond: (input) => ipcRenderer.invoke('orchestrate:respond', input),
+  },
+  registry: {
+    getConfig: () => ipcRenderer.invoke('registry:getConfig'),
+    saveConfig: (cfg) => ipcRenderer.invoke('registry:saveConfig', cfg),
+    getIndex: (force) => ipcRenderer.invoke('registry:getIndex', force),
+    getManifest: (kind, id) => ipcRenderer.invoke('registry:getManifest', kind, id),
+    planImport: (input) => ipcRenderer.invoke('registry:planImport', input),
+    applyImport: (input) => ipcRenderer.invoke('registry:applyImport', input),
+    planExport: (input) => ipcRenderer.invoke('registry:planExport', input),
+    applyExport: (items) => ipcRenderer.invoke('registry:applyExport', items),
+    openContribute: () => ipcRenderer.invoke('registry:openContribute'),
+    submitPr: (input) => ipcRenderer.invoke('registry:submitPr', input),
+    getRepoStats: () => ipcRenderer.invoke('registry:getRepoStats'),
   },
   app: {
     setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', on),

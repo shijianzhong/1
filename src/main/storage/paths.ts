@@ -66,3 +66,8 @@ export function getDraftsDir(): string {
 export function getBackgroundDir(): string {
   return join(getUserDataDir(), BG_DIR)
 }
+
+/** registry 下载缓存（index 持久缓存 + skill zip 临时缓存） */
+export function getRegistryCacheDir(): string {
+  return join(getUserDataDir(), 'cache', 'registry')
+}

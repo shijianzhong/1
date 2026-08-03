@@ -149,7 +149,50 @@
 - [ ] 7.1b `opencli_run` 增强：以 `opencli list -f json` 的 `access: write` 字段做写拦截（自维护，替代静态动词表）；Chrome 扩展未连接的首次运行引导 UI
 - [ ] 7.2 MCP 工具协议接入（@modelcontextprotocol/sdk）
 - [ ] 7.3 即梦文生图等外部工具
-- [ ] 7.4 Skill = ContextProvider（`beforeRun`/`afterRun`、discipline 注入、async 脚本 spawn）；现仅为 IPC 内联 `<skill>` XML（async spawn 基建已由 opencli_run 趟出路：timeout/AbortSignal/输出截断）
+- [x] 7.4 Skill = ContextProvider（`beforeRun`/`afterRun`、discipline 注入、async 脚本 spawn）✅ 2026-08-03
+  - `skills/provider.ts`：`SkillContextProvider.beforeRun`（<skill> XML 块 24000 限长 + scripts 清单行 + `【输出纪律】`discipline 段，三处调用点统一收口：编辑器编排 / 首页主 Agent / **首页组队图节点（此前完全没注入 skill，顺带补齐 outputConstraints 注入对齐）**）；`afterRun` 运行结束审计（orchestrate/home 两侧 finally 统一调）
+  - `tools/builtin/skillScript.ts`：`skill_run_script` 全局工具——按 id/name 解析技能 → 路径安全（拒绝对路径/`..` 穿越，resolveScriptsDir 向上定位 scripts/ 祖先）→ 解释器路由（.py→python3 / .sh→bash / .js→ELECTRON_RUN_AS_NODE）→ **async spawn**（铁律23：Promise 化 + 60s SIGKILL + AbortSignal 联动 + stdout 256KB 上限 + stderr 尾 4K + 16K 输出截断，纪律复用 opencli_run）；cwd=技能根目录可相对读 resources/
+  - 旧 `orchestrator/home.ts buildSkillBlocks` 删除；provider.test.ts 12 例 + skillScript.test.ts 7 例；typecheck + 256 测试全绿
+
+---
+
+## 阶段 8：Registry 共享（进行中）
+
+> 方案文档：[`docs/REGISTRY_PLAN.md`](./docs/REGISTRY_PLAN.md)（2026-08-02 可行性修订版）。
+> 动工前必须先落 §2 provenance schema（三实体 `registry` 字段 + Zod），这是级联导入/更新检测的地基。
+
+- [x] 8.1 one-registry 仓库 + 分支保护 + manifest zod schema + validate/reindex CI（Phase 1）✅ 2026-08-03
+  - 仓库上线：[shijianzhong/one-registry](https://github.com/shijianzhong/one-registry)（本地 `~/sking/one-registry/`）；README（贡献指南+审核标准）/LICENSE/build-index.mjs/validate.mjs（slug 跨类型唯一 + 依赖完整性 + version 递增检查）/validate+reindex workflows
+  - 三条官方示例资产：web-research 技能（含 Discipline 段）/ web-researcher 角色 / quick-research 能力；reindex CI 首次 push 已自动重建 index.json
+  - 分支保护：必走 PR（0 审批可自合）+ validate `check` 必过 + 禁 force push/删除；enforce_admins=false（保留 owner 紧急通道）
+  - 双源实测可达：raw.githubusercontent.com + cdn.jsdelivr.net 均正常返回 index.json，skill.zip 可下载（SKILL.md 在 zip 根，符合 parseSkillZip 约定）
+- [x] 8.2 provenance 字段（Agent/Skill/Capability + config.ts）+ Registry 数据层（多源 fallback）+ 浏览/详情页 + 三条导入链路（slug→本地 id 重映射 / modelId 置空回退 / 含脚本确认框）+ parseSkillZip discipline 提取（frontmatter 优先，回退 `## Discipline` 段落）（Phase 2）✅ 2026-08-02
+  - provenance：三实体 `registry?: RegistryProvenance`（types.ts + config.ts zod）；save* 编辑保存不带 registry 时保留既有溯源；saveSkill 顺带修 discipline 编辑误清
+  - 数据层 `src/main/registry/`：sources（源抽象 + token 仅发 GitHub 系域名 + slug 校验防路径穿越）/ client（多源 fallback + 8s 超时 + vault token）/ service（index 10min 内存缓存 + 持久缓存 stale 回退；manifest 缓存；skill.zip 5min 复用）/ schemas（远端数据 zod 校验）/ remap（图重映射纯函数）/ importer（plan/apply 两段式，级联依赖，同版本跳过）
+  - IPC `registry:*`（getConfig/getIndex/getManifest/planImport/applyImport）+ preload 白名单
+  - 渲染层 `/registry` 页：类型过滤 + 搜索 + 已安装/有更新徽标（index version 比对 provenance）+ 详情抽屉 + 导入计划确认（脚本文件名警告 + capability「仅导入图」勾选）；`registry` i18n namespace 双语
+  - discipline：parseSkillZip 提取（frontmatter 优先回退 `## Discipline` 段，content 不剥离——7.4 前 content 是唯一注入载体）；skills:pickFile 透传 + SkillsPage 上传落盘
+  - 单测：upload.test.ts（discipline 4+3 例）/ remap.test.ts（6 例）/ sources.test.ts（URL 拼装/token 域名/slug 校验）；typecheck + 226 测试全绿
+  - Phase 2 review 修复（2026-08-03，REGISTRY_PLAN §10）：① 更新/删除 skill 清理旧 `skl_upload_` 解压目录（`getSkillUploadTempDir` 前缀守卫防误删）② 本地修改冲突检测（`isLocallyModified`，save* 注入统一 now 使 importedAt==updatedAt 防误判；级联保留本地版，顶层跳过报 `locally_modified` + i18n 提示）③ plan 阶段 zip 解析容错不阻断 ④ remap 空数组注释 + RegistryPage 按 kind 收窄去交叉断言
+- [x] 8.3 导出三链路（skillIds slug 化 / modelHint 转换 / skill 按 scriptPath 重组 zip）+ 推送预览清单 + PR 引导 + provenance 回写（Phase 3）✅ 2026-08-03
+  - 序列化纯函数 `registry/serialize.ts`（不依赖 electron 可单测）：slugify / bumpPatch / agent（skillIds→slug + modelHint 取 ModelConfig.modelId + 剥离本地字段）/ skill（SKILL.md 重组，discipline 字段有而 content 缺段时补 `## Discipline` 段）/ capability（图节点 slug 化 + 剥 modelId + dependencies 自动推导，sourceAgentId 空的手动节点不产依赖）
+  - 编排 `registry/exporter.ts`：planExport 级联收集（skill 仅自身 / agent+其 skills / capability+图引用 skills+sourceAgentId 物化 agents，去重 + dangling 告警）；applyExport 本地预检（slug 合法+跨类型唯一+semver，对齐 validate CI）→ skill.zip 重组（SKILL.md 根 + scriptPath 反查 skl_upload_ 目录的 scripts/resources 等）→ writeJsonFile 落盘所选目录 `one-registry-export/` → 三类 save* 回写 provenance（统一 now）
+  - IPC `registry:planExport/applyExport/openContribute`（applyExport 弹目录选择器，取消返 null，成功 shell.showItemInFolder）+ preload 白名单
+  - 渲染层 `components/RegistryPublish.tsx` 自包含发布按钮 + Drawer 预览清单（slug/version 可编辑 / 依赖取消勾选剔除 / 新增·更新·自动附带徽标 / dangling 警告），接入 Skills/Agents/Capabilities 三页操作区（能力页 stopPropagation 防卡片跳转）；`registry.publish.*` i18n 双语
+  - 单测 serialize.test.ts 12 例；typecheck + 238 测试全绿；导出格式逐条对照 one-registry validate.mjs 规则核验（id==目录名 / slug 正则同源 / semver / skillZip 存在 / 依赖完整性）
+- [x] 8.4 设置页 Registry 区（Token 存 vault + 源列表管理）+ 403 分场景引导（Phase 4）✅ 2026-08-03
+  - `REGISTRY_TOKEN_KEY_ID`/`DEFAULT_REGISTRY_SOURCES` 收口 shared/types；`registry:saveConfig` IPC 主进程校验（repo owner/name 格式 + 源模板 https+`{path}` 占位 + id 去重）+ `resetRegistryCaches` 失效
+  - 设置页 `RegistrySettings` 组件：Token 状态徽标 + 存 vault 不回显（复用 secrets:* 通用 keyId 通道）+ 只读/写 PR 分场景权限文案（§4.3 表）；repo/ref 编辑；源列表优先级上下移/删除/追加/重置默认
+  - 403 引导：client 全源失败且任一 http_403 → `registry_rate_limited` 错误码；RegistryPage 识别渲染限流引导条（60/h→5000/h 文案 + 去配置按钮跳设置页）
+- [x] Phase 5 体验优化 ✅ 2026-08-03
+  - **自动 PR（方式 B）**：`registry/publisher.ts` GitHub API——`/user` → forks 幂等 + 轮询等建仓 → publish/<slug>-<ts> 分支 → Contents API 逐文件提交（已存在带 sha 覆盖，zip base64）→ 上游 PR（422 回退捞已有 open PR）；错误分场景（401/403 权限/404/rate limit）抛中文引导；导出成功视图「自动提交 PR」按钮（成功自动 openExternal PR 页）
+  - **star 统计**：`registry:getRepoStats`（匿名 60/h，有 token 自动附带）→ RegistryPage 头部 star 徽标（失败静默不阻断）
+  - **一键更新**：卡片「有更新」旁快捷按钮——plan 无脚本直接 apply；含脚本回落详情抽屉确认；结果轻量状态条反馈（resultSummary 抽取共用）
+- [x] Registry 二轮 review 修复（docs/REGISTRY_REVIEW_ISSUES.md）✅ 2026-08-03
+  - **P1 spread 回写**：exporter 三处 save* 改 `{...entity, registry}`——顺带修 live bug：`Agent.source` 曾未枚举且 `saveAgent` 不回退 existing，导出内置 agent 把 `builtin` 洗成 `custom`
+  - **P1 waitForkReady**：401/403/429 即抛（404 = fork 建仓窗口期继续轮询），超时错误附最后错误摘要
+  - **P2 YAML 转义配套**：导出 `yamlSafe()`（name/description 特殊字符双引号包裹）+ `parseFrontmatter` 双引号值反转义，导出→导入回环保真；dropped 列表去重；PR 分支名秒级精度防同分钟 422
+  - **定性修正**：「批量更新缺失」改判为设计外增强（§3.4 一键更新定义的就是单项重导入，已实现）；权衡表 `writeJsonFile` 同步条删除（json-store 同步是全项目既定模式）；「错误分类」移出通过项（toGhMessage 硬编码中文属 T2 errors.* 已知缺口）
 
 ---
 
@@ -181,7 +224,7 @@
 | ~~P2~~ | ~~saveL3 主表 + FTS 无事务~~ ✅ 2026-08-01（`db.transaction` 包裹；removeL3/reindexL3Fts 同事务化） | 3.4 / l3.ts |
 | ~~P2~~ | ~~opencli stdout/stderr 无界累积~~ ✅ 2026-08-01（stdout 256KB 上限 SIGKILL + stderr 末尾 8K 保留；超限结构化返回不走重试） | 7.1a |
 | ~~P2~~ | ~~流式 `tool_use_*` delta ID 不一致~~ ✅ 2026-08-01（index→tool_use_id 映射表，start/delta/stop 全程真 id；text 块不再发伪 tool_use_stop；client.test.ts 3 case） | llm/client.ts |
-| P2 | Skill ContextProvider + 脚本 | 7.4 / 铁律 22/23 |
+| ~~P2~~ | ~~Skill ContextProvider + 脚本~~ ✅ 2026-08-03（provider 三处收口 + discipline 注入 + skill_run_script async spawn；首页组队节点补注入） | ~~7.4 / 铁律 22/23~~ |
 | P2 | 崩溃草稿写盘 + UI | 6.4 |
 | P2 | 更多 builtin 工具 | 7.1 |
 | ~~P3~~ | ~~AbortController 模块级单例~~ ✅ 2026-08-01（入口检测已有运行自动取消旧运行 + finally 只清自己句柄，home/orchestrate 双侧） | ipc/home / orchestrate |

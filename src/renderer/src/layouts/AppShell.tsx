@@ -8,6 +8,7 @@ import {
   Plus,
   Settings,
   Sparkles,
+  Store,
   Trash2,
   Wrench,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ const navItems = [
   { to: '/capabilities', key: 'capabilities', icon: Boxes },
   { to: '/agents', key: 'agents', icon: Bot },
   { to: '/skills', key: 'skills', icon: Wrench },
+  { to: '/registry', key: 'registry', icon: Store },
   { to: '/models', key: 'models', icon: Cable },
   { to: '/tasks', key: 'tasks', icon: Command },
   { to: '/settings', key: 'settings', icon: Settings },

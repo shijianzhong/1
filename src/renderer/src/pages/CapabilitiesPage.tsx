@@ -7,6 +7,7 @@ import {
   useSaveCapability,
   useRemoveCapability,
 } from '@renderer/api/hooks'
+import { RegistryPublishButton } from '@renderer/components/RegistryPublish'
 import { unwrap } from '@renderer/api/client'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -147,21 +148,27 @@ export function CapabilitiesPage() {
                     </p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => void onRemove(e, cap.id)}
-                  style={{
-                    border: 0,
-                    background: 'transparent',
-                    color: 'var(--color-fg-3)',
-                    cursor: 'pointer',
-                    padding: 4,
-                    borderRadius: 8,
-                  }}
-                  aria-label="delete"
+                <span
+                  style={{ display: 'flex', gap: 2, alignItems: 'center' }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Trash2 size={14} />
-                </button>
+                  <RegistryPublishButton kind="capability" localId={cap.id} />
+                  <button
+                    type="button"
+                    onClick={(e) => void onRemove(e, cap.id)}
+                    style={{
+                      border: 0,
+                      background: 'transparent',
+                      color: 'var(--color-fg-3)',
+                      cursor: 'pointer',
+                      padding: 4,
+                      borderRadius: 8,
+                    }}
+                    aria-label="delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </span>
               </div>
               <p style={{ margin: '12px 0 0', fontSize: '0.75rem', color: 'var(--color-fg-3)' }}>
                 {cap.id}

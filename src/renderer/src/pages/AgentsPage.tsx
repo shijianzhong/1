@@ -7,6 +7,7 @@ import {
   useSaveAgent,
   useSkills,
 } from '@renderer/api/hooks'
+import { RegistryPublishButton } from '@renderer/components/RegistryPublish'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import {
@@ -199,6 +200,7 @@ export function AgentsPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <RegistryPublishButton kind="agent" localId={a.id} />
                   <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
                     <Pencil size={14} />
                   </Button>

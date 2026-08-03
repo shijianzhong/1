@@ -23,6 +23,7 @@ import { registerHomeHandlers } from './home'
 import { registerOrchestrateHandlers } from './orchestrate'
 import { registerNativeHandlers } from './native'
 import { registerProvidersHandlers } from './providers'
+import { registerRegistryHandlers } from './registry'
 
 const THEME_FILE = 'theme.json'
 
@@ -174,5 +175,6 @@ export function registerIpcHandlers(): void {
   registerHomeHandlers()
   registerOrchestrateHandlers()
   registerProvidersHandlers()
+  registerRegistryHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
 }

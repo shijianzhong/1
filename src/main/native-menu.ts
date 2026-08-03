@@ -55,7 +55,7 @@ export function setupNativeMenu(getMainWindow: () => BrowserWindow | null): void
         },
         {
           label: '打开仓库',
-          click: () => void shell.openExternal('https://github.com/shijianzhong/one'),
+          click: () => void shell.openExternal('https://github.com/shijianzhong/1'),
         },
       ],
     },

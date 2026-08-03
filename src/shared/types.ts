@@ -362,6 +362,8 @@ export interface Agent {
   /** 输出约束（"≤N字"等） */
   outputConstraints?: string
   source?: 'builtin' | 'custom'
+  /** registry 溯源（导入/发布过才有；纯本地创建无此字段） */
+  registry?: RegistryProvenance
   createdAt: number
   updatedAt: number
 }
@@ -377,6 +379,8 @@ export interface Skill {
   discipline?: string
   /** 脚本路径（async 执行，§铁律23） */
   scriptPath?: string
+  /** registry 溯源 */
+  registry?: RegistryProvenance
   createdAt: number
   updatedAt: number
 }
@@ -387,8 +391,194 @@ export interface Capability {
   name: string
   description?: string
   graph: WorkflowGraph
+  /** registry 溯源 */
+  registry?: RegistryProvenance
   createdAt: number
   updatedAt: number
+}
+
+// ============================================================================
+// Registry 共享契约（docs/REGISTRY_PLAN.md §1/§2）——
+// 本地 id（agt_/skl_/cap_）与 registry slug 是两个命名空间，provenance 做桥接。
+// ============================================================================
+
+/** 资产来源溯源（registry 导入/发布过才有；纯本地创建无此字段） */
+export interface RegistryProvenance {
+  /** registry slug，如 "code-reviewer" */
+  registryId: string
+  /** 导入/发布时 manifest 的 version */
+  version: string
+  author?: string
+  importedAt: number
+}
+
+export type RegistryAssetKind = 'agent' | 'skill' | 'capability'
+
+/** index.json 条目（列表页用；version 供更新检测，勿省） */
+export interface RegistryIndexEntry {
+  id: string
+  name: string
+  description?: string
+  author?: string
+  version?: string
+  tags?: string[]
+  /** skill 条目：含 scripts/ 时 true（导入确认框据此提示） */
+  hasScripts?: boolean
+  /** skill 条目：含纪律定义时 true */
+  hasDiscipline?: boolean
+  updatedAt?: string
+}
+
+/** index.json 全局索引（CI 生成，贡献者不手改） */
+export interface RegistryIndex {
+  version: number
+  updated?: string
+  agents: RegistryIndexEntry[]
+  skills: RegistryIndexEntry[]
+  capabilities: RegistryIndexEntry[]
+}
+
+/** Agent manifest（registry 侧；skillIds 是 slug，modelHint 仅展示） */
+export interface RegistryAgentManifest {
+  id: string
+  name: string
+  description?: string
+  author?: string
+  version: string
+  tags?: string[]
+  instructions: string
+  /** registry slug 列表，导入时重映射为本地 id */
+  skillIds?: string[]
+  /** 导出时取本地 ModelConfig 真实模型名，仅供详情页展示；导入不设 modelId */
+  modelHint?: string
+  temperature?: number
+  maxTokens?: number
+  outputConstraints?: string
+  updatedAt?: string
+}
+
+/** Skill manifest（registry 侧） */
+export interface RegistrySkillManifest {
+  id: string
+  name: string
+  description?: string
+  author?: string
+  version: string
+  tags?: string[]
+  skillZip: string
+  hasScripts?: boolean
+  hasDiscipline?: boolean
+  updatedAt?: string
+}
+
+/** Capability manifest（registry 侧；图节点内联快照，skillIds/sourceAgentId 为 slug） */
+export interface RegistryCapabilityManifest {
+  id: string
+  name: string
+  description?: string
+  author?: string
+  version: string
+  tags?: string[]
+  graph: WorkflowGraph
+  dependencies?: {
+    agents?: string[]
+    skills?: string[]
+  }
+  updatedAt?: string
+}
+
+/** Registry 源（urlTemplate 含 {repo}/{ref}/{path} 占位，多源 fallback） */
+export interface RegistrySource {
+  id: string
+  urlTemplate: string
+}
+
+/** GitHub Token 在 vault 中的 keyId（设置页写入；主进程数据层读到即附带，明文不出主进程） */
+export const REGISTRY_TOKEN_KEY_ID = 'registry_github_token'
+
+/** 默认镜像源（设置页「重置为默认」与主进程缺省配置共用，§4.1） */
+export const DEFAULT_REGISTRY_SOURCES: RegistrySource[] = [
+  { id: 'github-raw', urlTemplate: 'https://raw.githubusercontent.com/{repo}/{ref}/{path}' },
+  { id: 'jsdelivr', urlTemplate: 'https://cdn.jsdelivr.net/gh/{repo}@{ref}/{path}' },
+]
+
+/** registry.json 本地配置（userData/config/registry.json；设置页 Phase 4 接管） */
+export interface RegistryConfig {
+  /** "owner/name" */
+  repo: string
+  /** 分支/ref，默认 main */
+  ref: string
+  sources: RegistrySource[]
+}
+
+/** 导入计划条目（planImport 返回，确认框展示） */
+export interface RegistryImportPlanItem {
+  kind: RegistryAssetKind
+  slug: string
+  name: string
+  /** new=新装 / update=覆盖更新（保留本地 id）/ installed=同版本跳过 */
+  status: 'new' | 'update' | 'installed'
+  /** skill 含脚本时列出脚本相对路径（确认框警告用） */
+  scripts?: string[]
+}
+
+export interface RegistryImportPlan {
+  items: RegistryImportPlanItem[]
+  hasScripts: boolean
+}
+
+/** 导入结果汇总（applyImport 返回） */
+export interface RegistryImportResult {
+  imported: Array<{ kind: RegistryAssetKind; slug: string; localId: string; name: string }>
+  skipped: Array<{
+    kind: RegistryAssetKind
+    slug: string
+    name: string
+    /** installed=同版本已安装；locally_modified=导入后本地改过，默认跳过防覆盖（§2.3）；failed=预留 */
+    reason?: 'installed' | 'locally_modified' | 'failed'
+  }>
+  /** 图重映射时被剔除的 skill slug（registry 缺失/未勾选） */
+  droppedSkillSlugs?: string[]
+}
+
+// —— 导出（§3.3 级联推送：planExport 预览 → 用户编辑 slug/version + 勾选 → applyExport 落盘 + provenance 回写）——
+
+/** 导出预览条目（slug/version 预填，渲染层可编辑后随确认回传） */
+export interface RegistryExportPlanItem {
+  kind: RegistryAssetKind
+  localId: string
+  name: string
+  /** 预填 slug：provenance.registryId 或名称 slug 化（非法字符兜底随机后缀） */
+  slug: string
+  /** 预填版本：有 provenance 则 bump patch，否则 1.0.0 */
+  version: string
+  /** 有 provenance → update（覆盖同 slug 远程条目），否则 new */
+  status: 'new' | 'update'
+  /** 级联自动附带（非用户点选的主资产） */
+  auto?: boolean
+}
+
+/** 导出预览（planExport 返回） */
+export interface RegistryExportPlan {
+  items: RegistryExportPlanItem[]
+  /** dangling 引用等告警（被引资产本地不存在，序列化时剔除） */
+  warnings: string[]
+}
+
+/** 导出确认项（用户勾选 + 编辑 slug/version 后回传 applyExport；未勾选的依赖不进序列化，图引用剔除） */
+export interface RegistryExportConfirmItem {
+  kind: RegistryAssetKind
+  localId: string
+  slug: string
+  version: string
+}
+
+/** 导出结果（applyExport 返回；null = 用户取消目录选择） */
+export interface RegistryExportResult {
+  /** 落盘根目录（所选目录下的 one-registry-export/） */
+  dir: string
+  /** 写入的文件相对路径清单 */
+  files: string[]
 }
 
 // ============================================================================

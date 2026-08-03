@@ -1,0 +1,70 @@
+{
+  "title": "Registry",
+  "subtitle": "浏览并导入社区共享的角色、技能与能力。",
+  "filter": { "all": "全部", "agent": "角色", "skill": "技能", "capability": "能力" },
+  "searchPh": "按名称 / 标签搜索…",
+  "refresh": "刷新",
+  "stale": "Registry 源暂不可达，当前展示本地缓存。",
+  "rateLimit": {
+    "title": "访问频率已达 GitHub 上限（匿名 60 次/小时）。配置 GitHub Token 可提升至 5000 次/小时。",
+    "action": "去配置"
+  },
+  "empty": "未找到匹配条目。",
+  "badges": { "installed": "已安装", "update": "有更新", "quickUpdate": "一键更新", "scripts": "含脚本", "discipline": "含输出约束" },
+  "kind": { "agent": "角色", "skill": "技能", "capability": "能力" },
+  "card": { "by": "by {{author}}" },
+  "detail": {
+    "version": "版本",
+    "author": "作者",
+    "updatedAt": "更新于",
+    "tags": "标签",
+    "modelHint": "建议模型",
+    "dependencies": "依赖",
+    "depAgents": "依赖角色",
+    "depSkills": "依赖技能",
+    "import": "导入",
+    "importUpdate": "更新",
+    "planning": "解析依赖…"
+  },
+  "plan": {
+    "title": "将导入以下资产：",
+    "new": "新装",
+    "update": "更新",
+    "installed": "已安装（跳过）",
+    "scriptsWarning": "以下技能包含可执行脚本，导入后将在本机运行：",
+    "materialize": "将依赖角色安装到角色库（取消勾选则仅导入编排图）",
+    "allInstalled": "所有资产均已是最新版本。",
+    "confirm": "确认导入",
+    "applying": "导入中…",
+    "cancel": "取消"
+  },
+  "result": {
+    "success": "导入完成。",
+    "imported": "已导入：{{names}}",
+    "skipped": "已跳过（同版本）：{{names}}",
+    "skippedModified": "已跳过（本地已修改，未覆盖）：{{names}}",
+    "dropped": "以下技能引用未能映射，已从图中剔除：{{slugs}}",
+    "failed": "导入失败：{{message}}"
+  },
+  "publish": {
+    "button": "发布到 Registry",
+    "title": "发布到 Registry",
+    "subtitle": "将按仓库规范导出以下资产，确认后选择目录落盘，再 fork 仓库提交 PR。",
+    "planning": "正在分析依赖…",
+    "auto": "自动附带",
+    "new": "新增",
+    "update": "更新",
+    "cancel": "取消",
+    "confirm": "导出（{{count}}）",
+    "applying": "导出中…",
+    "doneSummary": "已导出 {{count}} 个文件到：",
+    "doneNext": "下一步：把该目录下的 skills/、agents/、capabilities/ 复制到你的 fork 仓库对应位置并提交 PR（validate CI 会自动校验；slug 冲突或版本未递增会被打回）。",
+    "openContribute": "打开贡献指南",
+    "autoPr": "自动提交 PR",
+    "prWorking": "提交中…",
+    "prDone": "PR 已创建并打开：{{url}}",
+    "close": "完成",
+    "failed": "导出失败：{{message}}"
+  },
+  "errors": { "loadFailed": "Registry 加载失败：{{message}}" }
+}

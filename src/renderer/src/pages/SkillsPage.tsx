@@ -7,6 +7,7 @@ import {
   useSaveSkill,
   usePickSkillFile,
 } from '@renderer/api/hooks'
+import { RegistryPublishButton } from '@renderer/components/RegistryPublish'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import {
@@ -101,6 +102,7 @@ export function SkillsPage() {
         name: parsed.name,
         description: parsed.description || undefined,
         content: parsed.content,
+        discipline: parsed.discipline,
         scriptPath: parsed.scriptPath,
       })
     } catch (err) {
@@ -231,6 +233,7 @@ export function SkillsPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <RegistryPublishButton kind="skill" localId={s.id} />
                   <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
                     <Pencil size={14} />
                   </Button>

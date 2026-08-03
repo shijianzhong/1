@@ -1,6 +1,6 @@
 import AdmZip from 'adm-zip'
 import { readFile } from 'node:fs/promises'
-import { basename, extname, join, sep } from 'node:path'
+import { basename, extname, isAbsolute, join, relative, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { getSkillsPath } from '../storage/paths'
@@ -18,6 +18,8 @@ export interface ParsedSkill {
   name: string
   description?: string
   content: string
+  /** 输出纪律段（frontmatter `discipline` 优先，回退 `## Discipline` 段落；docs/REGISTRY_PLAN.md §1.3） */
+  discipline?: string
   /** 从 zip 中提取的资源文件相对路径列表 */
   resources?: string[]
   /** 从 zip 中提取的脚本文件相对路径列表 */
@@ -60,10 +62,10 @@ function parseFrontmatter(text: string): { fm: Frontmatter | null; body: string 
       }
       value = folded ? block.join(' ') : block.join('\n')
     } else {
-      // 去引号
-      if (value.length >= 2 &&
-          ((value.startsWith('"') && value.endsWith('"')) ||
-           (value.startsWith("'") && value.endsWith("'")))) {
+      // 去引号（双引号配套反转义 \" \\——与导出侧 serialize.yamlSafe 回环保真）
+      if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1).replace(/\\(["\\])/g, '$1')
+      } else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
         value = value.slice(1, -1)
       } else {
         // 行内注释（空格 + # 起始才算，值内 # 保留）
@@ -81,6 +83,30 @@ function parseFrontmatter(text: string): { fm: Frontmatter | null; body: string 
 function nameFromFilename(filePath: string): string {
   const base = basename(filePath, extname(filePath))
   return base.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, '_').slice(0, 64) || 'unnamed_skill'
+}
+
+/**
+ * 从 SKILL.md 正文提取 `## Discipline` 段落（到下一个二级标题或文末为止）。
+ * 注意不从 content 剥离该段：7.4（Skill ContextProvider）落地前 content 是唯一注入载体，
+ * 剥离会让纪律段从 prompt 消失；7.4 单独注入 discipline 时需自行处理与 content 的去重。
+ */
+export function extractDisciplineSection(body: string): string | undefined {
+  const lines = body.split('\n')
+  let start = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+discipline\s*$/i.test(lines[i].trim())) {
+      start = i + 1
+      break
+    }
+  }
+  if (start === -1) return undefined
+  const collected: string[] = []
+  for (let i = start; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i])) break
+    collected.push(lines[i])
+  }
+  const text = collected.join('\n').trim()
+  return text || undefined
 }
 
 /** 解析 ZIP 压缩包，提取 SKILL.md + resources/ + scripts/ */
@@ -128,6 +154,10 @@ export async function parseSkillZip(
   const dirName = innerRoot ? basename(innerRoot) : ''
   const name = overrideName?.trim() || fm?.name || dirName || nameFromFilename(filePath)
 
+  // 纪律段：frontmatter `discipline` 优先，回退正文 `## Discipline` 段落（§1.3）
+  const fmDiscipline = typeof fm?.discipline === 'string' ? fm.discipline.trim() : ''
+  const discipline = fmDiscipline || extractDisciplineSection(body)
+
   // 收集 resources 和 scripts
   const resources: string[] = []
   const scripts: string[] = []
@@ -156,6 +186,7 @@ export async function parseSkillZip(
     name,
     description: fm?.description,
     content: body,
+    discipline,
     resources: resources.length > 0 ? resources : undefined,
     scripts: scripts.length > 0 ? scripts : undefined,
   }
@@ -218,6 +249,18 @@ export async function extractSkillResources(
   }
 
   return { resourceDir, scriptPath }
+}
+
+/**
+ * 由 scriptPath 反推上传临时目录（userData/config/skills/skl_upload_xxx）。
+ * 用于更新/删除技能时清理旧解压产物；非本约定路径返回 null（防误删用户文件）。
+ */
+export function getSkillUploadTempDir(scriptPath: string): string | null {
+  const skillsRoot = getSkillsPath()
+  const rel = relative(skillsRoot, scriptPath)
+  if (rel.startsWith('..') || isAbsolute(rel)) return null
+  const top = rel.split(sep)[0]
+  return top.startsWith('skl_upload_') ? join(skillsRoot, top) : null
 }
 
 /**

@@ -9,6 +9,9 @@ import type {
   Capability,
   ModelConfig,
   Persona,
+  RegistryAssetKind,
+  RegistryConfig,
+  RegistryExportConfirmItem,
   Skill,
 } from '@shared/types'
 
@@ -216,3 +219,106 @@ export function useRemoveProvider() {
 }
 
 export type { Provider } from '@shared/types'
+
+// —— Registry（docs/REGISTRY_PLAN.md §3.1/§3.2）——
+export function useRegistryConfig() {
+  return useQuery({
+    queryKey: ['registry', 'config'],
+    queryFn: () => thenUnwrap(window.one.registry.getConfig()),
+  })
+}
+
+export function useSaveRegistryConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cfg: RegistryConfig) => thenUnwrap(window.one.registry.saveConfig(cfg)),
+    onSuccess: (saved) => {
+      qc.setQueryData(['registry', 'config'], saved)
+      // 源/repo 已换，旧索引与 manifest 缓存全部作废
+      qc.invalidateQueries({ queryKey: ['registry', 'index'] })
+      qc.invalidateQueries({ queryKey: ['registry', 'manifest'] })
+    },
+  })
+}
+
+export function useRegistryIndex() {
+  return useQuery({
+    queryKey: ['registry', 'index'],
+    queryFn: () => thenUnwrap(window.one.registry.getIndex()),
+    retry: 1,
+  })
+}
+
+export function useRegistryManifest(kind?: RegistryAssetKind, id?: string) {
+  return useQuery({
+    queryKey: ['registry', 'manifest', kind, id],
+    queryFn: () => thenUnwrap(window.one.registry.getManifest(kind!, id!)),
+    enabled: !!kind && !!id,
+    retry: 1,
+  })
+}
+
+/** 强制刷新索引（绕过主进程 10 分钟内存缓存），结果直接写回 query 缓存 */
+export function useRefreshRegistryIndex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => thenUnwrap(window.one.registry.getIndex(true)),
+    onSuccess: (data) => qc.setQueryData(['registry', 'index'], data),
+  })
+}
+
+/** 仓库 star/fork 统计（失败静默——仅展示用，不阻断浏览） */
+export function useRegistryRepoStats() {
+  return useQuery({
+    queryKey: ['registry', 'repoStats'],
+    queryFn: () => thenUnwrap(window.one.registry.getRepoStats()),
+    staleTime: 10 * 60 * 1000,
+    retry: 0,
+  })
+}
+
+export function usePlanRegistryImport() {
+  return useMutation({
+    mutationFn: (input: { kind: RegistryAssetKind; id: string }) =>
+      thenUnwrap(window.one.registry.planImport(input)),
+  })
+}
+
+export function useApplyRegistryImport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { kind: RegistryAssetKind; id: string; materializeAgents?: boolean }) =>
+      thenUnwrap(window.one.registry.applyImport(input)),
+    onSuccess: () => {
+      // 导入会级联写三类本地资产，全部失效刷新（已安装/有更新态依赖这些列表）
+      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['skills'] })
+      qc.invalidateQueries({ queryKey: ['capabilities'] })
+    },
+  })
+}
+
+export function usePlanRegistryExport() {
+  return useMutation({
+    mutationFn: (input: { kind: RegistryAssetKind; localId: string }) =>
+      thenUnwrap(window.one.registry.planExport(input)),
+  })
+}
+
+export function useApplyRegistryExport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (items: RegistryExportConfirmItem[]) =>
+      thenUnwrap(window.one.registry.applyExport(items)),
+    onSuccess: (result) => {
+      // 导出成功回写 provenance，刷新列表让「已安装/有更新」徽标立即生效
+      if (result) {
+        qc.invalidateQueries({ queryKey: ['agents'] })
+        qc.invalidateQueries({ queryKey: ['skills'] })
+        qc.invalidateQueries({ queryKey: ['capabilities'] })
+      }
+    },
+  })
+}
+
+export type { RegistryAssetKind }

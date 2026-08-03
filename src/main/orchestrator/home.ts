@@ -424,22 +424,7 @@ export function resolveMentions(
   }
 }
 
-/**
- * 把 @技能 inline 成 <skill> XML 块（铁律22，限长 24000 字）。
- * 与 persona 绑定 skill 的注入逻辑一致；此处供 @skill 动态注入当前对话。
- */
-export function buildSkillBlocks(skills: Skill[]): string[] {
-  const blocks: string[] = []
-  for (const skill of skills) {
-    const content =
-      skill.content.length > 24000
-        ? skill.content.slice(0, 24000) + '\n\n[... skill 内容超长截断 ...]'
-        : skill.content
-    const desc = skill.description ? `\n  description: ${skill.description}` : ''
-    blocks.push(`<skill name="${skill.name}"${desc}>\n${content}\n</skill>`)
-  }
-  return blocks
-}
+// skill <skill> XML 注入已收口到 skills/provider.ts 的 SkillContextProvider（task 7.4 铁律22）
 
 /**
  * 把 role_ids/capability_ids 拼成可执行 WorkflowGraph（§三之三 M 第二阶段）。

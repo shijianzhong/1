@@ -19,6 +19,7 @@ import {
 } from '../orchestrator/userInput'
 import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
 import { addMessage } from '../storage/sessions'
+import { SkillContextProvider } from '../skills/provider'
 import { listToolDefs } from '../tools/registry'
 import { resolveThinkingConfig } from '../llm/thinking'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
@@ -56,7 +57,11 @@ function makeResolveAgent(
   enableThinking?: boolean,
   apiFormat?: ApiFormat,
   signal?: AbortSignal,
-): (node: GraphNode) => AgentExecutorOptions | null {
+): {
+  resolveAgent: (node: GraphNode) => AgentExecutorOptions | null
+  /** 本运行创建的全部 SkillContextProvider（运行结束统一 afterRun 审计，铁律22） */
+  skillProviders: SkillContextProvider[]
+} {
   // 运行期 skill 缓存：同一次运行内多个节点绑定同一 skill 时只读一次磁盘
   // （每次 run 新建 resolver → 缓存随运行结束丢弃，不会吃到过期内容）
   const skillCache = new Map<string, ReturnType<typeof getSkill>>()
@@ -67,8 +72,9 @@ function makeResolveAgent(
     skillCache.set(sid, skill)
     return skill
   }
+  const skillProviders: SkillContextProvider[] = []
 
-  return (node: GraphNode): AgentExecutorOptions | null => {
+  const resolveAgent = (node: GraphNode): AgentExecutorOptions | null => {
     const data = node.data as {
       instructions?: string
       description?: string
@@ -101,24 +107,16 @@ function makeResolveAgent(
     const agentModelId = data.modelId ?? fallbackAgent?.modelId ?? modelId
     const thinking = resolveThinkingConfig(agentModelId, apiFormat, enableThinking ?? false)
 
-    // —— Skill 注入（§铁律22）：读 skillIds → getSkill → inline 成 <skill> XML 块拼入 instructions ——
-    const skillBlocks: string[] = []
-    for (const sid of agentSkillIds) {
-      const skill = getSkillCached(sid)
-      if (!skill) {
-        logger.warn(`[orchestrate] node ${agentName} 绑定的 skill ${sid} 不存在，跳过`)
-        continue
-      }
-      // 限长 24000 字（§铁律22）
-      const content = skill.content.length > 24000
-        ? skill.content.slice(0, 24000) + '\n\n[... skill 内容超长截断 ...]'
-        : skill.content
-      const desc = skill.description ? `\n  description: ${skill.description}` : ''
-      skillBlocks.push(`<skill name="${skill.name}"${desc}>\n${content}\n</skill>`)
-    }
-    const instructions = skillBlocks.length > 0
-      ? `${agentInstructions}\n\n${skillBlocks.join('\n\n')}`
-      : agentInstructions
+    // —— Skill 注入（铁律22，task 7.4）：SkillContextProvider.beforeRun ——
+    // <skill> XML 块（限长 24000 + 脚本清单）+ discipline 输出纪律段拼入 instructions；
+    // 脚本执行经全局注册的 skill_run_script 工具（铁律23 async spawn）。
+    const skillProvider = new SkillContextProvider(getSkillCached)
+    skillProviders.push(skillProvider)
+    const { instructions } = skillProvider.beforeRun({
+      agentName,
+      skillIds: agentSkillIds,
+      instructions: agentInstructions,
+    })
 
     // outputConstraints 注入 instructions（运行时才吃得到）
     const finalInstructions = agentOutputConstraints
@@ -157,6 +155,8 @@ function makeResolveAgent(
       },
     }
   }
+
+  return { resolveAgent, skillProviders }
 }
 
 export function registerOrchestrateHandlers(): void {
@@ -183,9 +183,10 @@ export function registerOrchestrateHandlers(): void {
       }
       currentAbortController = new AbortController()
       const { signal } = currentAbortController
-      const deps: BuildDeps = {
-        resolveAgent: makeResolveAgent(modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal),
-      }
+      const { resolveAgent, skillProviders } = makeResolveAgent(
+        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal,
+      )
+      const deps: BuildDeps = { resolveAgent }
 
       const wf = buildWorkflow(graph, deps)
 
@@ -201,6 +202,8 @@ export function registerOrchestrateHandlers(): void {
         // 运行结束（含异常）：驳回该运行残留的挂起提问，防泄漏到下一场运行。
         // 只清自己的控制器（期间新运行接管则不动新句柄）
         rejectAllUserInputs('run_finished')
+        // SkillContextProvider.afterRun（铁律22）：运行结束审计
+        for (const p of skillProviders) p.afterRun()
         if (currentAbortController?.signal === signal) currentAbortController = null
       }
     },

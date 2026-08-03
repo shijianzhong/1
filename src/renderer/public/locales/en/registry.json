@@ -1,0 +1,70 @@
+{
+  "title": "Registry",
+  "subtitle": "Browse and import community-shared agents, skills, and capabilities.",
+  "filter": { "all": "All", "agent": "Agents", "skill": "Skills", "capability": "Capabilities" },
+  "searchPh": "Search by name / tag…",
+  "refresh": "Refresh",
+  "stale": "Registry sources unreachable; showing the local cache.",
+  "rateLimit": {
+    "title": "GitHub rate limit reached (60 req/hour anonymous). Configure a GitHub token to raise it to 5000/hour.",
+    "action": "Configure"
+  },
+  "empty": "No matching entries.",
+  "badges": { "installed": "Installed", "update": "Update", "quickUpdate": "One-click update", "scripts": "Scripts", "discipline": "Discipline" },
+  "kind": { "agent": "Agent", "skill": "Skill", "capability": "Capability" },
+  "card": { "by": "by {{author}}" },
+  "detail": {
+    "version": "Version",
+    "author": "Author",
+    "updatedAt": "Updated",
+    "tags": "Tags",
+    "modelHint": "Suggested model",
+    "dependencies": "Dependencies",
+    "depAgents": "Dependency agents",
+    "depSkills": "Dependency skills",
+    "import": "Import",
+    "importUpdate": "Update",
+    "planning": "Resolving…"
+  },
+  "plan": {
+    "title": "The following assets will be imported:",
+    "new": "New",
+    "update": "Update",
+    "installed": "Installed (skip)",
+    "scriptsWarning": "These skills contain executable scripts that will run on this machine:",
+    "materialize": "Install dependency agents into the agent library (uncheck to import the graph only)",
+    "allInstalled": "Everything is already up to date.",
+    "confirm": "Confirm import",
+    "applying": "Importing…",
+    "cancel": "Cancel"
+  },
+  "result": {
+    "success": "Import complete.",
+    "imported": "Imported: {{names}}",
+    "skipped": "Skipped (same version): {{names}}",
+    "skippedModified": "Skipped (locally modified, not overwritten): {{names}}",
+    "dropped": "Unmapped skill references removed from the graph: {{slugs}}",
+    "failed": "Import failed: {{message}}"
+  },
+  "publish": {
+    "button": "Publish to Registry",
+    "title": "Publish to Registry",
+    "subtitle": "The following assets will be exported per the repo conventions. Confirm, choose a directory, then fork the repo and open a PR.",
+    "planning": "Analyzing dependencies…",
+    "auto": "auto-included",
+    "new": "new",
+    "update": "update",
+    "cancel": "Cancel",
+    "confirm": "Export ({{count}})",
+    "applying": "Exporting…",
+    "doneSummary": "Exported {{count}} files to:",
+    "doneNext": "Next: copy the skills/, agents/, and capabilities/ folders from this directory into your fork and open a PR (the validate CI checks automatically; slug conflicts or non-incremented versions will be rejected).",
+    "openContribute": "Open contributing guide",
+    "autoPr": "Submit PR automatically",
+    "prWorking": "Submitting…",
+    "prDone": "PR created and opened: {{url}}",
+    "close": "Done",
+    "failed": "Export failed: {{message}}"
+  },
+  "errors": { "loadFailed": "Failed to load registry: {{message}}" }
+}

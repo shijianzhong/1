@@ -8,6 +8,14 @@ import type { WorkflowGraph } from '@shared/types'
 const ts = z.number().int().nonnegative()
 const id = z.string().min(1)
 
+/** registry 溯源（docs/REGISTRY_PLAN.md §2.1）；与 shared/types.ts RegistryProvenance 手工对齐 */
+export const RegistryProvenanceSchema = z.object({
+  registryId: z.string().min(1),
+  version: z.string().min(1),
+  author: z.string().optional(),
+  importedAt: ts,
+})
+
 export const ModelConfigSchema = z.object({
   id,
   modelId: z.string().min(1),
@@ -55,6 +63,7 @@ export const AgentSchema = z.object({
   maxTokens: z.number().int().positive().optional(),
   outputConstraints: z.string().optional(),
   source: z.enum(['builtin', 'custom']).optional(),
+  registry: RegistryProvenanceSchema.optional(),
   createdAt: ts,
   updatedAt: ts,
 })
@@ -66,6 +75,7 @@ export const SkillSchema = z.object({
   content: z.string(),
   discipline: z.string().optional(),
   scriptPath: z.string().optional(),
+  registry: RegistryProvenanceSchema.optional(),
   createdAt: ts,
   updatedAt: ts,
 })
@@ -80,6 +90,7 @@ export const CapabilitySchema = z.object({
     const g = val as { nodes?: unknown; edges?: unknown }
     return Array.isArray(g.nodes) && Array.isArray(g.edges)
   }),
+  registry: RegistryProvenanceSchema.optional(),
   createdAt: ts,
   updatedAt: ts,
 })

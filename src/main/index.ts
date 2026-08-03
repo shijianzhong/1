@@ -11,6 +11,7 @@ import { registerAskUserTools } from './tools/builtin/askUser'
 import { registerWebTools } from './tools/builtin/web'
 import { registerOpenCliTools } from './tools/builtin/opencli'
 import { registerFileTools } from './tools/builtin/file'
+import { registerSkillScriptTools } from './tools/builtin/skillScript'
 import { createTray, destroyTray } from './tray'
 import {
   registerGlobalShortcut,
@@ -105,6 +106,7 @@ if (!gotLock) {
     registerWebTools() // 联网工具（web_search/web_read，Jina 免费免 key，零依赖随包即用）
     registerOpenCliTools() // OpenCLI 白名单工具（用户浏览器登录态读站，写操作拦截）
     registerFileTools() // 文件工具（file_write/read/search，限 Obsidian vault 等允许根目录）
+    registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
     registerIpcHandlers()
     createMainWindow()
 

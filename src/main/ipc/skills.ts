@@ -17,6 +17,7 @@ export function registerSkillsHandlers(): void {
     name: string
     description?: string
     content: string
+    discipline?: string
     scriptPath?: string
   } | null>('skills:pickFile', async () => {
     const result = await dialog.showOpenDialog({
@@ -36,6 +37,7 @@ export function registerSkillsHandlers(): void {
       name: parsed.name,
       description: parsed.description,
       content: parsed.content,
+      discipline: parsed.discipline,
       scriptPath,
     }
   })
