@@ -87,7 +87,10 @@ export function AppShell() {
         <header className="titlebar glass-panel">
           <div className="titlebar__inner">
             <div className="titlebar__meta">
-              <p className="section-title">One</p>
+              <div className="titlebar__brand">
+                <img src="/images/logo.png" alt="" className="titlebar__logo" />
+                <p className="section-title">One</p>
+              </div>
             </div>
             <button type="button" className="nav-button titlebar__command" onClick={() => setCommandOpen(true)}>
               <Command size={18} />

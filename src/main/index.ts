@@ -1,7 +1,7 @@
 import './bootstrap-userdata' // 必须最先：ONE_USER_DATA 覆盖 userData，早于 storage 模块初始化
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
 import { closeDb, getDb } from './storage/db'
 import { seedDefaultModels } from './storage/models'
@@ -50,6 +50,12 @@ function resolvePreloadPath(): string {
   return PRELOAD_PATH
 }
 
+// 窗口图标：开发环境无 .app 包，需显式指定；打包后由 electron-builder 注入
+const appIconPath = app.isPackaged
+  ? join(process.resourcesPath, '..', 'icon.png')
+  : join(__dirname, '../../build/icons/logo_trans.png')
+const appIcon = existsSync(appIconPath) ? nativeImage.createFromPath(appIconPath) : undefined
+
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
@@ -58,6 +64,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 760,
     backgroundColor: '#FCFCFD',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    icon: appIcon,
     webPreferences: {
       preload: resolvePreloadPath(),
       nodeIntegration: false,
@@ -109,6 +116,11 @@ if (!gotLock) {
     registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
     registerIpcHandlers()
     createMainWindow()
+
+    // macOS Dock 图标：开发模式无 .app 包，需显式设置
+    if (process.platform === 'darwin' && appIcon) {
+      app.dock.setIcon(appIcon)
+    }
 
     // 上次崩溃 → 推渲染层提示恢复草稿
     if (crashed) {

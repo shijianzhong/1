@@ -7,16 +7,25 @@ files:
   - package.json
 # OpenCLI 随包分发：vendor/opencli 由 `npm run vendor:opencli` 生成（独立 prefix 安装，
 # 自含全部依赖）；运行时经 ELECTRON_RUN_AS_NODE 用主二进制执行，用户零安装。
+# 图标：应用图标用 build/icons 下多尺寸合规资源（mac .icns / win .ico / linux .png）；
+# 托盘用 build/icons/tray.png（带 alpha 的 32x32），extraResources 复制到 app 运行时读取。
 extraResources:
   - from: vendor/opencli/node_modules
     to: opencli/node_modules
+  - from: build/icons/trayTemplate.png
+    to: trayTemplate.png
+  - from: build/icons/tray.png
+    to: trayColor.png
 mac:
   category: public.app-category.productivity
+  icon: build/icons/logo.icns
   target:
     - dmg
 win:
+  icon: build/icons/logo.ico
   target:
     - nsis
 linux:
+  icon: build/icons/logo_trans.png
   target:
     - AppImage

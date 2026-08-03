@@ -8,12 +8,23 @@ import { logger } from './logger'
 let tray: Tray | null = null
 
 export function createTray(getMainWindow: () => BrowserWindow | null): Tray {
-  // 托盘图标：用 nativeImage 创建空 1x1（无图标资源时）；后续替换为 resources/tray.png
+  // 托盘图标：mac 用 trayTemplate.png（单色+alpha，setTemplateImage 让系统按菜单栏明暗
+  // 自动反色）；win/linux 用 trayColor.png（带色 32x32）。
+  // 打包后经 extraResources 复制到 process.resourcesPath；开发环境从 build/icons 读。
+  const isMac = process.platform === 'darwin'
+  const iconName = isMac ? 'trayTemplate.png' : 'trayColor.png'
   let icon = nativeImage.createEmpty()
   try {
-    const iconPath = join(__dirname, '../../resources/tray.png')
+    const iconPath = app.isPackaged
+      ? join(process.resourcesPath, iconName)
+      : join(__dirname, '../../build/icons', isMac ? 'trayTemplate.png' : 'tray.png')
     icon = nativeImage.createFromPath(iconPath)
-    if (icon.isEmpty()) icon = nativeImage.createEmpty()
+    if (icon.isEmpty()) {
+      icon = nativeImage.createEmpty()
+    } else if (isMac) {
+      icon = icon.resize({ width: 22, height: 22 })
+      icon.setTemplateImage(true)
+    }
   } catch {
     // 资源缺失用空图
   }

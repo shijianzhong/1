@@ -136,6 +136,7 @@
 - [x] 6.4 崩溃恢复主进程（.running 哨兵 + 启动检测 + app:crashRecovery + listDrafts/removeDraft）`2b4723d`；**[ ] 草稿写盘（编辑器/聊天）+ 渲染层订阅恢复 UI 未闭环**
 - [x] 6.5 存储恢复完善（周期备份 30min + 退出前备份 .bak，SQLite WAL + integrity_check 已在 1.2 做）`2b4723d`
 - [x] 6.6 打包 mac dmg（release/One-0.1.0.dmg）`2b4723d`；**[ ] win nsis 未验**
+- [x] 6.7 应用图标合规化（2026-08-03）：源 logo.png 无 alpha 且 .ico 实为 PNG 改名（假 ICO）→ 生成透明背景版 `build/icons/logo_trans.png`（**HSV 判定**：V>215 且 S<38 判为背景一次性全局清，含 logo 内部封闭留白、抗锯齿过渡带、右下浅蓝光晕区；flood-fill 不可行会被过渡带断流，RGB 通道差法误伤浅蓝渐变。阈值 S<38 覆盖纯白背景(S≈1)+浅蓝光晕(S=25-34)，深蓝 logo 本体(S>=45)误伤 0。最终透明 92.24%、残留 0）；经 iconutil 产出多尺寸真 `.icns`（7 尺寸含 @2x）、经 PIL 产出多尺寸真 `.ico`（16/24/32/48/64/128/256）；托盘 mac 走 `trayTemplate.png`（单色+alpha，`setTemplateImage(true)` 随菜单栏明暗反色）、win/linux 走 `tray.png`（带色 32x32，extraResources 复制为 trayColor.png）；`electron-builder.yml` mac/win/linux icon 指向 `build/icons/*`。打包验证：`One.app/Contents/Resources/icon.icns` MD5 与源一致，`Info.plist:CFBundleIconFile=icon.icns`，tray 两图就位。标题栏 UI 仍用原 `logo.png`（白底 glass panel，不改）
 
 > 修复：electron-updater ESM/CJS import（default import 解构）；测试环境 NODE_ENV=test 跳过托盘/菜单/快捷键。
 
