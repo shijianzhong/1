@@ -1,4 +1,5 @@
 import AdmZip from 'adm-zip'
+import { randomBytes } from 'node:crypto'
 import { mkdir, readdir } from 'node:fs/promises'
 import { join, sep } from 'node:path'
 import type {
@@ -39,14 +40,48 @@ import {
 
 const EXPORT_DIR_NAME = 'one-registry-export'
 
+/**
+ * plan 内唯一 slug 分配（taken 跨调用共享）。
+ * 兜底链：provenance → slugify(name) → slugify(本地 id 去类型前缀)（agt_content_review → content-review，
+ * 中文名也有语义 slug）→ kind-时间戳-随机后缀（防撞，曾同毫秒循环全撞 P3#8）。
+ * 与已占 slug 冲突时先补 -kind 后缀（wechat-writing-agent），再退 -2/-3 序号。
+ * CI validate.mjs 要求跨类型全局唯一，故 taken 不分 kind。
+ */
+function allocSlug(
+  kind: RegistryExportPlanItem['kind'],
+  localId: string,
+  name: string,
+  provenance: { registryId: string; version: string } | undefined,
+  taken: Set<string>,
+): string {
+  const claim = (s: string): string => {
+    taken.add(s)
+    return s
+  }
+  if (provenance?.registryId) return claim(provenance.registryId)
+  const idDerived = slugify(localId.replace(/^[a-z]{3}_/, ''))
+  const base =
+    slugify(name) ||
+    idDerived ||
+    `${kind}-${Date.now().toString(36)}-${randomBytes(2).toString('hex')}`
+  if (!taken.has(base)) return claim(base)
+  const kindSuffixed = `${base}-${kind}`
+  if (!taken.has(kindSuffixed)) return claim(kindSuffixed)
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`
+    if (!taken.has(candidate)) return claim(candidate)
+  }
+}
+
 function planItemFor(
   kind: RegistryExportPlanItem['kind'],
   localId: string,
   name: string,
   provenance: { registryId: string; version: string } | undefined,
   auto: boolean,
+  taken: Set<string>,
 ): RegistryExportPlanItem {
-  const slug = provenance?.registryId ?? (slugify(name) || `${kind}-${Date.now().toString(36)}`)
+  const slug = allocSlug(kind, localId, name, provenance, taken)
   return {
     kind,
     localId,
@@ -63,19 +98,26 @@ export function planExport(
   kind: 'agent' | 'skill' | 'capability',
   localId: string,
 ): RegistryExportPlan {
-  const items: RegistryExportPlanItem[] = []
+  type PendingEntry = {
+    kind: RegistryExportPlanItem['kind']
+    localId: string
+    name: string
+    provenance: { registryId: string; version: string } | undefined
+    auto: boolean
+  }
+  const entries: PendingEntry[] = []
   const warnings: string[] = []
   const seen = new Set<string>()
-  const push = (item: RegistryExportPlanItem): void => {
-    const key = `${item.kind}:${item.localId}`
+  const collect = (entry: PendingEntry): void => {
+    const key = `${entry.kind}:${entry.localId}`
     if (seen.has(key)) return
     seen.add(key)
-    items.push(item)
+    entries.push(entry)
   }
   const pushSkill = (skill: Skill, auto: boolean): void =>
-    push(planItemFor('skill', skill.id, skill.name, skill.registry, auto))
+    collect({ kind: 'skill', localId: skill.id, name: skill.name, provenance: skill.registry, auto })
   const pushAgent = (agent: Agent, auto: boolean): void => {
-    push(planItemFor('agent', agent.id, agent.name, agent.registry, auto))
+    collect({ kind: 'agent', localId: agent.id, name: agent.name, provenance: agent.registry, auto })
     for (const sid of agent.skillIds ?? []) {
       const skill = getSkill(sid)
       if (skill) pushSkill(skill, true)
@@ -94,7 +136,13 @@ export function planExport(
   } else {
     const capability = getCapability(localId)
     if (!capability) throw new Error(`能力不存在：${localId}`)
-    push(planItemFor('capability', capability.id, capability.name, capability.registry, false))
+    collect({
+      kind: 'capability',
+      localId: capability.id,
+      name: capability.name,
+      provenance: capability.registry,
+      auto: false,
+    })
     // 图引用依赖（§3.3：图内所有 Skill + sourceAgentId 物化所需 Agent）
     for (const node of capability.graph.nodes) {
       const data = node.data as Record<string, unknown>
@@ -112,6 +160,15 @@ export function planExport(
       }
     }
   }
+
+  // 两阶段分配：provenance slug 是固定身份先占位（与遍历顺序无关），fallback 再避让
+  const takenSlugs = new Set<string>()
+  for (const e of entries) {
+    if (e.provenance?.registryId) takenSlugs.add(e.provenance.registryId)
+  }
+  const items = entries.map((e) =>
+    planItemFor(e.kind, e.localId, e.name, e.provenance, e.auto, takenSlugs),
+  )
   return { items, warnings }
 }
 

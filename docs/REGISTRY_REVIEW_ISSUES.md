@@ -5,7 +5,7 @@
 > 设计文档：`docs/REGISTRY_PLAN.md`
 > 编译状态：通过 ｜ 测试状态：provider 12 用例 + skillScript 7 用例全绿
 
-> **2026-08-03 二轮核验与修复**：全部 9 条 + 权衡/通过项经代码事实核验——5 条成立已修 ✅（P1#1 spread、P1#2 错误码、P2#4 YAML、P2#5 去重、P2#6 秒级）；3 条成立但维持现状 ⚪（P2#7 事务性、P3#8、P3#9，理由见各节）；P1#3 定性修正（非缺陷，改判设计外增强）；权衡#3（writeJsonFile 同步）删除、一处「通过项」（错误分类 i18n）移出——两处初审言过其实。修复后 typecheck + 262 测试全绿。
+> **2026-08-03 二轮核验与修复**：全部 9 条 + 权衡/通过项经代码事实核验——6 条成立已修 ✅（P1#1 spread、P1#2 错误码、P2#4 YAML、P2#5 去重、P2#6 秒级、**P3#8 slug 分配**——当晚用户实撞由「不修」升级必修，见该节）；2 条成立但维持现状 ⚪（P2#7 事务性、P3#9 forks 展示，理由见各节）；P1#3 定性修正（非缺陷，改判设计外增强）；权衡#3（writeJsonFile 同步）删除、一处「通过项」（错误分类 i18n）移出——两处初审言过其实。修复后 typecheck + 265 测试全绿。
 
 ---
 
@@ -250,7 +250,7 @@ Fork 内会残留不完整分支。虽然不影响上游仓库（未合并），
 
 ---
 
-## P3：slug 兜底 `Date.now().toString(36)` 并发时可能重复 ⚪ 确认成立，未修
+## P3→P0：slug 兜底 `Date.now().toString(36)` 并发时可能重复 ✅ 已修（升级必修，用户实撞）
 
 ### 位置
 
@@ -274,7 +274,12 @@ const slug = provenance?.registryId ?? (slugify(name) || `${kind}-${Date.now().t
 `${kind}-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`
 ```
 
-**⚪ 二轮核验结论（2026-08-03）**：成立但影响被双保险兜住——批量导出预检有重名检测（`exporter.ts` duplicate slug 报错），用户在导出计划弹窗可直接改 slug。低概率 + 有用户兜底通道，本期不修。
+**✅ 已修（2026-08-03 当晚，用户首用实撞后升级必修）**：
+
+- **概率误判更正**：不是「并发 plan 才可能撞」——同一次 planExport 的循环里多个同类型中文名资产在**同一毫秒**调 `Date.now()`，兜底 slug **必然全撞**（用户导出 4 个中文名 agent 全员 `agent-msd1ciya`）。「用户弹窗改 slug 兜底」也过于乐观——默认 slug 全撞意味着要逐一手改，体验即坏。
+- **修法（exporter.ts `allocSlug`）**：兜底链改为 `slugify(name)` → `slugify(本地 id 去类型前缀)`（`agt_content_review` → `content-review`，中文名也有语义 slug）→ `kind-时间戳-4位随机hex`；冲突避让先补 `-kind` 后缀（`wechat-writing-agent`）再退 `-2/-3` 序号；`taken` 集合跨类型（对齐 CI 全局唯一规则）。
+- **两阶段分配**：provenance slug 是固定身份，先全部占位再分配 fallback——与图遍历顺序无关，防「agent 先抢 clean slug、provenance 后撞车」的顺序依赖。
+- **测试**：exporter.test.ts +3 例（用户实撞场景 9 资产唯一且语义化 / 双中文名随机后缀互异 / provenance 占位避让）。265 全绿。
 
 ---
 
@@ -334,6 +339,6 @@ const slug = provenance?.registryId ?? (slugify(name) || `${kind}-${Date.now().t
 |--------|----------|
 | 1. 先修 P1 | ✅ spread 回写（顺带修复 `source` 丢失 live bug）+ `waitForkReady` 401/403/429 即抛（404 建仓窗口期除外）；「批量更新」经核验为定性错误，已改写为 backlog 增强建议 |
 | 2. 再修 P2 | ✅ YAML 转义（导出 `yamlSafe` + 导入反转义配套）✅ dropped 去重 ✅ 分支名秒级精度；Contents API 事务性确认维持现状（fork 侧半成品分支无危害，重试覆盖） |
-| 3. P3 收尾 | ⚪ 两项确认成立未修：slug 兜底有预检 + 用户改 slug 双保险；forks 字段等视觉打磨一并处理 |
+| 3. P3 收尾 | ✅ slug 分配当晚升级必修（用户实撞，见 P3#8 节）；⚪ forks 字段等视觉打磨一并处理 |
 
-修复后 `npm run typecheck` 通过、`npm test` 262 例全绿（serialize +3 例、upload +2 例）。
+修复后 `npx tsc --noEmit` 通过、`npx vitest run` 265 例全绿（serialize +3、upload +2、exporter +3）。

@@ -194,6 +194,9 @@
   - **P1 waitForkReady**：401/403/429 即抛（404 = fork 建仓窗口期继续轮询），超时错误附最后错误摘要
   - **P2 YAML 转义配套**：导出 `yamlSafe()`（name/description 特殊字符双引号包裹）+ `parseFrontmatter` 双引号值反转义，导出→导入回环保真；dropped 列表去重；PR 分支名秒级精度防同分钟 422
   - **定性修正**：「批量更新缺失」改判为设计外增强（§3.4 一键更新定义的就是单项重导入，已实现）；权衡表 `writeJsonFile` 同步条删除（json-store 同步是全项目既定模式）；「错误分类」移出通过项（toGhMessage 硬编码中文属 T2 errors.* 已知缺口）
+- [x] slug 分配必修（P3#8 升级，用户首用实撞 `agent-msd1ciya` 全撞）✅ 2026-08-03
+  - `allocSlug` 兜底链：slugify(name) → slugify（本地 id 去类型前缀）（中文名得语义 slug：`agt_content_review`→`content-review`）→ kind-时间戳-4位随机hex；冲突避让 `-kind` → `-2/-3`；taken 跨类型对齐 CI 全局唯一
+  - 两阶段分配：provenance slug 先占位再分 fallback，消除图遍历顺序依赖；exporter.test.ts +3 例（9 资产唯一语义化/随机后缀互异/provenance 避让）
 
 ---
 

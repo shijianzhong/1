@@ -119,7 +119,7 @@ if (!gotLock) {
 
     // macOS Dock 图标：开发模式无 .app 包，需显式设置
     if (process.platform === 'darwin' && appIcon) {
-      app.dock.setIcon(appIcon)
+      app.dock?.setIcon(appIcon)
     }
 
     // 上次崩溃 → 推渲染层提示恢复草稿
