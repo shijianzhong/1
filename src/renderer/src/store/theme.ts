@@ -34,6 +34,16 @@ async function fetchBgDataUrl(theme: ThemeConfig): Promise<Record<string, string
   return map
 }
 
+/** 异步加载背景图并补到 DOM（不阻塞首屏） */
+function applyBackgroundAsync(theme: ThemeConfig): void {
+  if (theme.background?.type !== 'image' || !theme.background.imageId) return
+  void fetchBgDataUrl(theme).then((dataUrls) => {
+    if (Object.keys(dataUrls).length > 0) {
+      applyThemeToDom(theme, dataUrls)
+    }
+  })
+}
+
 interface ThemeState {
   theme: ThemeConfig
   isLoaded: boolean
@@ -50,14 +60,17 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   load: async () => {
     const result = await window.one.theme.get()
     const theme = unwrap(result, DEFAULT_THEME)
-    const dataUrls = await fetchBgDataUrl(theme)
-    applyThemeToDom(theme, dataUrls)
+    // 先不等待背景图，立即应用主题进首屏
+    applyThemeToDom(theme)
     writeThemeCache(theme)
     set({ theme, isLoaded: true })
+    // 背景图异步后补，不阻塞应用渲染
+    applyBackgroundAsync(theme)
   },
   save: async (theme) => {
     const result = await window.one.theme.set(theme)
     const nextTheme = unwrap(result, { ...DEFAULT_THEME, ...theme })
+    // save 时用户在设置页操作，背景图同步加载（即时反馈）
     const dataUrls = await fetchBgDataUrl(nextTheme)
     applyThemeToDom(nextTheme, dataUrls)
     writeThemeCache(nextTheme)
