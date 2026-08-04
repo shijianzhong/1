@@ -52,10 +52,6 @@ html[data-platform='darwin'] .titlebar__inner {
   font-size: 0.75rem;
 }
 
-.titlebar__command {
-  -webkit-app-region: no-drag;
-}
-
 .app-shell {
   display: grid;
   grid-template-columns: 56px minmax(0, 220px) minmax(0, 1fr);
@@ -682,52 +678,6 @@ html[data-platform='darwin'] .titlebar__inner {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-}
-
-.command-overlay {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: start center;
-  padding-top: 72px;
-  background: var(--overlay-bg);
-  backdrop-filter: blur(8px);
-}
-
-.command-panel {
-  width: min(640px, calc(100vw - 32px));
-  border-radius: 24px;
-  padding: 20px;
-}
-
-.command-input {
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-bg-1);
-  color: var(--color-fg-1);
-  padding: 14px 16px;
-  font-size: 1rem;
-  box-sizing: border-box;
-}
-
-.route-link {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.route-link:hover {
-  background: var(--color-bg-3);
-}
-
-.route-link:focus-visible {
-  outline: 2px solid var(--color-brand-500);
-  outline-offset: -2px;
 }
 
 .stream-cursor {
