@@ -20,7 +20,10 @@ mac:
   category: public.app-category.productivity
   icon: build/icons/logo.icns
   target:
-    - dmg
+    - target: dmg
+      arch:
+        - x64
+        - arm64
 win:
   icon: build/icons/logo.ico
   target:
