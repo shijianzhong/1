@@ -99,3 +99,13 @@ export function deriveBrandScale(accent: string): {
     '600': oklchToHex(Math.max(0, L - 0.06), C, H),
   }
 }
+
+/**
+ * 根据 brand-500 亮度自动选择 on-brand 文字色（黑或白）。
+ * OKLCH 的 L > 0.6 时白字对比度不足，用黑字；否则用白字。
+ * 阈值 0.6 经验值：薄荷绿(#4ECDC4 L≈0.81)→黑字，深蓝(#3B82F6 L≈0.54)→白字。
+ */
+export function pickOnBrandColor(accent: string): string {
+  const [L] = hexToOklch(accent)
+  return L > 0.6 ? '#1a1a1a' : '#ffffff'
+}

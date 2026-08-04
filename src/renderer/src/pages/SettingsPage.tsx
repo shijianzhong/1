@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ImagePlus, Trash2 } from 'lucide-react'
+import { ImagePlus, Plus, Trash2 } from 'lucide-react'
 import { useThemeStore } from '@renderer/store/theme'
 import { DEFAULT_THEME } from '@shared/types'
 import type { Persona, ThemeBackgroundConfig, ThemeConfig } from '@shared/types'
@@ -96,6 +96,14 @@ export function SettingsPage() {
 
   const update = (patch: Partial<ThemeConfig>): void => {
     void saveTheme({ ...theme, ...patch })
+  }
+
+  // —— 自定义点缀色 ——
+  const colorInputRef = useRef<HTMLInputElement>(null)
+  const isCustomAccent = theme.accent && !ACCENT_PRESETS.includes(theme.accent as never)
+  const onPickCustomColor = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const hex = e.target.value.toUpperCase()
+    if (/^#[0-9A-F]{6}$/.test(hex)) update({ accent: hex })
   }
 
   const onPickBackground = async (): Promise<void> => {
@@ -232,7 +240,7 @@ export function SettingsPage() {
 
       {/* 点缀色 */}
       <SectionCard title={t('settings:appearance.accentTitle')}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {ACCENT_PRESETS.map((c) => (
             <button
               key={c}
@@ -259,6 +267,63 @@ export function SettingsPage() {
               aria-label={c}
             />
           ))}
+          {/* 自定义色盘入口 */}
+          <button
+            type="button"
+            onClick={() => colorInputRef.current?.click()}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              border: isCustomAccent
+                ? '2px solid var(--color-fg-1)'
+                : '2px dashed var(--color-border-strong)',
+              background: isCustomAccent ? (theme.accent ?? '#4ECDC4') : 'transparent',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center',
+              color: isCustomAccent ? 'var(--color-on-brand)' : 'var(--color-fg-3)',
+              transition: 'transform var(--dur-1) var(--ease-out)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.1)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = ''
+            }}
+            aria-label={t('settings:appearance.customAccent')}
+          >
+            {isCustomAccent ? null : <Plus size={16} />}
+          </button>
+          <input
+            ref={colorInputRef}
+            type="color"
+            value={/^#[0-9A-Fa-f]{6}$/.test(theme.accent ?? '') ? (theme.accent as string) : '#4ECDC4'}
+            onChange={onPickCustomColor}
+            style={{
+              position: 'absolute',
+              width: 0,
+              height: 0,
+              opacity: 0,
+              pointerEvents: 'none',
+            }}
+          />
+          {isCustomAccent ? (
+            <button
+              type="button"
+              onClick={() => update({ accent: ACCENT_PRESETS[0] })}
+              style={{
+                border: 0,
+                background: 'transparent',
+                color: 'var(--color-fg-3)',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                fontSize: '0.78rem',
+              }}
+            >
+              {t('settings:appearance.resetAccent')}
+            </button>
+          ) : null}
         </div>
       </SectionCard>
 

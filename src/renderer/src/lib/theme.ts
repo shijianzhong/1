@@ -1,5 +1,5 @@
 import { DEFAULT_THEME, type ThemeConfig } from '@shared/types'
-import { deriveBrandScale } from './color'
+import { deriveBrandScale, pickOnBrandColor } from './color'
 
 // —— 玻璃配方基底 RGB（按 glassTint）——
 function getGlassBase(tint: ThemeConfig['glassTint']): [number, number, number] {
@@ -82,6 +82,7 @@ export function applyThemeToDom(
   root.style.setProperty('--color-brand-400', brand['400'])
   root.style.setProperty('--color-brand-500', brand['500'])
   root.style.setProperty('--color-brand-600', brand['600'])
+  root.style.setProperty('--color-on-brand', pickOnBrandColor(accent))
 
   root.style.setProperty(
     '--glass-bg',
