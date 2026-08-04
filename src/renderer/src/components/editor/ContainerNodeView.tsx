@@ -169,7 +169,7 @@ function ContainerNodeViewImpl({ id, data, selected }: NodeProps) {
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'nwse-resize',
-            zIndex: 9999,
+            zIndex: 'var(--z-tooltip)',
             pointerEvents: 'all',
             color: 'var(--color-fg-3)',
           }}

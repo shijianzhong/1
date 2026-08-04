@@ -1178,7 +1178,7 @@ function EditorCanvas() {
               top: 12,
               left: '50%',
               transform: 'translateX(-50%)',
-              zIndex: 10,
+              zIndex: 'var(--z-dropdown)',
             }}
           >
             <Badge variant="brand">{t('editor:running')} · {activeNodeId}</Badge>
@@ -1237,7 +1237,7 @@ function EditorCanvas() {
               {historyOpen ? (
                 <>
                   <div
-                    style={{ position: 'fixed', inset: 0, zIndex: 39 }}
+                    style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-overlay)' }}
                     onClick={() => setHistoryOpen(false)}
                   />
                   <div className="run-history glass-panel">
@@ -1443,9 +1443,18 @@ function NodeInspector({
                   border: '1px solid var(--color-border)',
                   background: 'var(--color-bg-2)',
                   color: 'var(--color-fg-2)',
-                  borderRadius: 8,
+                  borderRadius: 'var(--radius-md)',
                   padding: '3px 8px',
                   cursor: 'pointer',
+                  transition: 'background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--color-bg-3)'
+                  e.currentTarget.style.color = 'var(--color-fg-1)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--color-bg-2)'
+                  e.currentTarget.style.color = 'var(--color-fg-2)'
                 }}
                 title={t('editor:inspector.refreshFromTemplateHint')}
               >

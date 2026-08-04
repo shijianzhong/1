@@ -172,7 +172,7 @@ export function RegistrySettings() {
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
                 fontSize: '0.75rem',
-                fontFamily: 'var(--font-mono, monospace)',
+                fontFamily: 'var(--font-mono)',
                 color: 'var(--color-fg-2)',
               }}
               title={s.urlTemplate}

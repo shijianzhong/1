@@ -17,6 +17,9 @@ import {
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { EmptyState } from '@renderer/components/ui/EmptyState'
+import { Field } from '@renderer/components/ui/Field'
+import { PageToolbar } from '@renderer/components/ui/PageToolbar'
 import type { Agent } from '@shared/types'
 
 // —— 角色管理页（借鉴 Proton AgentsPage 范式）——
@@ -103,26 +106,11 @@ export function AgentsPage() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
       {/* 顶部工具条 */}
-      <section
-        className="glass-panel"
-        style={{
-          padding: 16,
-          borderRadius: 20,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <h2 className="section-title" style={{ fontSize: '1rem' }}>
-            {t('common:list.agents.title')}
-          </h2>
-          <p className="section-subtitle">{t('common:list.agents.description')}</p>
-        </div>
-        <Button onClick={openNew}>
-          <Plus size={16} /> {t('common:actions.new')}
-        </Button>
-      </section>
+      <PageToolbar
+        title={t('common:list.agents.title')}
+        subtitle={t('common:list.agents.description')}
+        actions={<Button onClick={openNew}><Plus size={16} /> {t('common:actions.new')}</Button>}
+      />
 
       {/* 角色卡片网格 */}
       {isLoading ? (
@@ -130,26 +118,13 @@ export function AgentsPage() {
       ) : isError ? (
         <EmptyState text={t('common:state.error')} danger />
       ) : agents.length === 0 ? (
-        <button
-          type="button"
+        <EmptyState
+          icon={Bot}
+          title={t('common:empty.noItems')}
+          hint={t('common:list.agents.description')}
           onClick={openNew}
-          className="glass-panel"
-          style={{
-            borderRadius: 20,
-            padding: 48,
-            textAlign: 'center',
-            border: 0,
-            cursor: 'pointer',
-            color: 'var(--color-fg-2)',
-            display: 'grid',
-            gap: 8,
-            justifyItems: 'center',
-          }}
-        >
-          <Bot size={40} style={{ color: 'var(--color-brand-500)' }} />
-          <p className="section-title">{t('common:empty.noItems')}</p>
-          <p className="section-subtitle">{t('common:list.agents.description')}</p>
-        </button>
+          actionLabel={t('common:actions.new')}
+        />
       ) : (
         <div
           style={{
@@ -161,52 +136,33 @@ export function AgentsPage() {
           {agents.map((a) => (
             <article
               key={a.id}
-              className="surface-panel"
+              className="surface-panel asset-card"
               style={{
                 borderRadius: 18,
                 padding: 18,
-                transition: 'transform 120ms ease, box-shadow 120ms ease',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'var(--color-bg-3)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Bot size={18} style={{ color: 'var(--color-brand-500)' }} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <h3 className="section-title">{a.name}</h3>
-                    {a.description ? (
-                      <p className="section-subtitle" style={{ marginTop: 2 }}>
-                        {a.description}
-                      </p>
-                    ) : null}
-                  </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: 'var(--color-bg-3)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Bot size={18} style={{ color: 'var(--color-brand-500)' }} />
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  <RegistryPublishButton kind="agent" localId={a.id} />
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
-                    <Pencil size={14} />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => void onRemove(a.id)}>
-                    <Trash2 size={14} />
-                  </Button>
+                <div style={{ minWidth: 0 }}>
+                  <h3 className="section-title">{a.name}</h3>
+                  {a.description ? (
+                    <p className="section-subtitle" style={{ marginTop: 2 }}>
+                      {a.description}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               {a.instructions ? (
@@ -215,9 +171,11 @@ export function AgentsPage() {
                     margin: '10px 0 0',
                     fontSize: '0.8rem',
                     color: 'var(--color-fg-2)',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
                   }}
                 >
                   {a.instructions.slice(0, 80)}
@@ -242,6 +200,25 @@ export function AgentsPage() {
                 {a.source === 'custom' ? (
                   <Badge style={{ fontSize: '0.7rem' }}>{t('common:agents.custom')}</Badge>
                 ) : null}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: 4,
+                  marginTop: 14,
+                  paddingTop: 10,
+                  borderTop: '1px solid var(--color-border)',
+                }}
+              >
+                <RegistryPublishButton kind="agent" localId={a.id} />
+                <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
+                  <Pencil size={14} />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => void onRemove(a.id)}>
+                  <Trash2 size={14} />
+                </Button>
               </div>
             </article>
           ))}
@@ -398,29 +375,4 @@ const textareaStyle: React.CSSProperties = {
   fontSize: '0.875rem',
   resize: 'vertical',
   width: '100%',
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ fontSize: '0.875rem', color: 'var(--color-fg-2)' }}>{label}</label>
-      <div style={{ marginTop: 6 }}>{children}</div>
-    </div>
-  )
-}
-
-function EmptyState({ text, danger }: { text: string; danger?: boolean }): React.ReactNode {
-  return (
-    <div
-      className="glass-panel"
-      style={{
-        borderRadius: 20,
-        padding: 40,
-        textAlign: 'center',
-        color: danger ? 'var(--color-danger)' : 'var(--color-fg-2)',
-      }}
-    >
-      {text}
-    </div>
-  )
 }

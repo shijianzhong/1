@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useTasks } from '@renderer/api/hooks'
+import { EmptyState } from '@renderer/components/ui/EmptyState'
+import { PageToolbar } from '@renderer/components/ui/PageToolbar'
 import type { TaskRecord } from '@shared/types'
 
 // —— 任务历史页（§5.2.3）——
@@ -10,36 +12,23 @@ export function TasksPage() {
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
-      <section
-        className="glass-panel"
-        style={{ padding: 16, borderRadius: 24, display: 'flex', justifyContent: 'space-between' }}
-      >
-        <div>
-          <h2 className="section-title" style={{ fontSize: '1rem' }}>
-            {t('common:list.tasks.title')}
-          </h2>
-          <p className="section-subtitle">{t('common:list.tasks.description')}</p>
-        </div>
-      </section>
+      <PageToolbar
+        title={t('common:list.tasks.title')}
+        subtitle={t('common:list.tasks.description')}
+      />
 
       {isLoading ? (
-        <div className="glass-panel" style={{ borderRadius: 20, padding: 40, textAlign: 'center', color: 'var(--color-fg-2)' }}>
-          {t('common:state.loading')}
-        </div>
+        <EmptyState text={t('common:state.loading')} />
       ) : isError ? (
-        <div className="glass-panel" style={{ borderRadius: 20, padding: 40, textAlign: 'center', color: 'var(--color-danger)' }}>
-          {t('common:state.error')}
-        </div>
+        <EmptyState text={t('common:state.error')} danger />
       ) : (data?.length ?? 0) === 0 ? (
-        <div className="glass-panel" style={{ borderRadius: 20, padding: 40, textAlign: 'center', color: 'var(--color-fg-2)' }}>
-          {t('common:empty.noItems')}
-        </div>
+        <EmptyState text={t('common:empty.noItems')} />
       ) : (
         <section className="placeholder-grid">
           {(data ?? []).map((task: TaskRecord) => (
             <article
               key={task.id}
-              className="surface-panel placeholder-card"
+              className="surface-panel placeholder-card asset-card"
               style={{ borderRadius: 20 }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>

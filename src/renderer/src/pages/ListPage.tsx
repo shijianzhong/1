@@ -28,6 +28,9 @@ import {
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { EmptyState } from '@renderer/components/ui/EmptyState'
+import { Field } from '@renderer/components/ui/Field'
+import { PageToolbar } from '@renderer/components/ui/PageToolbar'
 import type {
   ApiFormat,
   Provider,
@@ -67,26 +70,23 @@ export function ListPage({ i18nKey }: ListPageProps) {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
       {/* 顶部工具条 */}
-      <section
-        className="glass-panel"
-        style={{ padding: 16, borderRadius: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-      >
-        <div>
-          <h2 className="section-title" style={{ fontSize: '1rem' }}>{title}</h2>
-          <p className="section-subtitle">{description}</p>
-        </div>
-        <Button
-          onClick={() =>
-            setDraft(
-              i18nKey === 'models'
-                ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false, isDefault: false }
-                : { kind: 'skills', isNew: true, name: '', content: '' },
-            )
-          }
-        >
-          <Plus size={16} /> {t('common:actions.new')}
-        </Button>
-      </section>
+      <PageToolbar
+        title={title}
+        subtitle={description}
+        actions={
+          <Button
+            onClick={() =>
+              setDraft(
+                i18nKey === 'models'
+                  ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false, isDefault: false }
+                  : { kind: 'skills', isNew: true, name: '', content: '' },
+              )
+            }
+          >
+            <Plus size={16} /> {t('common:actions.new')}
+          </Button>
+        }
+      />
 
       {/* 列表 */}
       {query.isLoading ? (
@@ -95,6 +95,76 @@ export function ListPage({ i18nKey }: ListPageProps) {
         <EmptyState text={t('common:state.error')} danger />
       ) : items.length === 0 ? (
         <EmptyState text={t('common:empty.noItems')} />
+      ) : i18nKey === 'skills' ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 16,
+          }}
+        >
+          {items.map((item) => {
+            const s = item as Skill
+            return (
+              <article
+                key={s.id}
+                className="surface-panel asset-card"
+                style={{
+                  borderRadius: 18,
+                  padding: 18,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <h3 className="section-title">{s.name}</h3>
+                  {s.description ? (
+                    <p className="section-subtitle" style={{ marginTop: 4 }}>
+                      {s.description}
+                    </p>
+                  ) : null}
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 14,
+                    paddingTop: 10,
+                    borderTop: '1px solid var(--color-border)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-fg-3)' }}>{s.id}</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        setDraft({ kind: 'skills', isNew: false, id: s.id, name: s.name, content: s.content })
+                      }
+                    >
+                      <Pencil size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={async () => {
+                        const ok = await confirmDialog({
+                          title: t('common:confirm.delete'),
+                          confirmText: t('common:actions.delete'),
+                        })
+                        if (!ok) return
+                        void removeSkill.mutateAsync(s.id)
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            )
+          })}
+        </div>
       ) : (
         <section className="glass-panel" style={{ borderRadius: 20, overflow: 'hidden' }}>
           <Table>
@@ -106,44 +176,36 @@ export function ListPage({ i18nKey }: ListPageProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell style={{ fontWeight: 500 }}>
-                    {i18nKey === 'models' ? (
+              {items.map((item) => {
+                const p = item as Provider
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell style={{ fontWeight: 500 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Switch
-                          checked={(item as Provider).isDefault ?? false}
+                          checked={p.isDefault ?? false}
                           onCheckedChange={(c) => {
                             if (!c) return // 互斥，不能取消只能切换
-                            const p = item as Provider
                             void saveProvider.mutateAsync({ ...p, isDefault: true })
                           }}
                         />
                         {item.name}
-                        {(item as Provider).isDefault ? (
+                        {p.isDefault ? (
                           <Badge variant="brand" style={{ fontSize: '0.7rem' }}>
                             {t('common:columns.active')}
                           </Badge>
                         ) : null}
                       </div>
-                    ) : item.name}
-                  </TableCell>
-                  <TableCell style={{ color: 'var(--color-fg-2)' }}>
-                    {i18nKey === 'skills'
-                      ? (item as Skill).description ?? ''
-                      : <ProviderMeta provider={item as Provider} />}
-                  </TableCell>
-                  <TableCell>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          if (i18nKey === 'skills') {
-                            const s = item as Skill
-                            setDraft({ kind: 'skills', isNew: false, id: s.id, name: s.name, content: s.content })
-                          } else {
-                            const p = item as Provider
+                    </TableCell>
+                    <TableCell style={{ color: 'var(--color-fg-2)' }}>
+                      <ProviderMeta provider={p} />
+                    </TableCell>
+                    <TableCell>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
                             setDraft({
                               kind: 'provider', isNew: false, id: p.id, name: p.name,
                               remark: p.remark ?? '', website: p.website ?? '', baseUrl: p.baseUrl ?? '',
@@ -154,33 +216,29 @@ export function ListPage({ i18nKey }: ListPageProps) {
                               isDefault: p.isDefault ?? false,
                             })
                           }
-                        }}
-                      >
-                        <Pencil size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={async () => {
-                          const ok = await confirmDialog({
-                            title: t('common:confirm.delete'),
-                            confirmText: t('common:actions.delete'),
-                          })
-                          if (!ok) return
-                          if (i18nKey === 'skills') void removeSkill.mutateAsync(item.id)
-                          else if (i18nKey === 'models') {
-                            const p = item as Provider
+                        >
+                          <Pencil size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: t('common:confirm.delete'),
+                              confirmText: t('common:actions.delete'),
+                            })
+                            if (!ok) return
                             if (p.keyId) void window.one.secrets.removeKey(p.keyId).then(unwrap).catch(() => {})
                             void removeProvider.mutateAsync(p.id)
-                          }
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </section>
@@ -276,7 +334,7 @@ function DraftForm({
             <textarea
               value={draft.content ?? ''}
               onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-              style={{ ...textareaStyle, fontFamily: 'var(--font-mono, monospace)', minHeight: 160 }}
+              style={{ ...textareaStyle, fontFamily: 'var(--font-mono)', minHeight: 160 }}
             />
           </Field>
         ) : null}
@@ -392,15 +450,6 @@ const selectStyle: React.CSSProperties = {
   width: '100%',
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ fontSize: '0.875rem', color: 'var(--color-fg-2)' }}>{label}</label>
-      <div style={{ marginTop: 6 }}>{children}</div>
-    </div>
-  )
-}
-
 function ProviderMeta({ provider }: { provider: Provider }) {
   const { t } = useTranslation(['common'])
   const parts: string[] = []
@@ -413,20 +462,4 @@ function ProviderMeta({ provider }: { provider: Provider }) {
   if (ms.fast) modelParts.push(t('common:providers.fastShort', { model: ms.fast }))
   if (modelParts.length) parts.push(modelParts.join(' '))
   return <span>{parts.join(' · ')}</span>
-}
-
-function EmptyState({ text, danger }: { text: string; danger?: boolean }): React.ReactNode {
-  return (
-    <div
-      className="glass-panel"
-      style={{
-        borderRadius: 20,
-        padding: 40,
-        textAlign: 'center',
-        color: danger ? 'var(--color-danger)' : 'var(--color-fg-2)',
-      }}
-    >
-      {text}
-    </div>
-  )
 }

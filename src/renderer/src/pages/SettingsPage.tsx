@@ -199,7 +199,7 @@ export function SettingsPage() {
             <button
               key={preset.value}
               type="button"
-              className="surface-panel placeholder-card"
+              className="surface-panel placeholder-card asset-card"
               onClick={() =>
                 update({
                   preset: preset.value,
@@ -207,7 +207,7 @@ export function SettingsPage() {
                 })
               }
               style={{
-                borderRadius: 16,
+                borderRadius: 'var(--radius-lg)',
                 textAlign: 'left',
                 cursor: 'pointer',
                 outline:
@@ -248,6 +248,13 @@ export function SettingsPage() {
                     : '2px solid var(--color-border)',
                 background: c,
                 cursor: 'pointer',
+                transition: 'transform var(--dur-1) var(--ease-out)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = ''
               }}
               aria-label={c}
             />

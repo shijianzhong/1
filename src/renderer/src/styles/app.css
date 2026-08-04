@@ -7,7 +7,7 @@
 
 .titlebar {
   position: relative;
-  z-index: 10;
+  z-index: var(--z-sticky);
   flex: 0 0 auto; /* 标题栏固定不被压缩 */
   min-height: 40px;
   border-left: 0;
@@ -154,6 +154,16 @@ html[data-platform='darwin'] .titlebar__inner {
   box-shadow: var(--shadow-1);
 }
 
+/* ── 资产卡片 hover 动效（能力 / 角色 / 技能）── */
+.asset-card {
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.asset-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+
 .section-title {
   margin: 0;
   font-size: 0.875rem;
@@ -168,7 +178,7 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .placeholder-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
@@ -227,8 +237,8 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .welcome-screen__icon {
-  font-size: 1.5rem;
-  line-height: 1;
+  color: var(--color-brand-500);
+  flex-shrink: 0;
 }
 
 .welcome-screen__label {
@@ -567,7 +577,7 @@ html[data-platform='darwin'] .titlebar__inner {
   overflow-y: auto;
   border-radius: 16px;
   padding: 6px;
-  z-index: 30;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -713,6 +723,11 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .route-link:hover {
   background: var(--color-bg-3);
+}
+
+.route-link:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: -2px;
 }
 
 .stream-cursor {
@@ -910,7 +925,7 @@ html[data-platform='darwin'] .titlebar__inner {
   min-width: 160px;
   max-width: 220px;
   border: 1.5px solid var(--color-brand-500);
-  border-radius: var(--r-xl, 14px);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-1);
   padding: 10px 14px;
   display: grid;
@@ -971,7 +986,7 @@ html[data-platform='darwin'] .titlebar__inner {
   width: 100%;
   height: 100%;
   border: 2px dashed var(--color-border-strong);
-  border-radius: var(--r-lg, 12px);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-2);
   padding: 10px 14px;
   display: grid;
@@ -1032,7 +1047,7 @@ html[data-platform='darwin'] .titlebar__inner {
   background: var(--color-brand-500);
   color: var(--color-bg-1);
   font-weight: 600;
-  z-index: 10;
+  z-index: var(--z-dropdown);
 }
 
 /* 推导入口徽章：拓扑推导出的生效入口（非用户显式设置），描边淡底区分 */
@@ -1185,7 +1200,7 @@ html[data-platform='darwin'] .titlebar__inner {
   font-size: 0.78rem;
   padding: 4px 12px;
   cursor: pointer;
-  transition: all 120ms ease;
+  transition: color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
 }
 
 .editor-tab:hover {
@@ -1207,7 +1222,7 @@ html[data-platform='darwin'] .titlebar__inner {
   bottom: 0;
   width: 10px;
   cursor: col-resize;
-  z-index: 30;
+  z-index: var(--z-overlay);
 }
 
 .aside-resizer::after {
@@ -1260,7 +1275,7 @@ html[data-platform='darwin'] .titlebar__inner {
   padding: 6px;
   display: grid;
   gap: 2px;
-  z-index: 40;
+  z-index: var(--z-modal);
 }
 
 .run-history__empty {
@@ -1397,7 +1412,7 @@ html[data-platform='darwin'] .titlebar__inner {
   padding: 4px 12px;
   font-size: 0.78rem;
   cursor: pointer;
-  transition: all 120ms ease;
+  transition: color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
 }
 
 .ask-user-card__btn--primary {
@@ -1447,4 +1462,34 @@ html[data-platform='darwin'] .titlebar__inner {
   font-size: 0.75rem;
   color: var(--color-fg-3);
   font-style: italic;
+}
+
+/* ── prefers-reduced-motion 降级（§9.4 盲区 1）──
+   三个无限动画（rf-pulse / stream-blink / animate-spin）在此降级为静态或单次。
+   未来新增入场动画也必须在此媒体查询下提供降级。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* rf-pulse 运行节点脉冲：降级为静态边框高亮 */
+  .rf-status--running .rf-agent-node,
+  .rf-status--running .rf-container-node {
+    animation: none;
+    border-color: var(--color-brand-400);
+    box-shadow: var(--shadow-1);
+  }
+
+  /* stream-blink 流式光标：降级为静态闪烁符号 */
+  .stream-cursor {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  /* asset-card hover 上浮：降级为仅阴影变化 */
+  .asset-card:hover {
+    transform: none;
+  }
 }

@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Search,
   Star,
-  Store,
   Wrench,
 } from 'lucide-react'
 import {
@@ -33,6 +32,7 @@ import {
   DrawerContent,
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
+import { EmptyState } from '@renderer/components/ui/EmptyState'
 import type {
   Agent,
   Capability,
@@ -330,7 +330,7 @@ export function RegistryPage() {
             return (
               <article
                 key={`${kind}:${entry.id}`}
-                className="surface-panel"
+                className="surface-panel asset-card"
                 style={{ borderRadius: 18, padding: 18, cursor: 'pointer' }}
                 onClick={() => openDetail({ kind, entry })}
               >
@@ -381,7 +381,7 @@ export function RegistryPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        style={{ height: 22, width: 22 }}
+                        style={{ height: 28, width: 28 }}
                         title={t('registry:badges.quickUpdate')}
                         aria-label={t('registry:badges.quickUpdate')}
                         disabled={quickBusy === `${kind}:${entry.id}`}
@@ -390,7 +390,7 @@ export function RegistryPage() {
                           void onQuickUpdate(kind, entry)
                         }}
                       >
-                        <ArrowUpCircle size={14} style={{ color: 'var(--color-brand-500)' }} />
+                        <ArrowUpCircle size={16} style={{ color: 'var(--color-brand-500)' }} />
                       </Button>
                     </>
                   ) : null}
@@ -589,7 +589,7 @@ function PlanView(props: {
         >
           <p style={{ margin: 0 }}>{t('registry:plan.scriptsWarning')}</p>
           {scriptItems.map((item) => (
-            <p key={item.slug} style={{ margin: 0, fontFamily: 'var(--font-mono, monospace)' }}>
+            <p key={item.slug} style={{ margin: 0, fontFamily: 'var(--font-mono)' }}>
               {item.name}: {(item.scripts ?? []).join(', ')}
             </p>
           ))}
@@ -631,25 +631,5 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       <span style={{ color: 'var(--color-fg-3)', flexShrink: 0 }}>{label}</span>
       <span style={{ color: 'var(--color-fg-1)', wordBreak: 'break-all' }}>{value}</span>
     </p>
-  )
-}
-
-function EmptyState({ text, danger }: { text: string; danger?: boolean }) {
-  return (
-    <div
-      className="glass-panel"
-      style={{
-        borderRadius: 20,
-        padding: 40,
-        textAlign: 'center',
-        color: danger ? 'var(--color-danger)' : 'var(--color-fg-2)',
-        display: 'grid',
-        gap: 8,
-        justifyItems: 'center',
-      }}
-    >
-      <Store size={32} style={{ color: danger ? 'var(--color-danger)' : 'var(--color-brand-500)' }} />
-      {text}
-    </div>
   )
 }

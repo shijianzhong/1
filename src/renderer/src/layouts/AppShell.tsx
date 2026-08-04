@@ -88,7 +88,7 @@ export function AppShell() {
           <div className="titlebar__inner">
             <div className="titlebar__meta">
               <div className="titlebar__brand">
-                <img src="/images/logo.png" alt="" className="titlebar__logo" />
+                <img src="./images/logo.png" alt="" className="titlebar__logo" />
                 <p className="section-title">One</p>
               </div>
             </div>
@@ -222,6 +222,8 @@ export function AppShell() {
                 setCommandIndex(0)
               }}
               onKeyDown={(e) => {
+                // IME 合成态：Enter 确认候选词，不触发导航
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 const filtered = filteredNav(navItems, commandQuery, t)
                 if (e.key === 'ArrowDown') {
                   e.preventDefault()

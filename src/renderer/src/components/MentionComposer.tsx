@@ -263,6 +263,8 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent) => {
+        // IME 合成态（中文输入法打字中）：Enter 用于确认候选词，不触发发送/选中
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return
         if (open && flat.length > 0) {
           if (e.key === 'ArrowDown') {
             e.preventDefault()

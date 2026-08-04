@@ -18,6 +18,8 @@ import {
   DialogClose,
 } from '@renderer/components/ui/Dialog'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { EmptyState } from '@renderer/components/ui/EmptyState'
+import { PageToolbar } from '@renderer/components/ui/PageToolbar'
 import type { Capability } from '@shared/types'
 
 // —— 能力列表（§3 + EClaw CapabilitiesPage 范式）——
@@ -70,20 +72,11 @@ export function CapabilitiesPage() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
       {/* page-head */}
-      <section
-        className="glass-panel"
-        style={{ padding: 16, borderRadius: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-      >
-        <div>
-          <h2 className="section-title" style={{ fontSize: '1rem' }}>
-            {t('editor:capabilities.title')}
-          </h2>
-          <p className="section-subtitle">{t('editor:capabilities.subtitle')}</p>
-        </div>
-        <Button onClick={openModal}>
-          <Plus size={16} /> {t('editor:capabilities.new')}
-        </Button>
-      </section>
+      <PageToolbar
+        title={t('editor:capabilities.title')}
+        subtitle={t('editor:capabilities.subtitle')}
+        actions={<Button onClick={openModal}><Plus size={16} /> {t('editor:capabilities.new')}</Button>}
+      />
 
       {/* 状态态 */}
       {isLoading ? (
@@ -91,88 +84,57 @@ export function CapabilitiesPage() {
       ) : isError ? (
         <EmptyState text={t('common:state.error')} danger />
       ) : caps.length === 0 ? (
-        <button
-          type="button"
+        <EmptyState
+          icon={Boxes}
+          title={t('editor:capabilities.emptyTitle')}
+          hint={t('editor:capabilities.emptyHint')}
           onClick={openModal}
-          className="glass-panel"
-          style={{
-            borderRadius: 20,
-            padding: 48,
-            textAlign: 'center',
-            border: 0,
-            cursor: 'pointer',
-            color: 'var(--color-fg-2)',
-            display: 'grid',
-            gap: 8,
-            justifyItems: 'center',
-          }}
-        >
-          <Boxes size={40} style={{ color: 'var(--color-brand-500)' }} />
-          <p className="section-title">{t('editor:capabilities.emptyTitle')}</p>
-          <p className="section-subtitle">{t('editor:capabilities.emptyHint')}</p>
-        </button>
+        />
       ) : (
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
             gap: 16,
           }}
         >
           {caps.map((cap) => (
             <article
               key={cap.id}
-              className="surface-panel"
+              className="surface-panel asset-card"
               onClick={() => nav(`/capability/${cap.id}`)}
               style={{
                 borderRadius: 18,
                 padding: 18,
                 cursor: 'pointer',
-                transition: 'transform 120ms ease, box-shadow 120ms ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)'
-                e.currentTarget.style.boxShadow = 'var(--shadow-2)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'none'
-                e.currentTarget.style.boxShadow = 'var(--shadow-1)'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <h3 className="section-title">{cap.name}</h3>
-                  {cap.description ? (
-                    <p className="section-subtitle" style={{ marginTop: 4 }}>
-                      {cap.description}
-                    </p>
-                  ) : null}
-                </div>
-                <span
-                  style={{ display: 'flex', gap: 2, alignItems: 'center' }}
-                  onClick={(e) => e.stopPropagation()}
-                >
+              <div style={{ minWidth: 0 }}>
+                <h3 className="section-title">{cap.name}</h3>
+                {cap.description ? (
+                  <p className="section-subtitle" style={{ marginTop: 4 }}>
+                    {cap.description}
+                  </p>
+                ) : null}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: 14,
+                  paddingTop: 10,
+                  borderTop: '1px solid var(--color-border)',
+                }}
+              >
+                <span style={{ fontSize: '0.72rem', color: 'var(--color-fg-3)' }}>{cap.id}</span>
+                <span style={{ display: 'flex', gap: 2, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                   <RegistryPublishButton kind="capability" localId={cap.id} />
-                  <button
-                    type="button"
-                    onClick={(e) => void onRemove(e, cap.id)}
-                    style={{
-                      border: 0,
-                      background: 'transparent',
-                      color: 'var(--color-fg-3)',
-                      cursor: 'pointer',
-                      padding: 4,
-                      borderRadius: 8,
-                    }}
-                    aria-label="delete"
-                  >
+                  <Button variant="ghost" size="icon" onClick={(e) => void onRemove(e, cap.id)}>
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </span>
               </div>
-              <p style={{ margin: '12px 0 0', fontSize: '0.75rem', color: 'var(--color-fg-3)' }}>
-                {cap.id}
-              </p>
             </article>
           ))}
         </div>
@@ -206,22 +168,6 @@ export function CapabilitiesPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
-
-function EmptyState({ text, danger }: { text: string; danger?: boolean }): React.ReactNode {
-  return (
-    <div
-      className="glass-panel"
-      style={{
-        borderRadius: 20,
-        padding: 40,
-        textAlign: 'center',
-        color: danger ? 'var(--color-danger)' : 'var(--color-fg-2)',
-      }}
-    >
-      {text}
     </div>
   )
 }

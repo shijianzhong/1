@@ -34,6 +34,35 @@
   --shadow-3: 0 12px 32px oklch(0 0 0 / 0.35);
   --density-scale: 1;
   --font-scale: 1;
+  /* —— 字体（§三）—— */
+  --font-sans: "PingFang SC", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
+  /* —— 间距（§四，rem 制，density 经 calc 消费）—— */
+  --spacing-1: calc(0.25rem * var(--density-scale));
+  --spacing-2: calc(0.5rem * var(--density-scale));
+  --spacing-3: calc(0.75rem * var(--density-scale));
+  --spacing-4: calc(1rem * var(--density-scale));
+  --spacing-6: calc(1.5rem * var(--density-scale));
+  --spacing-8: calc(2rem * var(--density-scale));
+  /* —— 圆角（§五，仅 4 档）—— */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+  /* —— 动效（§六）—— */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  /* —— z-index 层级 —— */
+  --z-base: 1;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-tooltip: 60;
   /* —— 背景图层（§12.6.1）：默认无背景图 —— */
   --bg-image: none;
   --bg-blur: 0px;
@@ -109,6 +138,23 @@
   --shadow-1: var(--shadow-1);
   --shadow-2: var(--shadow-2);
   --shadow-3: var(--shadow-3);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --spacing-1: var(--spacing-1);
+  --spacing-2: var(--spacing-2);
+  --spacing-3: var(--spacing-3);
+  --spacing-4: var(--spacing-4);
+  --spacing-6: var(--spacing-6);
+  --spacing-8: var(--spacing-8);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-full: var(--radius-full);
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --dur-1: var(--dur-1);
+  --dur-2: var(--dur-2);
+  --dur-3: var(--dur-3);
 }
 
 html {
@@ -120,7 +166,7 @@ body {
   min-height: 100vh;
   background: var(--color-bg-0);
   color: var(--color-fg-1);
-  font-family: "PingFang SC", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  font-family: var(--font-sans);
   position: relative;
 }
 

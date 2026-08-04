@@ -17,6 +17,9 @@ import {
 } from '@renderer/components/ui/Drawer'
 import { Badge } from '@renderer/components/ui/Badge'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { EmptyState } from '@renderer/components/ui/EmptyState'
+import { Field } from '@renderer/components/ui/Field'
+import { PageToolbar } from '@renderer/components/ui/PageToolbar'
 import type { Skill } from '@shared/types'
 
 // —— 技能管理页 ——
@@ -116,36 +119,25 @@ export function SkillsPage() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gap: 20 }}>
       {/* 顶部工具条 */}
-      <section
-        className="glass-panel"
-        style={{
-          padding: 16,
-          borderRadius: 20,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <h2 className="section-title" style={{ fontSize: '1rem' }}>
-            {t('common:list.skills.title')}
-          </h2>
-          <p className="section-subtitle">{t('common:list.skills.description')}</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="outline" onClick={() => void onUpload()} disabled={uploading}>
-            <Upload size={16} /> {uploading ? t('common:skills.uploading') : t('common:skills.upload')}
-          </Button>
-          {uploadError ? (
-            <p role="alert" style={{ alignSelf: 'center', margin: 0, fontSize: '0.8rem', color: 'var(--color-danger)' }}>
-              {uploadError}
-            </p>
-          ) : null}
-          <Button onClick={openNew}>
-            <Plus size={16} /> {t('common:actions.new')}
-          </Button>
-        </div>
-      </section>
+      <PageToolbar
+        title={t('common:list.skills.title')}
+        subtitle={t('common:list.skills.description')}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => void onUpload()} disabled={uploading}>
+              <Upload size={16} /> {uploading ? t('common:skills.uploading') : t('common:skills.upload')}
+            </Button>
+            {uploadError ? (
+              <p role="alert" style={{ alignSelf: 'center', margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
+                {uploadError}
+              </p>
+            ) : null}
+            <Button onClick={openNew}>
+              <Plus size={16} /> {t('common:actions.new')}
+            </Button>
+          </>
+        }
+      />
 
       {/* 技能卡片网格 */}
       {isLoading ? (
@@ -153,26 +145,13 @@ export function SkillsPage() {
       ) : isError ? (
         <EmptyState text={t('common:state.error')} danger />
       ) : skills.length === 0 ? (
-        <button
-          type="button"
+        <EmptyState
+          icon={Wrench}
+          title={t('common:empty.noItems')}
+          hint={t('common:list.skills.description')}
           onClick={openNew}
-          className="glass-panel"
-          style={{
-            borderRadius: 20,
-            padding: 48,
-            textAlign: 'center',
-            border: 0,
-            cursor: 'pointer',
-            color: 'var(--color-fg-2)',
-            display: 'grid',
-            gap: 8,
-            justifyItems: 'center',
-          }}
-        >
-          <Wrench size={40} style={{ color: 'var(--color-brand-500)' }} />
-          <p className="section-title">{t('common:empty.noItems')}</p>
-          <p className="section-subtitle">{t('common:list.skills.description')}</p>
-        </button>
+          actionLabel={t('common:actions.new')}
+        />
       ) : (
         <div
           style={{
@@ -184,62 +163,43 @@ export function SkillsPage() {
           {skills.map((s) => (
             <article
               key={s.id}
-              className="surface-panel"
+              className="surface-panel asset-card"
               style={{
                 borderRadius: 18,
                 padding: 18,
-                transition: 'transform 120ms ease, box-shadow 120ms ease',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'var(--color-bg-3)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Wrench size={18} style={{ color: 'var(--color-brand-500)' }} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <h3 className="section-title">{s.name}</h3>
-                    {s.description ? (
-                      <p
-                        className="section-subtitle"
-                        style={{
-                          marginTop: 2,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {s.description}
-                      </p>
-                    ) : null}
-                  </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: 'var(--color-bg-3)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Wrench size={18} style={{ color: 'var(--color-brand-500)' }} />
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  <RegistryPublishButton kind="skill" localId={s.id} />
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
-                    <Pencil size={14} />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => void onRemove(s.id)}>
-                    <Trash2 size={14} />
-                  </Button>
+                <div style={{ minWidth: 0 }}>
+                  <h3 className="section-title">{s.name}</h3>
+                  {s.description ? (
+                    <p
+                      className="section-subtitle"
+                      style={{
+                        marginTop: 2,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {s.description}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               {s.content ? (
@@ -251,7 +211,7 @@ export function SkillsPage() {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    fontFamily: 'var(--font-mono, monospace)',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
                   {s.content.slice(0, 80)}
@@ -268,6 +228,25 @@ export function SkillsPage() {
                 <Badge style={{ fontSize: '0.7rem' }}>
                   {t('common:skills.sizeK', { count: Math.ceil(s.content.length / 1000) })}
                 </Badge>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: 4,
+                  marginTop: 14,
+                  paddingTop: 10,
+                  borderTop: '1px solid var(--color-border)',
+                }}
+              >
+                <RegistryPublishButton kind="skill" localId={s.id} />
+                <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
+                  <Pencil size={14} />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => void onRemove(s.id)}>
+                  <Trash2 size={14} />
+                </Button>
               </div>
             </article>
           ))}
@@ -352,33 +331,8 @@ const contentTextareaStyle: React.CSSProperties = {
   background: 'var(--color-bg-1)',
   color: 'var(--color-fg-1)',
   padding: 10,
-  fontFamily: 'var(--font-mono, monospace)',
+  fontFamily: 'var(--font-mono)',
   fontSize: '0.875rem',
   resize: 'none',
   width: '100%',
-}
-
-function Field({ label, children, style }: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', ...style }}>
-      <label style={{ fontSize: '0.875rem', color: 'var(--color-fg-2)', flexShrink: 0 }}>{label}</label>
-      <div style={{ marginTop: 6, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{children}</div>
-    </div>
-  )
-}
-
-function EmptyState({ text, danger }: { text: string; danger?: boolean }): React.ReactNode {
-  return (
-    <div
-      className="glass-panel"
-      style={{
-        borderRadius: 20,
-        padding: 40,
-        textAlign: 'center',
-        color: danger ? 'var(--color-danger)' : 'var(--color-fg-2)',
-      }}
-    >
-      {text}
-    </div>
-  )
 }

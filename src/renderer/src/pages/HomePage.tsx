@@ -12,30 +12,42 @@ import {
 import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra/types'
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
+import {
+  Brain,
+  FolderOpen,
+  Globe,
+  type LucideIcon,
+  MessageSquare,
+  Puzzle,
+  Users,
+} from 'lucide-react'
 
 /** 新建对话欢迎屏：展示主 Agent 能力概览，有消息后自动隐藏 */
 function WelcomeScreen() {
   const { t } = useTranslation(['home'])
-  const capItems = [
-    { icon: '💬', key: 'chat' },
-    { icon: '👥', key: 'team' },
-    { icon: '🧩', key: 'create' },
-    { icon: '🧠', key: 'memory' },
-    { icon: '📁', key: 'file' },
-    { icon: '🌐', key: 'web' },
-  ] as const
+  const capItems: { icon: LucideIcon; key: string }[] = [
+    { icon: MessageSquare, key: 'chat' },
+    { icon: Users, key: 'team' },
+    { icon: Puzzle, key: 'create' },
+    { icon: Brain, key: 'memory' },
+    { icon: FolderOpen, key: 'file' },
+    { icon: Globe, key: 'web' },
+  ]
 
   return (
     <section className="welcome-screen">
       <h1 className="welcome-screen__title">{t('welcome.title')}</h1>
       <p className="welcome-screen__subtitle">{t('welcome.subtitle')}</p>
       <div className="welcome-screen__grid">
-        {capItems.map((item) => (
-          <div key={item.key} className="welcome-screen__card surface-panel">
-            <span className="welcome-screen__icon">{item.icon}</span>
-            <span className="welcome-screen__label">{t(`welcome.cap.${item.key}`)}</span>
-          </div>
-        ))}
+        {capItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <div key={item.key} className="welcome-screen__card surface-panel">
+              <Icon className="welcome-screen__icon" size={28} strokeWidth={1.75} />
+              <span className="welcome-screen__label">{t(`welcome.cap.${item.key}`)}</span>
+            </div>
+          )
+        })}
       </div>
       <p className="welcome-screen__hint">{t('welcome.hint')}</p>
     </section>

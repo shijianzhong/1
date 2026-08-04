@@ -24,7 +24,7 @@ export function Markdown({ children }: { children: string }) {
                 borderRadius: 12,
                 padding: 14,
                 overflowX: 'auto',
-                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                fontFamily: 'var(--font-mono)',
                 fontSize: '0.85rem',
               }}
             >
@@ -44,7 +44,7 @@ export function Markdown({ children }: { children: string }) {
                   borderRadius: 6,
                   padding: '2px 5px',
                   fontSize: '0.85em',
-                  fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                  fontFamily: 'var(--font-mono)',
                 }}
                 {...props}
               >

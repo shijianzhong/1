@@ -138,7 +138,7 @@ export function RegistryPublishButton(props: { kind: RegistryAssetKind; localId:
                   <FolderCheck size={16} style={{ color: 'var(--color-brand-500)' }} />
                   {t('registry:publish.doneSummary', { count: result.files.length })}
                 </p>
-                <p style={{ margin: 0, fontFamily: 'var(--font-mono, monospace)', fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.8rem', wordBreak: 'break-all' }}>
                   {result.dir}
                 </p>
                 {prUrl ? (
@@ -228,14 +228,14 @@ export function RegistryPublishButton(props: { kind: RegistryAssetKind; localId:
                           disabled={!item.include}
                           onChange={(e) => patchItem(idx, { slug: e.target.value })}
                           placeholder="slug"
-                          style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.8rem' }}
+                          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
                         />
                         <Input
                           value={item.version}
                           disabled={!item.include}
                           onChange={(e) => patchItem(idx, { version: e.target.value })}
                           placeholder="1.0.0"
-                          style={{ width: 96, flexShrink: 0, fontFamily: 'var(--font-mono, monospace)', fontSize: '0.8rem' }}
+                          style={{ width: 96, flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
                         />
                       </div>
                     </div>
