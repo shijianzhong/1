@@ -21,6 +21,7 @@ import {
   Puzzle,
   Users,
 } from 'lucide-react'
+import { startupMark } from '@renderer/lib/startupMark'
 
 /** 新建对话欢迎屏：展示主 Agent 能力概览，有消息后自动隐藏 */
 function WelcomeScreen() {
@@ -54,8 +55,24 @@ function WelcomeScreen() {
   )
 }
 
+let homeFirstRenderLogged = false
+
 export function HomePage() {
-  const { t } = useTranslation(['common', 'home'])
+  if (!homeFirstRenderLogged) {
+    homeFirstRenderLogged = true
+    startupMark('renderer:HomePage:first-render-begin')
+  }
+  const { t, ready } = useTranslation(['common', 'home'])
+  const homeNsLogged = useRef(false)
+  useEffect(() => {
+    if (ready && !homeNsLogged.current) {
+      homeNsLogged.current = true
+      startupMark('renderer:HomePage:i18n-ready')
+    }
+  }, [ready])
+  useEffect(() => {
+    startupMark('renderer:HomePage:mounted')
+  }, [])
   const sessionId = useChatStore((s) => s.sessionId)
   const historyMessages = useChatStore((s) => s.messages)
   const [streamMsgs, setStreamMsgs] = useState<ChatMessage[]>([])

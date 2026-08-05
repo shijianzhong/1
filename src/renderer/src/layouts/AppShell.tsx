@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useRef } from 'react'
 import {
   Bot,
   Boxes,
@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSessions } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { startupMark } from '@renderer/lib/startupMark'
 
 const navItems = [
   { to: '/', key: 'home', icon: Sparkles },
@@ -47,8 +48,27 @@ function PageLoading() {
   )
 }
 
+let appShellFirstRenderLogged = false
+
 export function AppShell() {
-  const { t } = useTranslation(['common', 'editor', 'home'])
+  if (!appShellFirstRenderLogged) {
+    appShellFirstRenderLogged = true
+    // 若此处距 enter-routes 很久：多半卡在 useTranslation(editor/home) Suspense
+    startupMark('renderer:AppShell:first-render-begin')
+  }
+  const { t, ready } = useTranslation(['common', 'editor', 'home'])
+  const nsReadyLogged = useRef(false)
+  useEffect(() => {
+    if (ready && !nsReadyLogged.current) {
+      nsReadyLogged.current = true
+      startupMark('renderer:AppShell:i18n-ready', {
+        ns: 'common,editor,home',
+      })
+    }
+  }, [ready])
+  useEffect(() => {
+    startupMark('renderer:AppShell:mounted')
+  }, [])
   const location = useLocation()
 
   const showSideList = location.pathname === '/'

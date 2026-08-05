@@ -24,6 +24,7 @@ import { registerOrchestrateHandlers } from './orchestrate'
 import { registerNativeHandlers } from './native'
 import { registerProvidersHandlers } from './providers'
 import { registerRegistryHandlers } from './registry'
+import { startupMarkFromRenderer } from '../startup-log'
 
 const THEME_FILE = 'theme.json'
 
@@ -141,6 +142,21 @@ export function registerIpcHandlers(): void {
     appVersion: app.getVersion(),
     platform: process.platform,
   }))
+  // 启动诊断埋点：渲染层上报，写入 userData/logs/startup.log
+  withHandler<void>('system:startupMark', (_e, payloadRaw) => {
+    const payload = payloadRaw as {
+      phase?: string
+      rendererT?: number
+      detail?: Record<string, unknown>
+    }
+    if (payload?.phase) {
+      startupMarkFromRenderer({
+        phase: payload.phase,
+        rendererT: payload.rendererT,
+        detail: payload.detail,
+      })
+    }
+  })
   withHandler<ThemeConfig>('theme:get', async () => loadTheme())
   withHandler<ThemeConfig>('theme:set', async (_event, themeRaw) =>
     saveTheme(themeRaw as ThemeConfig),

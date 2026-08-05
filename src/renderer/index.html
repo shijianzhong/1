@@ -101,6 +101,8 @@
         </div>
       </div>
     </div>
+    <!-- 同步早埋点（非 module）：在大包求值前记下 HTML 阶段原点 → userData/logs/startup.log -->
+    <script src="./boot-mark.js"></script>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

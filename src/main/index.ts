@@ -26,8 +26,10 @@ import {
   markRunning,
 } from './crash-recovery'
 import { logger } from './logger'
+import { beginStartupSession, startupMark } from './startup-log'
 
 const isMac = process.platform === 'darwin'
+startupMark('main:module-evaluated')
 
 // —— 全局错误兜底（§11.5）：不静默退出 ——
 process.on('uncaughtException', (error) => {
@@ -57,6 +59,7 @@ const appIconPath = app.isPackaged
 const appIcon = existsSync(appIconPath) ? nativeImage.createFromPath(appIconPath) : undefined
 
 function createMainWindow(): BrowserWindow {
+  startupMark('main:createWindow:begin')
   const window = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -72,14 +75,26 @@ function createMainWindow(): BrowserWindow {
       sandbox: true, // §铁律1：渲染进程零 Node 特权，preload 也跑在沙箱
     },
   })
+  startupMark('main:createWindow:constructed')
 
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  // 渲染生命周期：对照「One 启动标停留」时间
+  window.webContents.on('did-start-loading', () => startupMark('main:wc:did-start-loading'))
+  window.webContents.on('dom-ready', () => startupMark('main:wc:dom-ready'))
+  window.webContents.on('did-finish-load', () => startupMark('main:wc:did-finish-load'))
+  window.webContents.on('did-fail-load', (_e, code, desc) =>
+    startupMark('main:wc:did-fail-load', { code, desc }),
+  )
+  window.on('ready-to-show', () => startupMark('main:window:ready-to-show'))
+  window.on('show', () => startupMark('main:window:show'))
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     void window.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  startupMark('main:createWindow:loadIssued')
 
   return window
 }
@@ -98,15 +113,21 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    beginStartupSession()
+    startupMark('main:whenReady')
+
     // —— 崩溃恢复（§11.5/.7）：启动检测上次崩溃 + 写哨兵 ——
     const crashed = hadCrashedLastRun()
     markRunning()
+    startupMark('main:crash-sentinel', { crashed })
     if (crashed) {
       logger.warn('[crash] 检测到上次异常退出，草稿可恢复')
     }
 
     getDb() // 初始化 SQLite（WAL + 迁移 + integrity_check，§11.4）
+    startupMark('main:getDb')
     seedDefaultModels() // 首次启动 seed Claude Code 预置模型
+    startupMark('main:seedModels')
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerCreateTools() // 聊天创建工具（propose_*，不落库，确认才入库）
     registerAskUserTools() // HITL 提问工具（编排内 agent 向用户提问，挂起等作答）
@@ -114,7 +135,9 @@ if (!gotLock) {
     registerOpenCliTools() // OpenCLI 白名单工具（用户浏览器登录态读站，写操作拦截）
     registerFileTools() // 文件工具（file_write/read/search，限 Obsidian vault 等允许根目录）
     registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
+    startupMark('main:tools-registered')
     registerIpcHandlers()
+    startupMark('main:ipc-registered')
     createMainWindow()
 
     // macOS Dock 图标：开发模式无 .app 包，需显式设置
@@ -138,15 +161,20 @@ if (!gotLock) {
         setupNativeMenu(getMainWindow)
         createTray(getMainWindow)
         registerGlobalShortcut(getMainWindow)
+        startupMark('main:native-ready')
       } catch (error) {
         logger.warn('[main] 原生能力初始化失败（可能无显示环境）', error)
+        startupMark('main:native-failed')
       }
       setupAutoUpdater(getMainWindow)
     }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
+        startupMark('main:activate:recreate-window')
         createMainWindow()
+      } else {
+        startupMark('main:activate:focus-existing')
       }
     })
   })

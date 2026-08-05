@@ -23,6 +23,12 @@ import type {
 export interface OneApi {
   system: {
     ping: () => Promise<IpcResult<SystemPingResponse>>
+    /** 启动分段埋点 → userData/logs/startup.log（诊断用，失败不抛） */
+    startupMark: (payload: {
+      phase: string
+      rendererT?: number
+      detail?: Record<string, unknown>
+    }) => Promise<IpcResult<void>>
   }
   theme: {
     get: () => Promise<IpcResult<ThemeConfig>>
@@ -136,6 +142,7 @@ export interface OneApi {
 const api: OneApi = {
   system: {
     ping: () => ipcRenderer.invoke('system:ping'),
+    startupMark: (payload) => ipcRenderer.invoke('system:startupMark', payload),
   },
   theme: {
     get: () => ipcRenderer.invoke('theme:get'),

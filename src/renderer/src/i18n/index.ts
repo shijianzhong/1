@@ -1,35 +1,59 @@
 import i18n from 'i18next'
-import HttpBackend from 'i18next-http-backend'
 import { initReactI18next } from 'react-i18next'
-// 首屏 namespace 直接打进 bundle：打包版 file:// 下走 fetch 会串行排在 bundle 解析之后，
-// 且 React 根无 Suspense 时整树等它 resolve（启动白屏的一段）。内联后 t() 立即可用。
-// 单一事实源仍是 public/locales 下这份文件（构建期被 import 进 chunk，同时随 public 部署）。
+// 全部 locale 同步打进 bundle。
+// 实证（startup.log 2026-08-05）：i18next-http-backend 在 Electron file:// + asar 下
+// 每次拉 namespace 约卡 10.9s（重试超时），两次合计 ~22s。桌面应用无 CDN 需求，不走 HTTP。
 import zhCnCommon from '../../public/locales/zh-CN/common.json'
+import zhCnHome from '../../public/locales/zh-CN/home.json'
+import zhCnEditor from '../../public/locales/zh-CN/editor.json'
+import zhCnSettings from '../../public/locales/zh-CN/settings.json'
+import zhCnRegistry from '../../public/locales/zh-CN/registry.json'
+import zhCnErrors from '../../public/locales/zh-CN/errors.json'
+import enCommon from '../../public/locales/en/common.json'
+import enHome from '../../public/locales/en/home.json'
+import enEditor from '../../public/locales/en/editor.json'
+import enSettings from '../../public/locales/en/settings.json'
+import enRegistry from '../../public/locales/en/registry.json'
+import enErrors from '../../public/locales/en/errors.json'
+import { startupMark } from '@renderer/lib/startupMark'
 
-// —— i18n（§十二）：默认 zh-CN，按 namespace 懒加载，文件在 public/locales/{lng}/{ns}.json ——
-// file:// 下 loadPath 用相对路径，由 electron-vite 打包时随 public 资源一起部署。
+const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors'] as const
+
+// —— i18n（§十二）：默认 zh-CN；资源内联，禁止 HttpBackend ——
 const isDev = !!import.meta.env.DEV
+startupMark('renderer:i18n:init:begin')
 void i18n
-  .use(HttpBackend)
   .use(initReactI18next)
   .init({
     lng: 'zh-CN',
     fallbackLng: 'zh-CN',
     defaultNS: 'common',
-    ns: ['common'], // 其它 namespace（home/editor/settings/errors）按需懒加载
+    ns: [...NAMESPACES],
     resources: {
-      'zh-CN': { common: zhCnCommon },
-    },
-    // 已内联的只是部分资源：其余 namespace/语言仍走 backend 懒加载
-    partialBundledLanguages: true,
-    backend: {
-      // dev: http://localhost:port/locales/...；prod: file://.../locales/...
-      loadPath: './locales/{{lng}}/{{ns}}.json',
+      'zh-CN': {
+        common: zhCnCommon,
+        home: zhCnHome,
+        editor: zhCnEditor,
+        settings: zhCnSettings,
+        registry: zhCnRegistry,
+        errors: zhCnErrors,
+      },
+      en: {
+        common: enCommon,
+        home: enHome,
+        editor: enEditor,
+        settings: enSettings,
+        registry: enRegistry,
+        errors: enErrors,
+      },
     },
     interpolation: {
       escapeValue: false,
     },
-    // 开发期缺失 key 警告，生产静默回退
+    // 关键：默认 true 会在 init 未完成时 suspend，且根上无 Suspense → 启动屏卡住
+    react: {
+      useSuspense: false,
+    },
     saveMissing: isDev,
     missingKeyHandler: isDev
       ? (_lngs, ns, key) => {
@@ -38,14 +62,21 @@ void i18n
         }
       : undefined,
   })
+  .then(() => {
+    startupMark('renderer:i18n:init:resolved', {
+      isInitialized: i18n.isInitialized,
+      backend: 'inline-resources',
+    })
+  })
+  .catch((error: unknown) => {
+    startupMark('renderer:i18n:init:rejected', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  })
 
-// 首屏之外按需加载的 namespace
-export function ensureNamespaces(namespaces: string[]): void {
-  for (const ns of namespaces) {
-    if (!i18n.hasResourceBundle(i18n.language, ns)) {
-      void i18n.loadNamespaces(ns)
-    }
-  }
+/** 兼容旧调用：资源已全部内联，无需懒加载 */
+export function ensureNamespaces(_namespaces: string[]): void {
+  // no-op
 }
 
 export default i18n
