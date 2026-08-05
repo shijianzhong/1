@@ -209,12 +209,13 @@ export function HomePage() {
     composerRef.current?.clear()
     setError(null)
     setSending(true)
-    // 重试时不清空已有流式消息（保留上下文），仅追加 user 消息
-    if (overrideText) {
-      setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
-    } else {
-      setStreamMsgs((prev) => [...prev, { id: crypto.randomUUID(), role: 'user' as const, text }])
-    }
+    // 追加 user 消息 + 立即创建空的 AI 流式气泡（含 orbState=working）
+    // 避免 API 响应延迟期间屏幕上只有 user 消息、无 AI 图标 → 感觉卡住
+    setStreamMsgs((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: 'user' as const, text },
+      { id: crypto.randomUUID(), role: 'assistant' as const, text: '', streaming: true, orbState: 'working' as const },
+    ])
     // 发送后强制滚动到底部
     isNearBottomRef.current = true
     requestAnimationFrame(() => scrollToBottom(true))
