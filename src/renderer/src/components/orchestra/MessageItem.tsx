@@ -40,7 +40,7 @@ export function MessageItem({
       {m.role === 'assistant' ? (
         <div className="message__avatar">
           {m.streaming || m.retrying ? (
-            <ThinkingOrb state="working" size={64} theme="auto" style={{ width: 28, height: 28 }} />
+            <ThinkingOrb state={m.orbState ?? 'working'} size={64} theme="auto" style={{ width: 28, height: 28 }} />
           ) : (
             <Sparkles size={16} />
           )}

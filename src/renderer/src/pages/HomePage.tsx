@@ -130,9 +130,10 @@ export function HomePage() {
               ...last,
               thinking: (last.thinking ?? '') + delta.text,
               streaming: true,
+              orbState: 'breathing' as const,
             }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', thinking: delta.text, streaming: true }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', thinking: delta.text, streaming: true, orbState: 'breathing' as const }]
         })
       } else if (delta.type === 'text') {
         setStreamMsgs((prev) => {
@@ -141,9 +142,9 @@ export function HomePage() {
           if (last?.role === 'assistant' && (last.streaming || last.retrying)) {
             const { retrying: _r, ...rest } = last
             void _r
-            return [...prev.slice(0, -1), { ...rest, text: rest.text + delta.text, streaming: true }]
+            return [...prev.slice(0, -1), { ...rest, text: rest.text + delta.text, streaming: true, orbState: 'composing' as const }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.text, streaming: true }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.text, streaming: true, orbState: 'composing' as const }]
         })
       } else if (delta.type === 'retry') {
         // 重试等待：在 AI 气泡位置显示「重试中（N/M，等待 Xs）」
@@ -153,10 +154,11 @@ export function HomePage() {
             return [...prev.slice(0, -1), {
               ...last,
               streaming: false,
+              orbState: 'solving' as const,
               retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）`,
             }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）` }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', orbState: 'solving' as const, retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）` }]
         })
       } else if (delta.type === 'error') {
         // 错误显示在 AI 气泡位置（而非顶部），含重试按钮

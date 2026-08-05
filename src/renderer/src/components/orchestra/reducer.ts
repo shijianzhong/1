@@ -48,6 +48,7 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
           role: 'assistant',
           text: '',
           speaker: ev.node_id,
+          orbState: 'listening',
           askUser: {
             requestId: ev.request_id,
             nodeId: ev.node_id,
@@ -78,8 +79,26 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
       // 发送，done 到达即运行终结，任何事件丢失都不应留下 streaming=true 的泄漏
       return closeStreaming(prev)
 
+    case 'tool_call': {
+      // 工具调用：在末条流式气泡上标记 searching 态（扫描经线动画）
+      const last = prev[prev.length - 1]
+      if (last?.role === 'assistant' && last.streaming) {
+        return [...prev.slice(0, -1), { ...last, orbState: 'searching' as const }]
+      }
+      return prev
+    }
+
+    case 'tool_result': {
+      // 工具返回：恢复 working 态（工具调用完成后继续处理）
+      const last = prev[prev.length - 1]
+      if (last?.role === 'assistant' && last.streaming) {
+        return [...prev.slice(0, -1), { ...last, orbState: 'working' as const }]
+      }
+      return prev
+    }
+
     default:
-      // node_started / node_done / handoff / tool_call / tool_result：不产生气泡
+      // node_started / node_done / handoff：不产生气泡
       return prev
   }
 }

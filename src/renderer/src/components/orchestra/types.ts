@@ -1,5 +1,6 @@
 import type { CreateDraft, SessionMessage } from '@shared/types'
 import type { CardStatus } from '@renderer/components/CreateConfirmCard'
+import type { OrbState } from '@renderer/components/ThinkingOrb'
 
 // —— 编排聊天共享类型（HomePage 与 EditorPage 运行面板共用）——
 // 「编辑器运行 == 首页 @能力 运行」从组件层保证：同一消息模型 + 同一 reducer + 同一气泡。
@@ -21,6 +22,8 @@ export interface ChatMessage {
   speaker?: string
   /** HITL 提问卡（request_info 事件生成）；与 text 互斥 */
   askUser?: AskUserPrompt
+  /** ThinkingOrb 动画状态（流式期间显示何种思考球动画） */
+  orbState?: OrbState
 }
 
 /** ask_user 提问卡数据（request_info → pending；request_resolved → answered/expired） */
