@@ -23,6 +23,9 @@ const ListPage = lazy(() =>
 const RegistryPage = lazy(() =>
   import('@renderer/pages/RegistryPage').then((m) => ({ default: m.RegistryPage })),
 )
+const McpPage = lazy(() =>
+  import('@renderer/pages/McpPage').then((m) => ({ default: m.McpPage })),
+)
 const SettingsPage = lazy(() =>
   import('@renderer/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -42,6 +45,7 @@ export function AppRoutes() {
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/registry" element={<RegistryPage />} />
         <Route path="/models" element={<ListPage i18nKey="models" />} />
+        <Route path="/mcp" element={<McpPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

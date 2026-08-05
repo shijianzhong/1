@@ -5,7 +5,6 @@ import { useThemeStore } from '@renderer/store/theme'
 import { DEFAULT_THEME } from '@shared/types'
 import type { Persona, ThemeBackgroundConfig, ThemeConfig } from '@shared/types'
 import { RegistrySettings } from '@renderer/components/RegistrySettings'
-import { McpSettings } from '@renderer/components/McpSettings'
 import { Button } from '@renderer/components/ui/Button'
 import { Switch } from '@renderer/components/ui/Switch'
 import { Input } from '@renderer/components/ui/Input'
@@ -424,11 +423,6 @@ export function SettingsPage() {
       {/* Registry（源 + Token，§4.4） */}
       <SectionCard title={t('settings:registry.title')} subtitle={t('settings:registry.subtitle')}>
         <RegistrySettings />
-      </SectionCard>
-
-      {/* MCP 服务器（§7.2） */}
-      <SectionCard title={t('settings:mcp.title')} subtitle={t('settings:mcp.subtitle')}>
-        <McpSettings />
       </SectionCard>
 
       {/* 关于 */}

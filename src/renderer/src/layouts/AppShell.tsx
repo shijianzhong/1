@@ -4,6 +4,7 @@ import {
   Boxes,
   Cable,
   Command,
+  Plug,
   Plus,
   Settings,
   Sparkles,
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/skills', key: 'skills', icon: Wrench },
   { to: '/registry', key: 'registry', icon: Store },
   { to: '/models', key: 'models', icon: Cable },
+  { to: '/mcp', key: 'mcp', icon: Plug },
   { to: '/tasks', key: 'tasks', icon: Command },
   { to: '/settings', key: 'settings', icon: Settings },
 ] as const

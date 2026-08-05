@@ -8,7 +8,7 @@ import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import { Switch } from '@renderer/components/ui/Switch'
 
-// —— 设置页 MCP 服务器管理区 ——
+// —— MCP 服务器管理面板（由 McpPage 承载）——
 // 列出所有已配置的 MCP 服务器，支持添加/编辑/删除/连接/断开/测试连接。
 // 配置持久化在 config/mcp-servers.json，连接状态运行时维护。
 
@@ -34,11 +34,12 @@ const EMPTY_EDIT: EditState = {
 }
 
 export function McpSettings() {
-  const { t } = useTranslation(['settings', 'common'])
+  const { t } = useTranslation(['mcp', 'common'])
   const [servers, setServers] = useState<McpServerStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<EditState | null>(null)
   const [testMsg, setTestMsg] = useState<string | null>(null)
+  const [testOk, setTestOk] = useState(false)
   const [testing, setTesting] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -82,9 +83,9 @@ export function McpSettings() {
   }
 
   const validate = (e: EditState): string | null => {
-    if (!e.name.trim()) return t('settings:mcp.nameRequired')
-    if (e.transport === 'stdio' && !e.command.trim()) return t('settings:mcp.commandRequired')
-    if (e.transport === 'http' && !e.url.trim()) return t('settings:mcp.urlRequired')
+    if (!e.name.trim()) return t('mcp:nameRequired')
+    if (e.transport === 'stdio' && !e.command.trim()) return t('mcp:commandRequired')
+    if (e.transport === 'http' && !e.url.trim()) return t('mcp:urlRequired')
     return null
   }
 
@@ -103,6 +104,7 @@ export function McpSettings() {
     const err = validate(editing)
     if (err) {
       setTestMsg(err)
+      setTestOk(false)
       return
     }
     try {
@@ -117,6 +119,7 @@ export function McpSettings() {
       await refresh()
     } catch (e) {
       setTestMsg(e instanceof Error ? e.message : String(e))
+      setTestOk(false)
     }
   }
 
@@ -125,22 +128,26 @@ export function McpSettings() {
     const err = validate(editing)
     if (err) {
       setTestMsg(err)
+      setTestOk(false)
       return
     }
     setTesting(true)
     setTestMsg(null)
+    setTestOk(false)
     try {
       const result = await window.one.mcp.testServer(buildConfig(editing)).then(unwrap)
-      setTestMsg(t('settings:mcp.testSuccess', { count: result.toolCount }))
+      setTestMsg(t('mcp:testSuccess', { count: result.toolCount }))
+      setTestOk(true)
     } catch (e) {
-      setTestMsg(t('settings:mcp.testFailed', { message: e instanceof Error ? e.message : String(e) }))
+      setTestMsg(t('mcp:testFailed', { message: e instanceof Error ? e.message : String(e) }))
+      setTestOk(false)
     } finally {
       setTesting(false)
     }
   }
 
   const onRemove = async (id: string): Promise<void> => {
-    if (!confirm(t('settings:mcp.removeConfirm'))) return
+    if (!confirm(t('mcp:removeConfirm'))) return
     await window.one.mcp.removeServer(id).then(unwrap).catch(() => {})
     await refresh()
   }
@@ -164,82 +171,82 @@ export function McpSettings() {
     const update = (patch: Partial<EditState>): void => setEditing((p) => (p ? { ...p, ...patch } : p))
     return (
       <div style={{ display: 'grid', gap: 12 }}>
-        <Row label={t('settings:mcp.name')}>
+        <Row label={t('mcp:name')}>
           <Input
             value={editing.name}
             onChange={(e) => update({ name: e.target.value })}
             style={{ width: 240 }}
           />
         </Row>
-        <Row label={t('settings:mcp.transport')}>
+        <Row label={t('mcp:transport')}>
           <select
             value={editing.transport}
             onChange={(e) => update({ transport: e.target.value as 'stdio' | 'http' })}
             style={selectStyle}
           >
-            <option value="stdio">{t('settings:mcp.stdio')}</option>
-            <option value="http">{t('settings:mcp.http')}</option>
+            <option value="stdio">{t('mcp:stdio')}</option>
+            <option value="http">{t('mcp:http')}</option>
           </select>
         </Row>
         {editing.transport === 'stdio' ? (
           <>
-            <Row label={t('settings:mcp.command')}>
+            <Row label={t('mcp:command')}>
               <Input
                 value={editing.command}
                 onChange={(e) => update({ command: e.target.value })}
-                placeholder={t('settings:mcp.commandPh')}
+                placeholder={t('mcp:commandPh')}
                 style={{ width: 240 }}
               />
             </Row>
-            <Row label={t('settings:mcp.args')}>
+            <Row label={t('mcp:args')}>
               <Input
                 value={editing.args}
                 onChange={(e) => update({ args: e.target.value })}
-                placeholder={t('settings:mcp.argsPh')}
+                placeholder={t('mcp:argsPh')}
                 style={{ width: 320 }}
               />
             </Row>
           </>
         ) : (
-          <Row label={t('settings:mcp.url')}>
+          <Row label={t('mcp:url')}>
             <Input
               value={editing.url}
               onChange={(e) => update({ url: e.target.value })}
-              placeholder={t('settings:mcp.urlPh')}
+              placeholder={t('mcp:urlPh')}
               style={{ width: 320 }}
             />
           </Row>
         )}
-        <Row label={t('settings:mcp.enabled')}>
+        <Row label={t('mcp:enabled')}>
           <Switch
             checked={editing.enabled}
             onCheckedChange={(c) => update({ enabled: c })}
           />
         </Row>
-        <Row label={t('settings:mcp.approvalMode')}>
+        <Row label={t('mcp:approvalMode')}>
           <select
             value={editing.approvalMode}
             onChange={(e) => update({ approvalMode: e.target.value as 'always' | 'auto' })}
             style={selectStyle}
           >
-            <option value="always">{t('settings:mcp.approvalAlways')}</option>
-            <option value="auto">{t('settings:mcp.approvalAuto')}</option>
+            <option value="always">{t('mcp:approvalAlways')}</option>
+            <option value="auto">{t('mcp:approvalAuto')}</option>
           </select>
         </Row>
         {testMsg ? (
-          <p style={{ fontSize: '0.8rem', color: testMsg.includes(t('settings:mcp.testSuccess', { count: 0 }).split('{{count}}')[0]) ? 'var(--color-success)' : 'var(--color-danger)' }}>
+          <p style={{ fontSize: '0.8rem', color: testOk ? 'var(--color-success)' : 'var(--color-danger)' }}>
             {testMsg}
           </p>
         ) : null}
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="secondary" size="sm" onClick={() => void onSave()}>
-            {t('settings:mcp.save')}
+            {t('mcp:save')}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void onTest()} disabled={testing}>
-            {testing ? t('settings:mcp.testing') : t('settings:mcp.test')}
+            {testing ? t('mcp:testing') : t('mcp:test')}
           </Button>
           <Button variant="ghost" size="sm" onClick={cancelEdit}>
-            {t('settings:mcp.cancel')}
+            {t('mcp:cancel')}
           </Button>
         </div>
       </div>
@@ -250,7 +257,7 @@ export function McpSettings() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {servers.length === 0 && !loading ? (
-        <p style={{ color: 'var(--color-fg-3)', fontSize: '0.85rem' }}>{t('settings:mcp.empty')}</p>
+        <p style={{ color: 'var(--color-fg-3)', fontSize: '0.85rem' }}>{t('mcp:empty')}</p>
       ) : null}
       {servers.map((s) => (
         <div
@@ -274,11 +281,11 @@ export function McpSettings() {
               )}
               <span style={{ fontWeight: 500, fontSize: '0.88rem' }}>{s.config.name}</span>
               <Badge variant={s.connected ? 'success' : 'default'}>
-                {s.connected ? t('settings:mcp.connected') : t('settings:mcp.disconnected')}
+                {s.connected ? t('mcp:connected') : t('mcp:disconnected')}
               </Badge>
               {s.connected ? (
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)' }}>
-                  {t('settings:mcp.tools', { count: s.toolCount })}
+                  {t('mcp:tools', { count: s.toolCount })}
                 </span>
               ) : null}
             </div>
@@ -288,7 +295,7 @@ export function McpSettings() {
                 size="sm"
                 onClick={() => void onToggleConnect(s)}
               >
-                {s.connected ? t('settings:mcp.disconnect') : t('settings:mcp.connect')}
+                {s.connected ? t('mcp:disconnect') : t('mcp:connect')}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>
                 <Pencil size={14} />
@@ -302,12 +309,12 @@ export function McpSettings() {
             {s.config.transport === 'stdio'
               ? `${s.config.command} ${(s.config.args ?? []).join(' ')}`
               : s.config.url}
-            {s.config.enabled ? ` · ${t('settings:mcp.enabled')}` : ''}
+            {s.config.enabled ? ` · ${t('mcp:enabled')}` : ''}
           </div>
         </div>
       ))}
       <Button variant="secondary" size="sm" onClick={startAdd}>
-        <Plus size={14} /> {t('settings:mcp.add')}
+        <Plus size={14} /> {t('mcp:add')}
       </Button>
     </div>
   )

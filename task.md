@@ -159,7 +159,9 @@
   - `tools/mcp/index.ts`：入口——`initMcpServers()` 启动时并行连接 enabled 服务器（不阻塞 app ready）；`disconnectAll()` 退出清理
   - `ipc/mcp.ts`：7 个 IPC handler——listServers/addServer/updateServer/removeServer/connectServer/disconnectServer/testServer
   - `preload/index.ts`：`window.one.mcp.*` 命名空间
-  - `renderer/components/McpSettings.tsx`：设置页 MCP 管理面板——服务器列表（连接状态 + 工具数 badge）+ 添加/编辑/删除/连接/断开/测试连接表单
+  - `renderer/components/McpSettings.tsx`：MCP 管理面板——服务器列表（连接状态 + 工具数 badge）+ 添加/编辑/删除/连接/断开/测试连接表单
+  - `renderer/pages/McpPage.tsx`：独立顶级导航页 `/mcp`（PageToolbar + McpSettings），与 Models 平行——均为「给 Agent 接外部服务」的连接配置；Settings 回归静态偏好，运行时连接管理独立成页（IA 修正：原埋设置子区会埋没连接状态/测试反馈）
+  - i18n：独立 `mcp` 命名空间（`locales/{zh-CN,en}/mcp.json`），与 `registry` 同级；`common.pages.mcp` 导航标签；settings.json 的 mcp 段已删
   - 安全：P0 审批闸门复用（approvalMode='always' → onApprove 回调 → ApprovalCard）；ctx.signal 透传 client.callTool 支持取消
   - `web.ts` 搜索后端替换：Brave API（结构化 JSON 首选）> Jina Search > Bing HTML（降级 fallback）
   - 12 个 adapter 测试（注册/注销/AJV 校验/approvalMode/error 透传）；307 测试全绿，tsc 零错误

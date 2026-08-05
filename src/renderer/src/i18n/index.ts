@@ -9,15 +9,17 @@ import zhCnEditor from '../../public/locales/zh-CN/editor.json'
 import zhCnSettings from '../../public/locales/zh-CN/settings.json'
 import zhCnRegistry from '../../public/locales/zh-CN/registry.json'
 import zhCnErrors from '../../public/locales/zh-CN/errors.json'
+import zhCnMcp from '../../public/locales/zh-CN/mcp.json'
 import enCommon from '../../public/locales/en/common.json'
 import enHome from '../../public/locales/en/home.json'
 import enEditor from '../../public/locales/en/editor.json'
 import enSettings from '../../public/locales/en/settings.json'
 import enRegistry from '../../public/locales/en/registry.json'
 import enErrors from '../../public/locales/en/errors.json'
+import enMcp from '../../public/locales/en/mcp.json'
 import { startupMark } from '@renderer/lib/startupMark'
 
-const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors'] as const
+const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors', 'mcp'] as const
 
 // —— i18n（§十二）：默认 zh-CN；资源内联，禁止 HttpBackend ——
 const isDev = !!import.meta.env.DEV
@@ -37,6 +39,7 @@ void i18n
         settings: zhCnSettings,
         registry: zhCnRegistry,
         errors: zhCnErrors,
+        mcp: zhCnMcp,
       },
       en: {
         common: enCommon,
@@ -45,6 +48,7 @@ void i18n
         settings: enSettings,
         registry: enRegistry,
         errors: enErrors,
+        mcp: enMcp,
       },
     },
     interpolation: {
