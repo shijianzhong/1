@@ -23,6 +23,7 @@ export function Markdown({ children }: { children: string }) {
                 border: 0,
                 borderRadius: 12,
                 padding: 14,
+                maxWidth: '100%',
                 overflowX: 'auto',
                 fontFamily: 'var(--font-mono)',
                 fontSize: '0.85rem',

@@ -263,6 +263,7 @@ html[data-platform='darwin'] .titlebar__inner {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden; /* CSS 规范：overflow-y:auto 时 overflow-x:visible 会计算为 auto → 必须显式 hidden */
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -1258,6 +1259,17 @@ html[data-platform='darwin'] .titlebar__inner {
 .message__bubble {
   min-width: 0;
   overflow-wrap: break-word;
+}
+
+/* markdown-body: 兜底溢出约束 — KaTeX 公式/图片等不可断行内容不撑宽 bubble */
+.message__bubble .markdown-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.message__bubble .markdown-body img {
+  max-width: 100%;
+  height: auto;
 }
 
 .message__bubble :where(pre, table) {
