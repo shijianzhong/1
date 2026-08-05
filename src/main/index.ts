@@ -13,6 +13,7 @@ import { registerOpenCliTools } from './tools/builtin/opencli'
 import { registerFileTools } from './tools/builtin/file'
 import { registerSkillScriptTools } from './tools/builtin/skillScript'
 import { registerShellTools } from './tools/builtin/shell'
+import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
 import { createTray, destroyTray } from './tray'
 import {
   registerGlobalShortcut,
@@ -138,6 +139,8 @@ if (!gotLock) {
     registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
     registerShellTools() // Shell 工具（shell_run，approvalMode='always' + DANGER_PATTERNS preCheck）
     startupMark('main:tools-registered')
+    // MCP 服务器异步自动连接（不阻塞启动）
+    void initMcpServers()
     registerIpcHandlers()
     startupMark('main:ipc-registered')
     createMainWindow()
@@ -197,6 +200,7 @@ if (!gotLock) {
     unregisterGlobalShortcut()
     destroyTray()
     stopAutoUpdater()
+    void disconnectAllMcp() // 断开所有 MCP 服务器连接
     closeDb()
   })
 }

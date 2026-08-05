@@ -24,6 +24,7 @@ import { registerOrchestrateHandlers } from './orchestrate'
 import { registerNativeHandlers } from './native'
 import { registerProvidersHandlers } from './providers'
 import { registerRegistryHandlers } from './registry'
+import { registerMcpHandlers } from './mcp'
 import { startupMarkFromRenderer } from '../startup-log'
 
 const THEME_FILE = 'theme.json'
@@ -194,5 +195,6 @@ export function registerIpcHandlers(): void {
   registerOrchestrateHandlers()
   registerProvidersHandlers()
   registerRegistryHandlers()
+  registerMcpHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
 }

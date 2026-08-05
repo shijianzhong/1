@@ -10,6 +10,16 @@
     "shell_not_found": "Shell not available",
     "shell_nonzero_exit": "Shell command exited with non-zero code",
     "shell_stdout_limit": "Shell output limit exceeded, terminated",
+    "search_no_key": "No search API key configured",
+    "search_rate_limited": "Search API rate limited",
+    "search_failed": "Search backend request failed",
+    "search_no_results": "No search results (possible anti-bot)",
     "unknown_tool": "Unknown tool"
+  },
+  "mcp": {
+    "connect_failed": "MCP server connection failed",
+    "tool_call_failed": "MCP tool call failed",
+    "config_invalid": "MCP config invalid",
+    "name_conflict": "Tool name conflict, skipped"
   }
 }

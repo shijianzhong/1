@@ -1,14 +1,16 @@
 import { z } from 'zod'
 import { registerTool } from '../registry'
 
-// —— 内置联网工具（零依赖：纯 HTTP，随包即用，对应 Agent-Reach 免费渠道的 TS 原生实现）——
+// —— 内置联网工具（P2-search：搜索后端优先 API，弃用裸爬 Bing HTML）——
 // web_read   = Jina Reader（r.jina.ai，免 key 有限流；JINA_API_KEY 提额）
-// web_search = 默认 Bing CN HTML（免 key、国内直连；摘要自带相对日期利于时效筛选）；
-//              设 JINA_API_KEY 后走 Jina Search（语义质量更高）
-//              （DuckDuckGo 国内不可达、s.jina.ai 免 key 已 401，均弃用）
+// web_search = 后端优先级：Brave API > Jina Search > Bing HTML（降级 fallback）
+//              Brave：BRAVE_API_KEY 环境变量，REST API，结构化 JSON
+//              Jina：JINA_API_KEY 环境变量，语义搜索
+//              Bing：免 key 降级（反爬风险，仅最后手段）
 //
 // 错误策略：4xx（鉴权/限流）重试无意义 → 直接返回结构化错误 JSON；
 // 5xx/网络错误 → 抛出，交给 registry 重试层（铁律11）。
+// 错误文案用 messageKey（铁律 T2），不硬编码中文。
 
 const READ_CAP = 12_000
 const SEARCH_CAP = 6_000
@@ -43,14 +45,29 @@ async function fetchText(
   }
 }
 
-// —— Bing CN HTML 结果解析（b_algo 块 → h2 内锚点直连 URL + b_lineclampN 摘要）——
+/** fetch JSON（Brave API 等结构化接口用） */
+async function fetchJson(
+  url: string,
+  signal: AbortSignal | undefined,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ ok: true; data: unknown } | { ok: false; status: number }> {
+  const r = await fetchText(url, signal, extraHeaders)
+  if (!r.ok) return r
+  try {
+    return { ok: true, data: JSON.parse(r.text) }
+  } catch {
+    return { ok: false, status: 502 }
+  }
+}
 
+// —— 搜索结果结构 ——
 interface SearchResult {
   title: string
   url: string
   snippet: string
 }
 
+// —— Bing CN HTML 结果解析（降级 fallback，保留原实现）——
 function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, '')
 }
@@ -87,6 +104,63 @@ function parseBingHtml(html: string, limit: number): SearchResult[] {
   return results
 }
 
+/** Brave Search API：结构化 JSON，无反爬 */
+async function searchBrave(
+  query: string,
+  signal: AbortSignal | undefined,
+): Promise<{ ok: true; results: SearchResult[] } | { ok: false; error: string; messageKey: string }> {
+  const key = process.env.BRAVE_API_KEY
+  if (!key) return { ok: false, error: 'no_key', messageKey: 'errors.tools.search_no_key' }
+
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${SEARCH_LIMIT}`
+  const r = await fetchJson(url, signal, {
+    'X-Subscription-Token': key,
+    Accept: 'application/json',
+  })
+  if (!r.ok) {
+    return {
+      ok: false,
+      error: `http_${r.status}`,
+      messageKey: r.status === 401 || r.status === 429
+        ? 'errors.tools.search_rate_limited'
+        : 'errors.tools.search_failed',
+    }
+  }
+
+  const data = r.data as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } }
+  const raw = data.web?.results ?? []
+  const results: SearchResult[] = raw.slice(0, SEARCH_LIMIT).map((item) => ({
+    title: item.title ?? '',
+    url: item.url ?? '',
+    snippet: item.description ?? '',
+  })).filter((r) => r.url)
+
+  return { ok: true, results }
+}
+
+/** Jina Search：语义搜索，需 JINA_API_KEY */
+async function searchJina(
+  query: string,
+  signal: AbortSignal | undefined,
+): Promise<{ ok: true; text: string } | { ok: false; error: string; messageKey: string }> {
+  const key = process.env.JINA_API_KEY
+  if (!key) return { ok: false, error: 'no_key', messageKey: 'errors.tools.search_no_key' }
+
+  const r = await fetchText(
+    `https://s.jina.ai/?q=${encodeURIComponent(query)}`,
+    signal,
+    { Authorization: `Bearer ${key}` },
+  )
+  if (!r.ok) {
+    return {
+      ok: false,
+      error: `http_${r.status}`,
+      messageKey: 'errors.tools.search_failed',
+    }
+  }
+  return { ok: true, text: r.text }
+}
+
 export function registerWebTools(): void {
   registerTool(
     'web_read',
@@ -97,7 +171,7 @@ export function registerWebTools(): void {
     async (args, ctx) => {
       const { url } = args as { url: string }
       if (!/^https?:\/\//.test(url)) {
-        return { ok: false, error: 'invalid_url', hint: 'url 必须以 http(s):// 开头' }
+        return { ok: false, error: 'invalid_url', hint: 'url must start with http(s)://' }
       }
       const key = process.env.JINA_API_KEY
       const r = await fetchText(
@@ -111,8 +185,8 @@ export function registerWebTools(): void {
           error: `http_${r.status}`,
           hint:
             r.status === 401 || r.status === 429
-              ? 'Jina Reader 免 key 额度受限：设置 JINA_API_KEY 环境变量提额，或稍后重试'
-              : '目标页读取失败，可换 web_search 找其它来源',
+              ? 'Jina Reader rate-limited: set JINA_API_KEY env var, or retry later'
+              : 'Failed to read page, try web_search for other sources',
         }
       }
       return {
@@ -133,25 +207,29 @@ export function registerWebTools(): void {
     async (args, ctx) => {
       const { query } = args as { query: string }
 
-      // 带 key → Jina Search（语义质量更高）；否则 Bing CN（免 key、国内直连）
-      const key = process.env.JINA_API_KEY
-      if (key) {
-        const r = await fetchText(
-          `https://s.jina.ai/?q=${encodeURIComponent(query)}`,
-          ctx.signal,
-          { Authorization: `Bearer ${key}` },
-        )
-        if (r.ok) {
-          return {
-            ok: true,
-            query,
-            backend: 'jina',
-            results: r.text.slice(0, SEARCH_CAP),
-            truncated: r.text.length > SEARCH_CAP,
-          }
-        } // key 失效等 → 落 Bing
+      // —— 1. Brave Search API（首选：结构化 JSON，无反爬）——
+      const brave = await searchBrave(query, ctx.signal)
+      if (brave.ok) {
+        return { ok: true, query, backend: 'brave', results: brave.results }
+      }
+      // 无 key → 跳过；有 key 但失败 → 记录后降级
+      if (brave.error !== 'no_key') {
+        // Brave 有 key 但失败了 → 降级到 Jina
       }
 
+      // —— 2. Jina Search（次选：语义搜索，需 key）——
+      const jina = await searchJina(query, ctx.signal)
+      if (jina.ok) {
+        return {
+          ok: true,
+          query,
+          backend: 'jina',
+          results: jina.text.slice(0, SEARCH_CAP),
+          truncated: jina.text.length > SEARCH_CAP,
+        }
+      }
+
+      // —— 3. Bing CN HTML（降级 fallback：免 key，但有反爬风险）——
       const r = await fetchText(
         `https://cn.bing.com/search?q=${encodeURIComponent(query)}`,
         ctx.signal,
@@ -160,7 +238,8 @@ export function registerWebTools(): void {
         return {
           ok: false,
           error: `http_${r.status}`,
-          hint: 'Bing 搜索被拒（可能限流）：稍后重试，或设置 JINA_API_KEY 走 Jina 搜索后端',
+          messageKey: 'errors.tools.search_failed',
+          hint: 'Search backend unavailable: set BRAVE_API_KEY or JINA_API_KEY for better results',
         }
       }
       const results = parseBingHtml(r.text, SEARCH_LIMIT)
@@ -168,7 +247,8 @@ export function registerWebTools(): void {
         return {
           ok: false,
           error: 'no_results',
-          hint: '未解析到结果（可能触发风控或确实无结果）：换关键词重试，或设置 JINA_API_KEY 走 Jina 后端',
+          messageKey: 'errors.tools.search_no_results',
+          hint: 'No results parsed (possible anti-bot): try different keywords or set BRAVE_API_KEY',
         }
       }
       return { ok: true, query, backend: 'bing', results }

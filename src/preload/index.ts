@@ -4,6 +4,8 @@ import type {
   Capability,
   IpcResult,
   LLMConfig,
+  McpServerConfig,
+  McpServerStatus,
   ModelConfig,
   Persona,
   Session,
@@ -130,6 +132,15 @@ export interface OneApi {
     /** 仓库 star/fork 统计（匿名 60/h 配额，有 token 自动附带） */
     getRepoStats: () => Promise<IpcResult<{ stars: number; forks: number }>>
   }
+  mcp: {
+    listServers: () => Promise<IpcResult<McpServerStatus[]>>
+    addServer: (input: Omit<McpServerConfig, 'id'>) => Promise<IpcResult<McpServerConfig>>
+    updateServer: (input: { id: string } & Partial<Omit<McpServerConfig, 'id'>>) => Promise<IpcResult<McpServerConfig | null>>
+    removeServer: (id: string) => Promise<IpcResult<boolean>>
+    connectServer: (id: string) => Promise<IpcResult<{ toolCount: number }>>
+    disconnectServer: (id: string) => Promise<IpcResult<void>>
+    testServer: (input: Omit<McpServerConfig, 'id'>) => Promise<IpcResult<{ toolCount: number; tools: Array<{ name: string; description?: string }> }>>
+  }
   app: {
     setAutoLaunch: (on: boolean) => Promise<IpcResult<boolean>>
     getAutoLaunch: () => Promise<IpcResult<boolean>>
@@ -240,6 +251,15 @@ const api: OneApi = {
     openContribute: () => ipcRenderer.invoke('registry:openContribute'),
     submitPr: (input) => ipcRenderer.invoke('registry:submitPr', input),
     getRepoStats: () => ipcRenderer.invoke('registry:getRepoStats'),
+  },
+  mcp: {
+    listServers: () => ipcRenderer.invoke('mcp:listServers'),
+    addServer: (input) => ipcRenderer.invoke('mcp:addServer', input),
+    updateServer: (input) => ipcRenderer.invoke('mcp:updateServer', input),
+    removeServer: (id) => ipcRenderer.invoke('mcp:removeServer', id),
+    connectServer: (id) => ipcRenderer.invoke('mcp:connectServer', id),
+    disconnectServer: (id) => ipcRenderer.invoke('mcp:disconnectServer', id),
+    testServer: (input) => ipcRenderer.invoke('mcp:testServer', input),
   },
   app: {
     setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', on),

@@ -10,6 +10,16 @@
     "shell_not_found": "Shell 不可用",
     "shell_nonzero_exit": "Shell 命令退出码非零",
     "shell_stdout_limit": "Shell 输出超限，已终止",
+    "search_no_key": "未配置搜索 API Key",
+    "search_rate_limited": "搜索 API 被限流",
+    "search_failed": "搜索后端请求失败",
+    "search_no_results": "搜索无结果（可能触发反爬）",
     "unknown_tool": "未知工具"
+  },
+  "mcp": {
+    "connect_failed": "MCP 服务器连接失败",
+    "tool_call_failed": "MCP 工具调用失败",
+    "config_invalid": "MCP 配置无效",
+    "name_conflict": "工具名冲突，已跳过"
   }
 }

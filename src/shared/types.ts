@@ -828,3 +828,36 @@ export interface AgentOrchestrationOutput {
   next_speaker: string
   final_message: string
 }
+
+// —— MCP（Model Context Protocol）服务器配置与状态 ——
+export type McpTransportType = 'stdio' | 'http'
+
+export interface McpServerConfig {
+  id: string
+  name: string
+  transport: McpTransportType
+  /** stdio: 可执行文件路径 */
+  command?: string
+  /** stdio: 命令行参数 */
+  args?: string[]
+  /** stdio: 环境变量（不传则继承安全子集） */
+  env?: Record<string, string>
+  /** stdio: 工作目录 */
+  cwd?: string
+  /** http: 服务器 URL */
+  url?: string
+  /** http: 自定义请求头 */
+  headers?: Record<string, string>
+  /** 启动时自动连接 */
+  enabled: boolean
+  /** 工具审批模式：always=每次调用需确认（默认），auto=自动执行 */
+  approvalMode?: 'always' | 'auto'
+}
+
+export interface McpServerStatus {
+  config: McpServerConfig
+  connected: boolean
+  toolCount: number
+  error?: string
+  tools?: Array<{ name: string; description?: string }>
+}
