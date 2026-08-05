@@ -175,10 +175,14 @@ export async function executeTool(
     }
   }
 
-  // —— 3. 正常执行 handler（含重试）——
-  // 重试 3 次，失败返回错误 JSON 不抛（铁律11）
+  // —— 3. 正常执行 handler ——
+  // approvalMode='always' 的工具不自动重试：用户批准的是一次特定调用，
+  // 自动重试会绕过审批闸门执行用户未确认的重复操作（如重复扣款、重复写入）。
+  // 其他工具重试 3 次，失败返回错误 JSON 不抛（铁律11）。
+  const skipRetry = entry.def.approvalMode === 'always'
+  const maxAttempts = skipRetry ? 1 : RETRY_DELAYS_MS.length + 1
   let lastError: unknown
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const result = await entry.handler(r.data, ctx)
       return {
@@ -188,7 +192,7 @@ export async function executeTool(
       }
     } catch (error) {
       lastError = error
-      if (attempt < RETRY_DELAYS_MS.length) {
+      if (attempt < maxAttempts - 1) {
         logger.warn(`[tool:${name}] 重试 ${attempt + 1}`, error)
         await sleep(RETRY_DELAYS_MS[attempt])
       }
@@ -208,6 +212,17 @@ export function listToolDefs(): LlmToolDef[] {
     description: t.def.description,
     input_schema: t.def.input_schema,
   }))
+}
+
+/** 列出所有非 MCP 工具（C1 修复：首页/组队 agent 默认不暴露 MCP 工具，需显式注入） */
+export function listBuiltinToolDefs(): LlmToolDef[] {
+  return Array.from(registry.values())
+    .filter((t) => !t.def.name.startsWith('mcp__'))
+    .map((t) => ({
+      name: t.def.name,
+      description: t.def.description,
+      input_schema: t.def.input_schema,
+    }))
 }
 
 export function getToolDefs(names: string[]): LlmToolDef[] {

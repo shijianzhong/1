@@ -10,6 +10,7 @@ import {
   listServerTools,
   registerMcpTools,
   unregisterMcpTools,
+  sanitizeConfig,
 } from '../tools/mcp'
 import type { McpServerConfig, McpServerStatus } from '@shared/types'
 import { logger } from '../logger'
@@ -36,7 +37,7 @@ export function registerMcpHandlers(): void {
         }
       }
       statuses.push({
-        config,
+        config: sanitizeConfig(config), // I3 修复：env/headers 脱敏，不暴露密钥到渲染层
         connected,
         toolCount: tools.length,
         tools,
@@ -84,12 +85,14 @@ export function registerMcpHandlers(): void {
     return removeMcpServer(id)
   })
 
-  // 连接到服务器 + 注册工具
+  // 连接到服务器 + 注册工具（I2 修复：重连前先注销旧工具，避免 hasTool 冲突导致 toolCount=0）
   withHandler<{ toolCount: number }>('mcp:connectServer', async (_e, idRaw) => {
     const id = idRaw as string
     const configs = await loadMcpConfig()
     const config = configs.find((s) => s.id === id)
     if (!config) throw new Error('Server not found')
+    // 先注销旧工具（重连场景：旧工具仍在 registry → hasTool 拦截 → 注册 0 个）
+    unregisterMcpTools(id)
     await connectServer(config)
     const count = await registerMcpTools(config)
     return { toolCount: count }

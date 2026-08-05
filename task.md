@@ -148,7 +148,8 @@
 
 ## 阶段 7：工具与 MCP（持续）
 
-- [ ] 7.1 内置工具 TS 重写（shell / grep / glob / browser_use / desktop_screenshot）—— 已有 `memory_*` / `propose_*` / `ask_user` / `web_search` / `web_read` / `opencli_run` / `file_write` / `file_read` / `file_search`；shell/browser_use 未做
+- [ ] 7.1 内置工具 TS 重写（shell / grep / glob / browser_use / desktop_screenshot）—— 已有 `memory_*` / `propose_*` / `ask_user` / `web_search` / `web_read` / `opencli_run` / `file_write` / `file_read` / `file_search` / `shell_run`；browser_use 未做
+- [x] 7.1d shell_run 工具（2026-08-05）：`spawn` async + 进程组 SIGKILL + 120s 默认超时（max 300s）+ stdout 256KB 上限 + env 敏感值过滤（`_KEY`/`_SECRET`/`_TOKEN`/`_ID` 后缀置空）+ `DANGER_PATTERNS` preCheck 硬拦 + approvalMode='always' 每次确认
 - [x] 7.1c 文件工具（2026-08-01）：`file_write`（原子写/自动建目录/append）+ `file_read` + `file_search`（文件名+内容 OR 匹配）；路径围栏限允许根目录（默认 `~/sh/DailyNotes` Obsidian vault + `userData/exports`，`config/file-roots.json` 或 `ONE_FILE_ROOTS` env 扩展）；4 个 skill 的 agent-reach/search_files 失效引用已全部改指真实工具
 - [x] 7.1a 联网工具（2026-08-01）：`web_read`（Jina Reader 免 key）；`web_search`（默认 Bing CN HTML 免 key国内直连，摘要自带相对日期；`JINA_API_KEY` 切 Jina Search；4xx 不重试直接结构化错误）；`opencli_run`（OpenCLI 白名单 spawn，写操作动词拦截，退出码→可行动提示；生产走随包 `vendor/opencli` + `ELECTRON_RUN_AS_NODE` 用户零安装，开发回退系统 PATH）
 - [ ] 7.1b `opencli_run` 增强：以 `opencli list -f json` 的 `access: write` 字段做写拦截（自维护，替代静态动词表）；Chrome 扩展未连接的首次运行引导 UI
@@ -165,6 +166,13 @@
   - 安全：P0 审批闸门复用（approvalMode='always' → onApprove 回调 → ApprovalCard）；ctx.signal 透传 client.callTool 支持取消
   - `web.ts` 搜索后端替换：Brave API（结构化 JSON 首选）> Jina Search > Bing HTML（降级 fallback）
   - 12 个 adapter 测试（注册/注销/AJV 校验/approvalMode/error 透传）；307 测试全绿，tsc 零错误
+  - 代码 review 修复（2026-08-05）：
+    - I4: `approvalMode='always'` 工具跳过自动重试（registry.ts — 用户批准的是一次特定调用，自动重试绕过审批闸门）
+    - I1+I2: MCP teardown 统一（client.ts onclose 回调 → unregisterMcpTools；connectServer 先注销旧工具避免 hasTool 冲突 toolCount=0）
+    - C1: 工具列表裁剪（`listBuiltinToolDefs()` 过滤 `mcp__` 前缀工具；首页/组队 agent 默认不暴露 MCP 工具，需显式注入）
+    - I3: MCP 密钥走 vault（config.ts encryptSecrets/resolveSecrets/sanitizeConfig；env/headers 值存 safeStorage，配置文件只存 `vault:` 引用标记；listServers IPC 脱敏返回 `••••••••`）
+    - M5: env scrub 增强（shell.ts `sanitizeEnv` 补 `_ID` 后缀）
+    - M6: toolCtx 顺序修正（home.ts AbortController 在 toolCtx 之前创建，避免 TDZ 风险）
 - [ ] 7.3 即梦文生图等外部工具
 - [x] 7.4 Skill = ContextProvider（`beforeRun`/`afterRun`、discipline 注入、async 脚本 spawn）✅ 2026-08-03
   - `skills/provider.ts`：`SkillContextProvider.beforeRun`（<skill> XML 块 24000 限长 + scripts 清单行 + `【输出纪律】`discipline 段，三处调用点统一收口：编辑器编排 / 首页主 Agent / **首页组队图节点（此前完全没注入 skill，顺带补齐 outputConstraints 注入对齐）**）；`afterRun` 运行结束审计（orchestrate/home 两侧 finally 统一调）

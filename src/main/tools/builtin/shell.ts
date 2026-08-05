@@ -107,11 +107,11 @@ function runShell(
   })
 }
 
-/** env 过滤：以 _KEY / _SECRET / _TOKEN 结尾的变量置空，避免 API key 等通过 env 命令泄露 */
+/** env 过滤：以 _KEY / _SECRET / _TOKEN / _ID 结尾的变量置空，避免 API key 等通过 env 命令泄露 */
 function sanitizeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const filtered = { ...env }
   for (const key of Object.keys(filtered)) {
-    if (/_KEY$|_SECRET$|_TOKEN$/i.test(key)) {
+    if (/_KEY$|_SECRET$|_TOKEN$|_ID$/i.test(key)) {
       filtered[key] = ''
     }
   }

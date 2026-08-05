@@ -34,7 +34,7 @@ import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
-import { listToolDefs } from '../tools/registry'
+import { listBuiltinToolDefs } from '../tools/registry'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
 import {
   newRequestId,
@@ -201,6 +201,18 @@ export function registerHomeHandlers(): void {
     // —— 记忆策略指令段（铁律21 L3 激活）：告诉主 Agent 何时记/何时取，附已有记忆 key 防重复。
     const instructions = `${instructionsWithRouting}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}`
 
+    // 取消控制器：贯穿主 Agent 流式 / 组队 runner / ask_user 挂起（home:cancel 生效）。
+    // 并发防御：单窗口 + 渲染层 sending 守卫下不会并发，但若发生（重复 IPC 调用），
+    // 先取消上一次运行——否则旧运行失去取消句柄成僵尸
+    // M6 修复：AbortController 必须在 toolCtx 之前创建——toolCtx 闭包引用 signal，
+    // 虽 JS 闭包延迟取值不会报错，但先创建可避免 TDZ 风险 + 代码意图更清晰
+    if (currentAbortController) {
+      logger.warn('[home] 已有运行中的聊天，自动取消旧运行')
+      currentAbortController.abort()
+    }
+    currentAbortController = new AbortController()
+    const { signal } = currentAbortController
+
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
     // - adaptive：仅 Opus 4.7/4.8/Opus 5 支持
@@ -211,7 +223,7 @@ export function registerHomeHandlers(): void {
       name: 'home',
       instructions,
       modelId,
-      tools: listToolDefs(),
+      tools: listBuiltinToolDefs(),
       defaultOptions: { maxTokens: 16384 },
       thinking,
     }
@@ -219,6 +231,7 @@ export function registerHomeHandlers(): void {
       llmOpts: { apiKey, baseURL, authHeader },
       toolCtx: {
         sessionId: sid,
+        signal,
         // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
         onPropose: (draft) => {
           pruneDrafts()
@@ -264,16 +277,6 @@ export function registerHomeHandlers(): void {
       },
     })
 
-    // 取消控制器：贯穿主 Agent 流式 / 组队 runner / ask_user 挂起（home:cancel 生效）。
-    // 并发防御：单窗口 + 渲染层 sending 守卫下不会并发，但若发生（重复 IPC 调用），
-    // 先取消上一次运行——否则旧运行失去取消句柄成僵尸
-    if (currentAbortController) {
-      logger.warn('[home] 已有运行中的聊天，自动取消旧运行')
-      currentAbortController.abort()
-    }
-    currentAbortController = new AbortController()
-    const { signal } = currentAbortController
-
     // —— 编排图 BuildDeps（组队/能力直跑共用）——
     const buildDeps: BuildDeps = {
       resolveAgent: (node) => {
@@ -312,7 +315,7 @@ export function registerHomeHandlers(): void {
           description: d.description,
           instructions: finalNodeInstructions,
           modelId: d.modelId ?? modelId,
-          tools: listToolDefs(),
+          tools: listBuiltinToolDefs(),
           defaultOptions: { maxTokens: d.maxTokens ?? 16384, temperature: d.temperature },
           outputConstraints: d.outputConstraints,
           thinking: nodeThinking,
