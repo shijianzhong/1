@@ -159,12 +159,18 @@ export async function addMcpServer(
   input: Omit<McpServerConfig, 'id'>,
 ): Promise<McpServerConfig> {
   const servers = await loadMcpConfig()
-  const config: McpServerConfig = { ...input, id: randomUUID() }
+  const config: McpServerConfig = {
+    ...input,
+    id: randomUUID(),
+    // 默认不注入 agent，需用户显式勾选 exposeToAgents（R2）
+    exposeToAgents: input.exposeToAgents ?? false,
+  }
   const encrypted = encryptSecrets(config)
   servers.push(encrypted)
   await saveMcpConfig(servers)
   logger.info(`[mcp] added server: ${config.name} (${config.id})`)
-  return config
+  // R3：IPC 回传脱敏视图，永不把明文/vault 引用交给渲染层
+  return sanitizeConfig(encrypted)
 }
 
 export async function updateMcpServer(
@@ -181,7 +187,7 @@ export async function updateMcpServer(
   servers[idx] = encrypted
   await saveMcpConfig(servers)
   logger.info(`[mcp] updated server: ${servers[idx].name} (${id})`)
-  return merged
+  return sanitizeConfig(encrypted)
 }
 
 export async function removeMcpServer(id: string): Promise<boolean> {

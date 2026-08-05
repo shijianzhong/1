@@ -214,10 +214,37 @@ export function listToolDefs(): LlmToolDef[] {
   }))
 }
 
-/** 列出所有非 MCP 工具（C1 修复：首页/组队 agent 默认不暴露 MCP 工具，需显式注入） */
+/** 列出所有非 MCP 工具（首页/编排默认底座，不含 mcp__*） */
 export function listBuiltinToolDefs(): LlmToolDef[] {
+  return listAgentToolDefs([])
+}
+
+/**
+ * 从 `mcp__{serverId}__{toolName}` 解析 serverId；非 MCP 工具返回 null。
+ * serverId 为 UUID（含连字符、无 `__`），toolName 可含下划线。
+ */
+export function mcpServerIdFromToolName(name: string): string | null {
+  if (!name.startsWith('mcp__')) return null
+  const rest = name.slice('mcp__'.length)
+  const i = rest.indexOf('__')
+  if (i <= 0) return null
+  return rest.slice(0, i)
+}
+
+/**
+ * 列出 agent 可见工具：全部 builtin + 显式暴露的 MCP server 工具（R1/R2）。
+ * @param exposedMcpServerIds 已勾选 exposeToAgents 且当前已连接的 server id
+ */
+export function listAgentToolDefs(exposedMcpServerIds: Iterable<string> = []): LlmToolDef[] {
+  const exposed = exposedMcpServerIds instanceof Set
+    ? exposedMcpServerIds
+    : new Set(exposedMcpServerIds)
   return Array.from(registry.values())
-    .filter((t) => !t.def.name.startsWith('mcp__'))
+    .filter((t) => {
+      const sid = mcpServerIdFromToolName(t.def.name)
+      if (sid === null) return true
+      return exposed.has(sid)
+    })
     .map((t) => ({
       name: t.def.name,
       description: t.def.description,

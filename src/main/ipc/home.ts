@@ -34,7 +34,7 @@ import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
-import { listBuiltinToolDefs } from '../tools/registry'
+import { listToolsForAgents } from '../tools/mcp'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
 import {
   newRequestId,
@@ -213,6 +213,9 @@ export function registerHomeHandlers(): void {
     currentAbortController = new AbortController()
     const { signal } = currentAbortController
 
+    // R1/R2：builtin + 显式 exposeToAgents 且已连接的 MCP 工具（同一快照供主 Agent / 组队节点共用）
+    const agentTools = await listToolsForAgents()
+
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
     // - adaptive：仅 Opus 4.7/4.8/Opus 5 支持
@@ -223,7 +226,7 @@ export function registerHomeHandlers(): void {
       name: 'home',
       instructions,
       modelId,
-      tools: listBuiltinToolDefs(),
+      tools: agentTools,
       defaultOptions: { maxTokens: 16384 },
       thinking,
     }
@@ -315,7 +318,7 @@ export function registerHomeHandlers(): void {
           description: d.description,
           instructions: finalNodeInstructions,
           modelId: d.modelId ?? modelId,
-          tools: listBuiltinToolDefs(),
+          tools: agentTools,
           defaultOptions: { maxTokens: d.maxTokens ?? 16384, temperature: d.temperature },
           outputConstraints: d.outputConstraints,
           thinking: nodeThinking,

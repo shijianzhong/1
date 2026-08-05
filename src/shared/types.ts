@@ -852,6 +852,11 @@ export interface McpServerConfig {
   enabled: boolean
   /** 工具审批模式：always=每次调用需确认（默认），auto=自动执行 */
   approvalMode?: 'always' | 'auto'
+  /**
+   * 显式注入：为 true 且已连接时，该 server 的 mcp__* 工具才会进入首页/编排 agent 的工具列表。
+   * 默认 false——连接 ≠ 自动暴露给 LLM（C1/R2）。
+   */
+  exposeToAgents?: boolean
 }
 
 export interface McpServerStatus {

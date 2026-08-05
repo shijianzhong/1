@@ -20,7 +20,7 @@ import {
 import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
 import { addMessage } from '../storage/sessions'
 import { SkillContextProvider } from '../skills/provider'
-import { listToolDefs } from '../tools/registry'
+import { listToolsForAgents } from '../tools/mcp'
 import { resolveThinkingConfig } from '../llm/thinking'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -57,6 +57,8 @@ function makeResolveAgent(
   enableThinking?: boolean,
   apiFormat?: ApiFormat,
   signal?: AbortSignal,
+  /** R1/R2：builtin + 显式暴露的 MCP 工具快照（一次运行内固定） */
+  agentTools: LlmToolDef[] = [],
 ): {
   resolveAgent: (node: GraphNode) => AgentExecutorOptions | null
   /** 本运行创建的全部 SkillContextProvider（运行结束统一 afterRun 审计，铁律22） */
@@ -128,7 +130,7 @@ function makeResolveAgent(
       description: agentDescription,
       instructions: finalInstructions,
       modelId: agentModelId,
-      tools: listToolDefs(),
+      tools: agentTools,
       defaultOptions: { maxTokens: agentMaxTokens, temperature: agentTemperature },
       outputConstraints: agentOutputConstraints,
       thinking,
@@ -196,8 +198,9 @@ export function registerOrchestrateHandlers(): void {
       }
       currentAbortController = new AbortController()
       const { signal } = currentAbortController
+      const agentTools = await listToolsForAgents()
       const { resolveAgent, skillProviders } = makeResolveAgent(
-        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal,
+        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools,
       )
       const deps: BuildDeps = { resolveAgent }
 

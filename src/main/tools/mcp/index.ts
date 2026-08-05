@@ -1,6 +1,8 @@
 import { loadMcpConfig } from './config'
-import { connectServer, disconnectAll, setOnUnexpectedDisconnect } from './client'
+import { connectServer, disconnectAll, setOnUnexpectedDisconnect, isConnected } from './client'
 import { registerMcpTools, unregisterMcpTools } from './adapter'
+import { listAgentToolDefs } from '../registry'
+import type { LlmToolDef } from '@shared/types'
 import { logger } from '../../logger'
 
 // —— MCP 模块入口 ——
@@ -33,6 +35,18 @@ export async function initMcpServers(): Promise<void> {
       }
     }),
   )
+}
+
+/**
+ * 首页 / 编排 agent 工具列表（R1/R2）：
+ * builtin 全量 + 仅 `exposeToAgents === true` 且当前已连接的 MCP server 工具。
+ */
+export async function listToolsForAgents(): Promise<LlmToolDef[]> {
+  const configs = await loadMcpConfig()
+  const exposedIds = configs
+    .filter((c) => c.exposeToAgents === true && isConnected(c.id))
+    .map((c) => c.id)
+  return listAgentToolDefs(exposedIds)
 }
 
 export { disconnectAll }

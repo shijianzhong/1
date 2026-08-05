@@ -7,6 +7,9 @@ import {
   unregisterByPrefix,
   hasTool,
   listToolDefs,
+  listBuiltinToolDefs,
+  listAgentToolDefs,
+  mcpServerIdFromToolName,
 } from './registry'
 
 // —— 工具注册表单测（§10.1 + §三之三 J + 铁律11）——
@@ -223,5 +226,48 @@ describe('tools/registry', () => {
     registerTool('exists_tool', 'test', z.object({}), vi.fn())
     expect(hasTool('exists_tool')).toBe(true)
     expect(hasTool('nonexistent')).toBe(false)
+  })
+
+  it('approvalMode=always：handler throw 不自动重试（I4）', async () => {
+    const schema = z.object({ cmd: z.string() })
+    const handler = vi.fn().mockRejectedValue(new Error('boom'))
+    registerTool('always_no_retry', 'x', schema, handler, 'always')
+
+    const result = await executeTool(
+      'always_no_retry',
+      { cmd: 'x' },
+      'tu_nr',
+      { onApprove: vi.fn().mockResolvedValue({ approved: true }) },
+    )
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('boom')
+  })
+
+  it('listBuiltinToolDefs 排除 mcp__*；listAgentToolDefs 按 expose 白名单注入（R1/R2）', () => {
+    registerTool('web_search', 'w', z.object({}), vi.fn())
+    registerTool('mcp__sid-1__search', 'm', z.object({}), vi.fn())
+    registerTool('mcp__sid-2__fetch', 'm2', z.object({}), vi.fn())
+
+    const builtin = listBuiltinToolDefs().map((d) => d.name)
+    expect(builtin).toContain('web_search')
+    expect(builtin).not.toContain('mcp__sid-1__search')
+    expect(builtin).not.toContain('mcp__sid-2__fetch')
+
+    const exposed = listAgentToolDefs(['sid-1']).map((d) => d.name)
+    expect(exposed).toContain('web_search')
+    expect(exposed).toContain('mcp__sid-1__search')
+    expect(exposed).not.toContain('mcp__sid-2__fetch')
+
+    expect(listToolDefs().map((d) => d.name)).toContain('mcp__sid-2__fetch')
+  })
+
+  it('mcpServerIdFromToolName 解析 UUID serverId', () => {
+    expect(
+      mcpServerIdFromToolName('mcp__550e8400-e29b-41d4-a716-446655440000__web_search'),
+    ).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(mcpServerIdFromToolName('shell_run')).toBeNull()
+    expect(mcpServerIdFromToolName('mcp__only')).toBeNull()
   })
 })

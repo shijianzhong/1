@@ -173,6 +173,11 @@
     - I3: MCP 密钥走 vault（config.ts encryptSecrets/resolveSecrets/sanitizeConfig；env/headers 值存 safeStorage，配置文件只存 `vault:` 引用标记；listServers IPC 脱敏返回 `••••••••`）
     - M5: env scrub 增强（shell.ts `sanitizeEnv` 补 `_ID` 后缀）
     - M6: toolCtx 顺序修正（home.ts AbortController 在 toolCtx 之前创建，避免 TDZ 风险）
+  - 复审收口（2026-08-05）：
+    - R1: `orchestrate.ts` 与 home 对齐，不再 `listToolDefs()` 全量暴露
+    - R2: `McpServerConfig.exposeToAgents`（默认 false）+ MCP 页开关；`listToolsForAgents()` = builtin + 已连接且勾选注入的 MCP
+    - R3: `addMcpServer` / `updateMcpServer` 一律 `return sanitizeConfig(...)`
+    - R4: registry/config 单测补 listAgentToolDefs、always 不重试、sanitize/resolve
 - [ ] 7.3 即梦文生图等外部工具
 - [x] 7.4 Skill = ContextProvider（`beforeRun`/`afterRun`、discipline 注入、async 脚本 spawn）✅ 2026-08-03
   - `skills/provider.ts`：`SkillContextProvider.beforeRun`（<skill> XML 块 24000 限长 + scripts 清单行 + `【输出纪律】`discipline 段，三处调用点统一收口：编辑器编排 / 首页主 Agent / **首页组队图节点（此前完全没注入 skill，顺带补齐 outputConstraints 注入对齐）**）；`afterRun` 运行结束审计（orchestrate/home 两侧 finally 统一调）

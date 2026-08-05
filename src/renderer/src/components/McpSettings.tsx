@@ -22,6 +22,8 @@ type EditState = {
   url: string
   enabled: boolean
   approvalMode: 'always' | 'auto'
+  /** 显式注入首页/编排 agent（默认关） */
+  exposeToAgents: boolean
 }
 
 const EMPTY_EDIT: EditState = {
@@ -32,6 +34,7 @@ const EMPTY_EDIT: EditState = {
   url: '',
   enabled: true,
   approvalMode: 'always',
+  exposeToAgents: false,
 }
 
 export function McpSettings() {
@@ -74,6 +77,7 @@ export function McpSettings() {
       url: s.config.url ?? '',
       enabled: s.config.enabled,
       approvalMode: s.config.approvalMode ?? 'always',
+      exposeToAgents: s.config.exposeToAgents === true,
     })
     setTestMsg(null)
   }
@@ -98,6 +102,7 @@ export function McpSettings() {
     url: e.transport === 'http' ? e.url.trim() : undefined,
     enabled: e.enabled,
     approvalMode: e.approvalMode,
+    exposeToAgents: e.exposeToAgents,
   })
 
   const onSave = async (): Promise<void> => {
@@ -226,6 +231,15 @@ export function McpSettings() {
             onCheckedChange={(c) => update({ enabled: c })}
           />
         </Row>
+        <Row label={t('mcp:exposeToAgents')}>
+          <Switch
+            checked={editing.exposeToAgents}
+            onCheckedChange={(c) => update({ exposeToAgents: c })}
+          />
+        </Row>
+        <p style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)', margin: '-4px 0 0' }}>
+          {t('mcp:exposeToAgentsHint')}
+        </p>
         <Row label={t('mcp:approvalMode')}>
           <select
             value={editing.approvalMode}
@@ -290,6 +304,9 @@ export function McpSettings() {
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)' }}>
                   {t('mcp:tools', { count: s.toolCount })}
                 </span>
+              ) : null}
+              {s.config.exposeToAgents ? (
+                <Badge variant="default">{t('mcp:exposeToAgentsBadge')}</Badge>
               ) : null}
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
