@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CreateConfirmCard, type CardStatus } from '@renderer/components/CreateConfirmCard'
+import { ThinkingOrb } from '@renderer/components/ThinkingOrb'
 import { ThinkingBlock } from './ThinkingBlock'
 import { AskUserCard } from './AskUserCard'
 import type { ChatMessage } from './types'
@@ -38,7 +39,11 @@ export function MessageItem({
 
       {m.role === 'assistant' ? (
         <div className="message__avatar">
-          <Sparkles size={16} />
+          {m.streaming || m.retrying ? (
+            <ThinkingOrb state="working" size={64} theme="auto" style={{ width: 28, height: 28 }} />
+          ) : (
+            <Sparkles size={16} />
+          )}
         </div>
       ) : null}
       <div
