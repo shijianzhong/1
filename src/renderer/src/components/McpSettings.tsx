@@ -7,6 +7,7 @@ import { Badge } from '@renderer/components/ui/Badge'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import { Switch } from '@renderer/components/ui/Switch'
+import { Field } from '@renderer/components/ui/Field'
 
 // —— MCP 服务器管理面板（由 McpPage 承载）——
 // 列出所有已配置的 MCP 服务器，支持添加/编辑/删除/连接/断开/测试连接。
@@ -190,22 +191,24 @@ export function McpSettings() {
         </Row>
         {editing.transport === 'stdio' ? (
           <>
-            <Row label={t('mcp:command')}>
-              <Input
+            <Field label={t('mcp:command')}>
+              <textarea
                 value={editing.command}
                 onChange={(e) => update({ command: e.target.value })}
                 placeholder={t('mcp:commandPh')}
-                style={{ width: 240 }}
+                rows={3}
+                style={textareaStyle}
               />
-            </Row>
-            <Row label={t('mcp:args')}>
-              <Input
+            </Field>
+            <Field label={t('mcp:args')}>
+              <textarea
                 value={editing.args}
                 onChange={(e) => update({ args: e.target.value })}
                 placeholder={t('mcp:argsPh')}
-                style={{ width: 320 }}
+                rows={3}
+                style={textareaStyle}
               />
-            </Row>
+            </Field>
           </>
         ) : (
           <Row label={t('mcp:url')}>
@@ -327,6 +330,20 @@ const selectStyle: React.CSSProperties = {
   background: 'var(--color-bg-1)',
   color: 'var(--color-fg-1)',
   padding: '0 10px',
+}
+
+const textareaStyle: React.CSSProperties = {
+  width: '100%',
+  resize: 'vertical',
+  border: '1px solid var(--color-border)',
+  borderRadius: 10,
+  padding: '8px 12px',
+  fontSize: '0.86rem',
+  fontFamily: 'inherit',
+  color: 'var(--color-fg-1)',
+  background: 'var(--color-bg-1)',
+  outline: 'none',
+  lineHeight: 1.6,
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
