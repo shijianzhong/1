@@ -25,7 +25,8 @@ export function generateId(prefix = ''): string {
 /** 原子写 JSON 文件 */
 export function writeJsonFile(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.${process.pid}.tmp`
+  // 临时名带随机后缀，防同路径并发/多进程写时临时文件互踩（同 ipc/writeJsonAtomic 的修法）
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
   renameSync(tmp, path)
 }

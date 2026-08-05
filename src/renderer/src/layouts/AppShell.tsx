@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo } from 'react'
 import {
   Bot,
   Boxes,
@@ -28,6 +28,24 @@ const navItems = [
   { to: '/tasks', key: 'tasks', icon: Command },
   { to: '/settings', key: 'settings', icon: Settings },
 ] as const
+
+/** 路由懒加载 fallback：纯视觉三点，无文案（i18n 与品牌色变量均已就绪） */
+function PageLoading() {
+  const { t } = useTranslation(['common'])
+  return (
+    <div
+      className="grid h-full min-h-[240px] place-items-center"
+      role="status"
+      aria-label={t('common:status.connecting')}
+    >
+      <div className="flex gap-1.5" aria-hidden="true">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--color-brand-400,#4ECDC4)] [animation-delay:-0.32s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--color-brand-400,#4ECDC4)] [animation-delay:-0.16s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--color-brand-400,#4ECDC4)]" />
+      </div>
+    </div>
+  )
+}
 
 export function AppShell() {
   const { t } = useTranslation(['common', 'editor', 'home'])
@@ -168,7 +186,10 @@ export function AppShell() {
 
           <main className="main-area">
             <div className={`main-content${isEditor ? ' main-content--canvas' : ''}`}>
-              <Outlet />
+              {/* 路由懒加载边界（§分包）：挂起只替换内容区，导航 chrome 保持挂载 */}
+              <Suspense fallback={<PageLoading />}>
+                <Outlet />
+              </Suspense>
             </div>
             <aside className={`inspector ${showInspector ? 'inspector--open' : ''}`}>
               {showInspector ? (

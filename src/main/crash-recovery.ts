@@ -1,6 +1,13 @@
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { getDraftsDir } from './storage/paths'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { dirname, join } from 'node:path'
+import { getDraftsDir, getUserDataDir } from './storage/paths'
 import { logger } from './logger'
 
 // —— 崩溃恢复（§11.5 + §11.7）——
@@ -9,24 +16,28 @@ import { logger } from './logger'
 
 const SENTINEL_FILE = '.running'
 
+/** 哨兵放 userData 根下（不是 drafts/ 内）。
+ *  旧实现用 `drafts/../.running`：内核路径遍历要求中间目录 drafts 存在，
+ *  草稿 UI 未闭环时 drafts 从未创建 → 每次启动 ENOENT（日志里「哨兵文件写入失败」）。 */
 function getSentinelPath(): string {
-  return `${getDraftsDir()}/../${SENTINEL_FILE}`
+  return join(getUserDataDir(), SENTINEL_FILE)
 }
 
 /** 写哨兵文件（app.ready 时调用，标记本次运行中） */
 export function markRunning(): void {
   try {
-    writeFileSync(getSentinelPath(), String(Date.now()), 'utf8')
-  } catch {
-    // drafts 目录可能未创建
-    logger.warn('[crash] 哨兵文件写入失败')
+    const path = getSentinelPath()
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, String(Date.now()), 'utf8')
+  } catch (error) {
+    logger.warn('[crash] 哨兵文件写入失败', error)
   }
 }
 
 /** 清哨兵文件（正常退出时调用） */
 export function clearRunning(): void {
   try {
-    rmSync(getSentinelPath())
+    rmSync(getSentinelPath(), { force: true })
   } catch {
     // 静默
   }
@@ -61,7 +72,10 @@ export function listDrafts(): Array<{ name: string; content: string }> {
 /** 删除草稿 */
 export function removeDraft(name: string): void {
   try {
-    rmSync(`${getDraftsDir()}/${name}`)
+    // basename 防路径穿越（name 来自 IPC / 恢复 UI）
+    const base = name.replace(/[/\\]/g, '')
+    if (!base || base !== name) return
+    rmSync(join(getDraftsDir(), base), { force: true })
   } catch {
     // 静默
   }

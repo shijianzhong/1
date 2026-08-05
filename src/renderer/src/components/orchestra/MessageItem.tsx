@@ -1,11 +1,16 @@
+import { lazy, Suspense } from 'react'
 import { Sparkles } from 'lucide-react'
-import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
-import { Markdown } from '@renderer/components/Markdown'
 import { CreateConfirmCard, type CardStatus } from '@renderer/components/CreateConfirmCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { AskUserCard } from './AskUserCard'
 import type { ChatMessage } from './types'
+
+// react-markdown + remark/rehype + katex 合计约 1.2MB，不放进冷启动首包：
+// 首条 assistant 消息挂载时按需加载，fallback 先以纯文本呈现（可读），chunk 到位后升级为富渲染。
+const Markdown = lazy(() =>
+  import('@renderer/components/Markdown').then((m) => ({ default: m.Markdown })),
+)
 
 // —— 单条聊天消息气泡（HomePage 与 EditorPage 运行面板共用）——
 // 覆盖：user/assistant 气泡、thinking 折叠、speaker 头、Markdown、流式光标、
@@ -27,12 +32,10 @@ export function MessageItem({
   const { t } = useTranslation(['common'])
   const m = msg
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`message ${m.role === 'user' ? 'message--user' : ''}`}
-    >
+    // 入场动效用 CSS（.message 上的 message-enter keyframes）：framer-motion 全项目仅此一处
+    // 用法，为 0.2s 淡入拖 270KB 进首包不值当
+    <div className={`message ${m.role === 'user' ? 'message--user' : ''}`}>
+
       {m.role === 'assistant' ? (
         <div className="message__avatar">
           <Sparkles size={16} />
@@ -55,7 +58,9 @@ export function MessageItem({
         ) : m.retrying ? (
           <span style={{ color: 'var(--color-fg-2)', fontSize: '0.85rem' }}>{m.retrying}</span>
         ) : m.role === 'assistant' ? (
-          <Markdown>{m.text}</Markdown>
+          <Suspense fallback={<span style={{ whiteSpace: 'pre-wrap' }}>{m.text}</span>}>
+            <Markdown>{m.text}</Markdown>
+          </Suspense>
         ) : (
           m.text
         )}
@@ -79,6 +84,6 @@ export function MessageItem({
           </button>
         ) : null}
       </div>
-    </motion.div>
+    </div>
   )
 }

@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { ReactFlow, Background, type Edge, type Node } from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
 import { unwrap } from '@renderer/api/client'
-import type { CreateDraft, WorkflowGraph } from '@shared/types'
+import type { CreateDraft } from '@shared/types'
+
+// @xyflow/react 约 360KB：图预览按需加载，确认卡其余交互不受影响
+const GraphPreview = lazy(() =>
+  import('@renderer/components/GraphPreview').then((m) => ({ default: m.GraphPreview })),
+)
 
 // —— 创建确认卡（聊天创建闭环的前端落点）——
 // 主 Agent 调 propose_* → 后端 emit proposal → 此卡渲染草稿（字段可编辑）。
@@ -142,9 +145,13 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
 
                 {draft.kind === 'capability' ? (
                   <Field label={t('home:create.field.graph')}>
-                    <GraphPreview
-                      graph={(payload as Extract<CreateDraft, { kind: 'capability' }>['payload']).graph}
-                    />
+                    <Suspense
+                      fallback={<div className="create-card__graph create-card__graph--loading" />}
+                    >
+                      <GraphPreview
+                        graph={(payload as Extract<CreateDraft, { kind: 'capability' }>['payload']).graph}
+                      />
+                    </Suspense>
                   </Field>
                 ) : null}
               </>
@@ -187,33 +194,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="create-card__label">{label}</span>
       {children}
     </label>
-  )
-}
-
-/** 能力编排图只读缩略预览（所见即所得，禁交互） */
-function GraphPreview({ graph }: { graph: WorkflowGraph }) {
-  const { rfNodes, rfEdges } = useMemo(() => {
-    const ns: Node[] = graph.nodes.map((n) => ({
-      id: n.id,
-      position: n.position,
-      data: { label: (n.data as { label?: string }).label ?? n.id },
-      draggable: false,
-    }))
-    const es: Edge[] = graph.edges.map((e, i) => ({
-      id: `e${i}`,
-      source: e.source,
-      target: e.target,
-      label: e.condition,
-    }))
-    return { rfNodes: ns, rfEdges: es }
-  }, [graph])
-
-  return (
-    <div className="create-card__graph">
-      <ReactFlow nodes={rfNodes} edges={rfEdges} fitView nodesDraggable={false} nodesConnectable={false}
-        elementsSelectable={false} zoomOnScroll={false} panOnDrag={false} proOptions={{ hideAttribution: true }}>
-        <Background gap={16} />
-      </ReactFlow>
-    </div>
   )
 }

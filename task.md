@@ -140,6 +140,10 @@
 
 > 修复：electron-updater ESM/CJS import（default import 解构）；测试环境 NODE_ENV=test 跳过托盘/菜单/快捷键。
 
+- [x] 6.8 冷启动性能修复（2026-08-04，实证驱动）：打包版「白屏久 → 连接桌面壳 → 进应用」根因 = 渲染层冷启动链（主进程实测 180ms 就绪非瓶颈）。修复：① `index.html` 内联纯 HTML/CSS 启动屏（#FCFCFD + #4ECDC4 品牌标 + 呼吸点，带 `prefers-reduced-motion` 兜底），React 挂载自动替换；② renderer 分包 `manualChunks`（reactflow/katex/markdown/motion/ui/vendor）+ 路由懒加载（HomePage 保留首包，AppShell `<Outlet/>` 外套 Suspense/PageLoading），**启动预载 3.0MB → 1.2MB**（markdown 1.2MB/katex 484KB/reactflow 357KB 全部移出首包）；③ 堵静态回链：`CreateConfirmCard` 的 GraphPreview 抽 `GraphPreview.tsx` 懒加载；④ `Markdown` 组件懒加载（fallback 纯文本先呈现后升级）；⑤ MessageItem 入场动效 framer-motion（270KB，全项目仅此一处）改 CSS `message-enter` keyframes；⑥ i18n 首包 zh-CN/common 内联进 bundle（`partialBundledLanguages:true`，消灭 file:// fetch 串行点，单一事实源仍是 public 下文件）；⑦ `writeJsonAtomic`/`writeJsonFile` 临时名加随机后缀（修主题连发 rename ENOENT 风暴）。验证：typecheck/265 单测/4 E2E 全绿。
+
+- [x] 6.9 哨兵写入 + updater 406（2026-08-05）：① `.running` 改落 `userData/.running`（旧 `drafts/../.running` 在 drafts 未建时内核路径 ENOENT，每次启动「哨兵文件写入失败」、崩溃检测失效）；`removeDraft` 拒路径穿越；② updater：draft-only / 406 / Unable to find latest version 归为预期态，进程内只 info 一行且不刷 HTML feed；摘掉 `autoUpdater.logger=electron-log`；首检延迟 15s；显式 `package.json#repository` + `electron-builder.yml#publish`（`shijianzhong/1`，与 origin 一致）；CI 注释标明 draft 需 Publish 后 updater 才生效。单测 +7（crash-recovery/updater-errors），全量 272 绿。
+
 ---
 
 ## 阶段 7：工具与 MCP（持续）

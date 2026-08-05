@@ -6,6 +6,10 @@
   "author": "shijianzhong",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shijianzhong/1.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

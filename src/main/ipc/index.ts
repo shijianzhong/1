@@ -34,7 +34,9 @@ async function ensureDir(filePath: string): Promise<void> {
 
 async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
   await ensureDir(filePath)
-  const tmp = `${filePath}.${process.pid}.tmp`
+  // 临时名必须每次唯一：同文件并发写（如主题快速调整连发）若共用 pid 临时名，
+  // 后者 writeFile 截断前者尚未 rename 的临时文件 → ENOENT 风暴
+  const tmp = `${filePath}.${process.pid}.${randomUUID()}.tmp`
   await writeFile(tmp, JSON.stringify(data, null, 2), 'utf8')
   try {
     await rename(tmp, filePath)
