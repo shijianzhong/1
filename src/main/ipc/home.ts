@@ -230,6 +230,37 @@ export function registerHomeHandlers(): void {
           pendingDrafts.set(draft.draftId, { draft, ts: Date.now() })
           emitStream({ type: 'proposal', draft })
         },
+        // HITL 提问桥（ask_user 工具）：事件经 orch_event 包装，前端渲染 AskUserCard；
+        // respond 收口在 orchestrate:respond（与组队节点同一 userInput 队列）
+        onAskUser: async ({ question, context }) => {
+          const requestId = newRequestId()
+          const emit = (event: import('@shared/types').StreamEvent): void =>
+            emitStream({ type: 'orch_event', event })
+          emit({ type: 'request_info', request_id: requestId, node_id: 'home', question, context })
+          try {
+            const answer = await waitForUserInput(requestId, { nodeId: 'home', question }, signal)
+            emit({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: answer })
+            return answer
+          } catch (e) {
+            emit({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: '' })
+            throw e
+          }
+        },
+        // HITL 工具审批桥（shell_run / MCP always 工具）：approval_request 事件 + 挂起等用户确认
+        onApprove: async ({ toolName, args }) => {
+          const requestId = newRequestId()
+          const emit = (event: import('@shared/types').StreamEvent): void =>
+            emitStream({ type: 'orch_event', event })
+          emit({ type: 'approval_request', request_id: requestId, node_id: 'home', tool_name: toolName, args })
+          try {
+            const response = await waitForUserInput(requestId, { nodeId: 'home', question: `approve ${toolName}` }, signal)
+            emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response })
+            return { approved: response === 'approved', reason: response === 'approved' ? undefined : response }
+          } catch (e) {
+            emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response: '' })
+            return { approved: false, reason: 'timeout or cancelled' }
+          }
+        },
       },
     })
 
