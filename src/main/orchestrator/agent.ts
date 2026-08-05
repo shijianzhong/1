@@ -39,12 +39,13 @@ export function injectRuntimeContext(instructions: string): string {
 export interface AgentDeps {
   /** LLM client 选项（apiKey/baseURL，从 vault + model config 解析） */
   llmOpts: LLMClientOptions
-  /** 工具执行上下文（sessionId / 创建提案回调 / HITL 提问桥等） */
+  /** 工具执行上下文（sessionId / 创建提案回调 / HITL 提问桥 / 工具审批桥等） */
   toolCtx?: {
     sessionId?: string
     signal?: AbortSignal
     onPropose?: (draft: import('@shared/types').CreateDraft) => void
     onAskUser?: (req: { question: string; context?: string }) => Promise<string>
+    onApprove?: (req: { toolName: string; args: unknown }) => Promise<{ approved: boolean; reason?: string }>
   }
 }
 
@@ -145,6 +146,7 @@ export class Agent {
             signal: input.signal,
             onPropose: this.deps.toolCtx?.onPropose,
             onAskUser: this.deps.toolCtx?.onAskUser,
+            onApprove: this.deps.toolCtx?.onApprove,
           },
         )
         callbacks.onToolResult?.(tu.name, result.content)

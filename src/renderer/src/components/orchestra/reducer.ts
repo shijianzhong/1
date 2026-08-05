@@ -74,6 +74,43 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
       )
     }
 
+    case 'approval_request': {
+      // 工具审批卡：先定格所有流式气泡，再追加 pending 审批卡片
+      return [
+        ...closeStreaming(prev),
+        {
+          id: ev.request_id,
+          role: 'assistant' as const,
+          text: '',
+          speaker: ev.node_id,
+          orbState: 'listening' as const,
+          approval: {
+            requestId: ev.request_id,
+            nodeId: ev.node_id,
+            toolName: ev.tool_name,
+            args: ev.args,
+            status: 'pending' as const,
+          },
+        },
+      ]
+    }
+
+    case 'approval_resolved': {
+      // 审批卡片定格：response='approved' → approved；response='denied' → denied；空 = 超时/失效
+      return prev.map((m) =>
+        m.approval?.requestId === ev.request_id && m.approval.status === 'pending'
+          ? {
+              ...m,
+              approval: ev.response === 'approved'
+                ? { ...m.approval, status: 'approved' as const }
+                : ev.response === 'denied'
+                  ? { ...m.approval, status: 'denied' as const }
+                  : { ...m.approval, status: 'expired' as const },
+            }
+          : m,
+      )
+    }
+
     case 'done':
       // 不产生气泡，但定格全部流式态——防御：主进程虽保证 message_stop 全路径配对
       // 发送，done 到达即运行终结，任何事件丢失都不应留下 streaming=true 的泄漏

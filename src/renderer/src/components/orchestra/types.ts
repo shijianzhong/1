@@ -22,6 +22,8 @@ export interface ChatMessage {
   speaker?: string
   /** HITL 提问卡（request_info 事件生成）；与 text 互斥 */
   askUser?: AskUserPrompt
+  /** HITL 工具审批卡（approval_request 事件生成）；与 text 互斥 */
+  approval?: ApprovalPrompt
   /** ThinkingOrb 动画状态（流式期间显示何种思考球动画） */
   orbState?: OrbState
 }
@@ -35,6 +37,15 @@ export interface AskUserPrompt {
   status: 'pending' | 'answered' | 'expired'
   /** 用户作答内容（answered 时有值） */
   response?: string
+}
+
+/** 工具审批卡数据（approval_request → pending；approval_resolved → approved/denied/expired） */
+export interface ApprovalPrompt {
+  requestId: string
+  nodeId: string
+  toolName: string
+  args: unknown
+  status: 'pending' | 'approved' | 'denied' | 'expired'
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */

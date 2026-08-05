@@ -5,6 +5,7 @@ import { CreateConfirmCard, type CardStatus } from '@renderer/components/CreateC
 import { ThinkingOrb, type OrbState } from '@renderer/components/ThinkingOrb'
 import { ThinkingBlock } from './ThinkingBlock'
 import { AskUserCard } from './AskUserCard'
+import { ApprovalCard } from './ApprovalCard'
 import type { ChatMessage } from './types'
 
 // react-markdown + remark/rehype + katex 合计约 1.2MB，不放进冷启动首包：
@@ -52,8 +53,8 @@ export function MessageItem({
   // 阶段 2（有文本 + streaming）：20px 行内 orb 替代 ▋ 闪烁光标
   const isActive = m.streaming || m.retrying
   const orbState = m.orbState ?? 'working'
-  const showOrbHeader = isActive && !m.text && !m.draft && !m.askUser
-  const showInlineOrb = m.streaming && !!m.text && !m.draft && !m.askUser
+  const showOrbHeader = isActive && !m.text && !m.draft && !m.askUser && !m.approval
+  const showInlineOrb = m.streaming && !!m.text && !m.draft && !m.askUser && !m.approval
 
   return (
     // 入场动效用 CSS（.message 上的 message-enter keyframes）：framer-motion 全项目仅此一处
@@ -79,6 +80,8 @@ export function MessageItem({
           />
         ) : m.askUser ? (
           <AskUserCard prompt={m.askUser} speakerName={speakerName} />
+        ) : m.approval ? (
+          <ApprovalCard prompt={m.approval} />
         ) : m.retrying && !m.text ? (
           <div className="message__orb-header">
             <ThinkingOrb state={orbState} size={64} theme="auto" />

@@ -1,1 +1,15 @@
-{"ipc": {"prefix": "Connection failed"}}
+{
+  "ipc": { "prefix": "Connection failed" },
+  "tools": {
+    "precheck_failed": "Tool pre-check failed, blocked",
+    "approval_unavailable": "Tool approval not available in this environment",
+    "approval_timeout": "Tool approval timed out (300s no response)",
+    "approval_denied": "User denied tool execution",
+    "shell_danger_command": "Dangerous command blocked",
+    "shell_timeout": "Shell command execution timed out",
+    "shell_not_found": "Shell not available",
+    "shell_nonzero_exit": "Shell command exited with non-zero code",
+    "shell_stdout_limit": "Shell output limit exceeded, terminated",
+    "unknown_tool": "Unknown tool"
+  }
+}

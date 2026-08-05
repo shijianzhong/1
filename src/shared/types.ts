@@ -115,6 +115,11 @@ export type StreamEvent =
   | { type: 'request_info'; request_id: string; node_id: string; question: string; context?: string }
   // request_resolved：用户已作答（response 非空）或提问失效（response 空 = 超时/取消），卡片定格。
   | { type: 'request_resolved'; request_id: string; node_id: string; response: string }
+  // —— HITL 工具审批桥（approvalMode='always' → executeTool 闸门 → onApprove）——
+  // approval_request：工具执行前请求用户确认，展示工具名 + 完整入参；渲染层弹审批卡。
+  | { type: 'approval_request'; request_id: string; node_id: string; tool_name: string; args: unknown }
+  // approval_resolved：用户已决定（response='approved'/'denied'）或审批失效（response 空 = 超时/取消）。
+  | { type: 'approval_resolved'; request_id: string; node_id: string; response: string }
 
 export interface RunResult {
   runId: string

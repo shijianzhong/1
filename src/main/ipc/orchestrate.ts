@@ -152,6 +152,19 @@ function makeResolveAgent(
             throw e
           }
         },
+        // HITL 工具审批桥：approvalMode='always' → approval_request 事件 + 挂起等用户确认
+        onApprove: async ({ toolName, args }) => {
+          const requestId = newRequestId()
+          emitStream({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
+          try {
+            const response = await waitForUserInput(requestId, { nodeId: node.id, question: `approve ${toolName}` }, signal)
+            emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
+            return { approved: response === 'approved', reason: response === 'approved' ? undefined : response }
+          } catch (e) {
+            emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
+            return { approved: false, reason: 'timeout or cancelled' }
+          }
+        },
       },
     }
   }

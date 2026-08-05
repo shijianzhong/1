@@ -308,6 +308,21 @@ export function registerHomeHandlers(): void {
                 throw e
               }
             },
+            // HITL 工具审批桥：approvalMode='always' → approval_request 事件 + 挂起等用户确认
+            onApprove: async ({ toolName, args }) => {
+              const requestId = newRequestId()
+              const emit = (event: import('@shared/types').StreamEvent): void =>
+                emitStream({ type: 'orch_event', event })
+              emit({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
+              try {
+                const response = await waitForUserInput(requestId, { nodeId: node.id, question: `approve ${toolName}` }, signal)
+                emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
+                return { approved: response === 'approved', reason: response === 'approved' ? undefined : response }
+              } catch (e) {
+                emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
+                return { approved: false, reason: 'timeout or cancelled' }
+              }
+            },
           },
         }
         return opts

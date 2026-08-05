@@ -12,6 +12,7 @@ import { registerWebTools } from './tools/builtin/web'
 import { registerOpenCliTools } from './tools/builtin/opencli'
 import { registerFileTools } from './tools/builtin/file'
 import { registerSkillScriptTools } from './tools/builtin/skillScript'
+import { registerShellTools } from './tools/builtin/shell'
 import { createTray, destroyTray } from './tray'
 import {
   registerGlobalShortcut,
@@ -135,6 +136,7 @@ if (!gotLock) {
     registerOpenCliTools() // OpenCLI 白名单工具（用户浏览器登录态读站，写操作拦截）
     registerFileTools() // 文件工具（file_write/read/search，限 Obsidian vault 等允许根目录）
     registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
+    registerShellTools() // Shell 工具（shell_run，approvalMode='always' + DANGER_PATTERNS preCheck）
     startupMark('main:tools-registered')
     registerIpcHandlers()
     startupMark('main:ipc-registered')

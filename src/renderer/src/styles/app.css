@@ -1470,6 +1470,116 @@ html[data-platform='darwin'] .titlebar__inner {
   font-style: italic;
 }
 
+/* ── HITL 工具审批卡（shell_run 等 approvalMode='always'）── */
+.approval-card {
+  display: grid;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.approval-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-brand-500);
+}
+
+.approval-card__warning {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-fg-2);
+}
+
+.approval-card__args {
+  background: var(--color-bg-2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+.approval-card__args code {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-fg-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.approval-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.approval-card__btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+}
+
+.approval-card__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.approval-card__btn--deny {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+  color: var(--color-fg-2);
+}
+
+.approval-card__btn--deny:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: var(--color-on-brand);
+  border-color: var(--color-danger);
+}
+
+.approval-card__btn--approve {
+  border: 0;
+  background: var(--color-brand-500);
+  color: var(--color-on-brand);
+}
+
+.approval-card__btn--approve:hover:not(:disabled) {
+  background: var(--color-brand-600);
+}
+
+.approval-card__resolved {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 6px 0;
+}
+
+.approval-card__resolved--approved {
+  color: var(--color-brand-500);
+}
+
+.approval-card__resolved--denied {
+  color: var(--color-danger);
+}
+
+.approval-card__resolved--expired {
+  color: var(--color-fg-3);
+  font-style: italic;
+}
+
+.approval-card__error {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-danger);
+}
+
 /* ── prefers-reduced-motion 降级（§9.4 盲区 1）──
    三个无限动画（rf-pulse / stream-blink / animate-spin）在此降级为静态或单次。
    未来新增入场动画也必须在此媒体查询下提供降级。 */

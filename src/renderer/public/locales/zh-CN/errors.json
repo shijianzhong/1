@@ -1,1 +1,15 @@
-{"ipc": {"prefix": "连接失败"}}
+{
+  "ipc": { "prefix": "连接失败" },
+  "tools": {
+    "precheck_failed": "工具预检失败，已拦截",
+    "approval_unavailable": "当前环境不支持工具审批",
+    "approval_timeout": "工具审批超时（300秒未响应）",
+    "approval_denied": "用户拒绝了工具执行",
+    "shell_danger_command": "危险命令已被拦截",
+    "shell_timeout": "Shell 命令执行超时",
+    "shell_not_found": "Shell 不可用",
+    "shell_nonzero_exit": "Shell 命令退出码非零",
+    "shell_stdout_limit": "Shell 输出超限，已终止",
+    "unknown_tool": "未知工具"
+  }
+}

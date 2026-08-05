@@ -12,8 +12,25 @@ const RETRY_DELAYS_MS = [500, 1000, 1500]
 
 export type ToolApprovalMode = 'auto' | 'always' | 'never'
 
+/** 审批前硬拦截结果：{ ok: false } 则直接拒绝，不弹审批框 */
+export interface PreCheckResult {
+  ok: boolean
+  error?: string
+  messageKey?: string
+}
+
+/** registerTool 扩展选项（preCheck + inputSchemaOverride） */
+export interface RegisterToolOptions {
+  /** 审批前硬拦截（如 shell DANGER_PATTERNS），在 approvalMode 闸门之前执行 */
+  preCheck?: (args: unknown) => PreCheckResult
+  /** LLM 可见的参数 schema 覆盖（MCP 工具传原始 JSON Schema，绕过 zodToJsonSchema 限制） */
+  inputSchemaOverride?: Record<string, unknown>
+}
+
 export interface ToolDef extends LlmToolDef {
   approvalMode?: ToolApprovalMode
+  /** 审批前硬拦截钩子 */
+  preCheck?: (args: unknown) => PreCheckResult
 }
 
 export interface ToolContext {
@@ -24,6 +41,9 @@ export interface ToolContext {
   /** HITL 提问桥（ask_user 工具 → request_info 事件 + 挂起等待，由编排 IPC 注入）；
    *  未注入 = 当前运行环境不可与用户交互，ask_user 返回 user_input_unavailable */
   onAskUser?: (req: { question: string; context?: string }) => Promise<string>
+  /** HITL 工具审批桥（approvalMode='always' → approval_request 事件 + 挂起等待）；
+   *  未注入 = 当前运行环境不可审批，always 工具返回 approval_unavailable */
+  onApprove?: (req: { toolName: string; args: unknown }) => Promise<{ approved: boolean; reason?: string }>
 }
 
 export interface ToolResult {
@@ -49,6 +69,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * 注册工具。params 是 Zod schema，运行时校验入参 + 转 JSON Schema 给 LLM。
+ * options.preCheck 在 approvalMode 闸门前硬拦截；options.inputSchemaOverride 覆盖 LLM 可见 schema。
  */
 export function registerTool(
   name: string,
@@ -56,19 +77,25 @@ export function registerTool(
   params: z.ZodTypeAny,
   handler: ToolHandler,
   approvalMode: ToolApprovalMode = 'auto',
+  options?: RegisterToolOptions,
 ): RegisteredTool {
   const def: ToolDef = {
     name,
     description,
-    input_schema: zodToJsonSchema(params),
+    input_schema: options?.inputSchemaOverride ?? zodToJsonSchema(params),
     approvalMode,
+    preCheck: options?.preCheck,
   }
   const entry: RegisteredTool = { def, handler, zodSchema: params }
+  // v3：工具名冲突检测——warn 不 throw，避免阻塞启动
+  if (registry.has(name)) {
+    logger.warn(`[registry] 工具名冲突：${name} 已存在，将被覆盖`)
+  }
   registry.set(name, entry)
   return entry
 }
 
-/** 执行工具：校验入参 + 失败重试 3 次后返回错误 JSON 不抛（铁律11） */
+/** 执行工具：校验入参 + preCheck 硬拦截 + approvalMode 审批闸门 + 失败重试 3 次后返回错误 JSON 不抛（铁律11） */
 export async function executeTool(
   name: string,
   args: unknown,
@@ -94,6 +121,61 @@ export async function executeTool(
     }
   }
 
+  // —— 1. preCheck 硬拦截（审批前）—— 避免"用户批准后才拦"的 UX 矛盾
+  if (entry.def.preCheck) {
+    const check = entry.def.preCheck(r.data)
+    if (!check.ok) {
+      return {
+        toolUseId,
+        content: JSON.stringify({
+          error: check.error ?? 'precheck_failed',
+          messageKey: check.messageKey ?? 'errors.tools.precheck_failed',
+        }),
+        isError: true,
+      }
+    }
+  }
+
+  // —— 2. approvalMode 闸门 —— 'always' 工具必须经用户确认才能执行
+  if (entry.def.approvalMode === 'always') {
+    if (!ctx.onApprove) {
+      return {
+        toolUseId,
+        content: JSON.stringify({
+          error: 'approval_unavailable',
+          messageKey: 'errors.tools.approval_unavailable',
+        }),
+        isError: true,
+      }
+    }
+    // 300s 超时 → 视为拒绝（避免用户离开电脑弹窗无限等待）
+    const result = await withTimeout(
+      ctx.onApprove({ toolName: name, args: r.data }),
+      300_000,
+    )
+    if (result === null) {
+      return {
+        toolUseId,
+        content: JSON.stringify({
+          error: 'approval_timeout',
+          messageKey: 'errors.tools.approval_timeout',
+        }),
+        isError: true,
+      }
+    }
+    if (!result.approved) {
+      return {
+        toolUseId,
+        content: JSON.stringify({
+          error: 'approval_denied',
+          messageKey: 'errors.tools.approval_denied',
+        }),
+        isError: true,
+      }
+    }
+  }
+
+  // —— 3. 正常执行 handler（含重试）——
   // 重试 3 次，失败返回错误 JSON 不抛（铁律11）
   let lastError: unknown
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
@@ -143,9 +225,41 @@ export function clearTools(): void {
   registry.clear()
 }
 
+/** 按名注销单个工具（MCP server 断开时用） */
+export function unregisterTool(name: string): boolean {
+  return registry.delete(name)
+}
+
+/** 按前缀注销工具（如 `mcp__serverId__` → 注销该 server 所有工具） */
+export function unregisterByPrefix(prefix: string): number {
+  let count = 0
+  for (const key of registry.keys()) {
+    if (key.startsWith(prefix)) {
+      registry.delete(key)
+      count++
+    }
+  }
+  return count
+}
+
+/** 检查工具名是否已注册（MCP adapter 注册前冲突检测） */
+export function hasTool(name: string): boolean {
+  return registry.has(name)
+}
+
 // 生成工具调用 id（Anthropic 要求 toolu_ 前缀）
 export function newToolUseId(): string {
   return `toolu_${randomUUID().replace(/-/g, '').slice(0, 24)}`
+}
+
+/** Promise 超时包装：超时返回 null，不 reject（调用方自行处理） */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms)
+    timer.unref?.()
+    p.then((v) => { clearTimeout(timer); resolve(v) })
+      .catch(() => { clearTimeout(timer); resolve(null) })
+  })
 }
 
 // —— Zod → JSON Schema（覆盖工具入参常用类型；zod v4 用 _def.type 字符串标识）——
