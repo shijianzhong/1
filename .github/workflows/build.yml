@@ -73,12 +73,11 @@ jobs:
         with:
           path: artifacts
 
-      # draft:true = 人工复核后再在 GitHub UI 点 Publish。
-      # 未 Publish 前 electron-updater 看不到版本（会走「暂无已发布版本」静默路径），属预期。
+      # 自动发布：CI 构建完成后直接公开 release，electron-updater 立即可见。
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          draft: true
+          draft: false
           generateReleaseNotes: true
           artifacts: |
             artifacts/**/*.dmg
