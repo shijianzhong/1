@@ -46,6 +46,8 @@ export interface ApprovalPrompt {
   toolName: string
   args: unknown
   status: 'pending' | 'approved' | 'denied' | 'expired'
+  /** 用户点了「本会话允许」（后续同工具不再弹窗） */
+  sessionWide?: boolean
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */

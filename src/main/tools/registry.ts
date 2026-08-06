@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { LlmToolDef } from '@shared/types'
 import { logger } from '../logger'
+import { isSessionToolApproved } from './sessionApprovals'
 
 // —— 工具注册表（§三之三 J + 铁律11）——
 // registerTool 把普通函数包成 FunctionTool，**必须显式构造 JSON Schema
@@ -137,7 +138,8 @@ export async function executeTool(
   }
 
   // —— 2. approvalMode 闸门 —— 'always' 工具必须经用户确认才能执行
-  if (entry.def.approvalMode === 'always') {
+  // 「本会话允许」后同 sessionId + 同工具名跳过弹窗；preCheck 已在上方执行，危险命令仍硬拦。
+  if (entry.def.approvalMode === 'always' && !isSessionToolApproved(ctx.sessionId, name)) {
     if (!ctx.onApprove) {
       return {
         toolUseId,

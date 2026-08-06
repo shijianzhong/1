@@ -11,12 +11,17 @@ import {
   listAgentToolDefs,
   mcpServerIdFromToolName,
 } from './registry'
+import {
+  clearAllSessionToolApprovals,
+  grantSessionToolApproval,
+} from './sessionApprovals'
 
 // —— 工具注册表单测（§10.1 + §三之三 J + 铁律11）——
 
 describe('tools/registry', () => {
   beforeEach(() => {
     clearTools()
+    clearAllSessionToolApprovals()
     vi.useFakeTimers()
   })
   afterEach(() => {
@@ -180,6 +185,46 @@ describe('tools/registry', () => {
     expect(result.isError).toBe(false)
     expect(result.content).toBe('auto_ok')
     expect(onApprove).not.toHaveBeenCalled()
+  })
+
+  it('本会话已放行 always 工具 → 跳过 onApprove 直接执行', async () => {
+    const schema = z.object({ cmd: z.string() })
+    const handler = vi.fn().mockResolvedValue('session_ok')
+    registerTool('session_shell', 'needs approval', schema, handler, 'always')
+    grantSessionToolApproval('sess_chat', 'session_shell')
+
+    const onApprove = vi.fn()
+    const result = await executeTool(
+      'session_shell',
+      { cmd: 'ls' },
+      'tu_sess',
+      { sessionId: 'sess_chat', onApprove },
+    )
+
+    expect(result.isError).toBe(false)
+    expect(result.content).toBe('session_ok')
+    expect(onApprove).not.toHaveBeenCalled()
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('本会话放行不绕过 preCheck 硬拦', async () => {
+    const schema = z.object({ cmd: z.string() })
+    const handler = vi.fn().mockResolvedValue('nope')
+    registerTool('session_danger', 'needs approval', schema, handler, 'always', {
+      preCheck: () => ({ ok: false, error: 'danger_command' }),
+    })
+    grantSessionToolApproval('sess_chat', 'session_danger')
+
+    const result = await executeTool(
+      'session_danger',
+      { cmd: 'rm -rf /' },
+      'tu_sess_d',
+      { sessionId: 'sess_chat', onApprove: vi.fn() },
+    )
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('danger_command')
+    expect(handler).not.toHaveBeenCalled()
   })
 
   it('inputSchemaOverride 覆盖 zodToJsonSchema（MCP 工具场景）', () => {

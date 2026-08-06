@@ -118,7 +118,7 @@ export type StreamEvent =
   // —— HITL 工具审批桥（approvalMode='always' → executeTool 闸门 → onApprove）——
   // approval_request：工具执行前请求用户确认，展示工具名 + 完整入参；渲染层弹审批卡。
   | { type: 'approval_request'; request_id: string; node_id: string; tool_name: string; args: unknown }
-  // approval_resolved：用户已决定（response='approved'/'denied'）或审批失效（response 空 = 超时/取消）。
+  // approval_resolved：approved=仅本次 / approved_session=本会话放行 / denied=拒绝；空 = 超时/取消。
   | { type: 'approval_resolved'; request_id: string; node_id: string; response: string }
 
 export interface RunResult {
@@ -735,7 +735,8 @@ export interface AgentRunCallbacks {
 
 /** Agent 终止条件（§D） */
 export interface AgentLimits {
-  maxIterations?: number // tool-use 循环最大轮数，默认 10
+  /** tool-use 循环最大轮数，默认 32；触顶后强制一轮无工具收尾 */
+  maxIterations?: number
   maxFunctionCalls?: number // 总工具调用预算
 }
 

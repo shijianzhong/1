@@ -18,8 +18,12 @@ import { logger } from '../logger'
 // Agent 管 context（messages/system/options），tool-use 循环借力 SDK
 // （循环在 LLMClient.stream 内由 stop_reason 驱动，这里只编排多轮）。
 // maxTokens 从 config.defaultOptions 取（铁律8）。
+//
+// maxIterations 是防死循环保险丝，不是「任务做完」信号：
+// 触顶且末轮仍是 tool_use 时，强制再打一轮无工具收尾，避免半截话当终局。
 
-const DEFAULT_MAX_ITERATIONS = 10
+/** 工具循环默认上限（原 10 对多步 shell/检索任务偏紧） */
+export const DEFAULT_MAX_ITERATIONS = 32
 
 /**
  * 运行时上下文注入（system 末尾）：当前本地时间 + 时区。
@@ -60,21 +64,29 @@ export class Agent {
    * 1. 组装 messages + system + tools + maxTokens（从 defaultOptions）
    * 2. stream LLM，逐 delta 回调
    * 3. 若 stop_reason='tool_use' → 执行工具 → 追加 tool_result → 继续循环
-   * 4. 直至 stop_reason 非 tool_use 或达上限
+   * 4. 直至 stop_reason 非 tool_use；若触顶仍停在 tool_result 后 → 强制无工具收尾轮
    */
   async run(
     input: AgentRunInput,
     callbacks: AgentRunCallbacks = {},
     limits: AgentLimits = {},
-  ): Promise<{ messages: LlmMessage[]; finalText: string; finalThinking: string }> {
+  ): Promise<{
+    messages: LlmMessage[]
+    finalText: string
+    finalThinking: string
+    /** 是否因 maxIterations 触顶而强制收尾（非正常 end_turn） */
+    hitIterationLimit: boolean
+  }> {
     const maxIter = limits.maxIterations ?? DEFAULT_MAX_ITERATIONS
     let functionCallCount = 0
     const messages = [...input.messages]
     const tools = this.resolveTools()
     const client = getClient(this.config.modelId, this.deps.llmOpts)
+    const system = injectRuntimeContext(this.config.instructions)
 
     let finalText = ''
     let finalThinking = ''
+    let hitIterationLimit = false
 
     for (let iter = 0; iter < maxIter; iter++) {
       if (input.signal?.aborted) {
@@ -84,7 +96,7 @@ export class Agent {
       logger.debug('[agent] thinking config:', this.config.thinking)
       const response = await client.stream({
         model: this.config.modelId,
-        system: injectRuntimeContext(this.config.instructions),
+        system,
         messages,
         tools: tools.length ? tools : undefined,
         maxTokens: this.config.defaultOptions.maxTokens, // 铁律8
@@ -166,9 +178,38 @@ export class Agent {
         finalText = JSON.stringify({ handoff_to: handoffTarget })
         break
       }
+
+      // 本轮是最后一轮迭代槽且刚执行完工具 → 循环将结束，标记需收尾
+      if (iter === maxIter - 1) {
+        hitIterationLimit = true
+      }
     }
 
-    return { messages, finalText, finalThinking }
+    // 触顶停在 tool_result 之后：强制无工具收尾，让模型基于已有结果给最终答复
+    if (hitIterationLimit && needsToolResultFinalization(messages) && !input.signal?.aborted) {
+      logger.warn(
+        `[agent:${this.config.name}] 达 maxIterations=${maxIter}，强制无工具收尾轮`,
+      )
+      const response = await client.stream({
+        model: this.config.modelId,
+        system,
+        messages,
+        tools: undefined, // 禁止再调工具
+        maxTokens: this.config.defaultOptions.maxTokens,
+        temperature: this.config.defaultOptions.temperature,
+        thinking: this.config.thinking,
+        signal: input.signal,
+        onDelta: (delta: LlmDelta) => this.emitDelta(delta, callbacks),
+        onRetry: (info) => callbacks.onRetry?.(info),
+      })
+      messages.push({ role: 'assistant', content: response.content })
+      const text = extractText(response.content)
+      if (text) finalText = text
+      const thinkingText = extractThinking(response.content)
+      if (thinkingText) finalThinking = thinkingText
+    }
+
+    return { messages, finalText, finalThinking, hitIterationLimit }
   }
 
   private resolveTools() {
@@ -196,4 +237,12 @@ function extractThinking(blocks: LlmContentBlock[]): string {
     .map((b) => b.thinking)
     .join('')
 }
+
+/** 末条是否为 tool_result user 消息（触顶后尚无最终 assistant 答复） */
+function needsToolResultFinalization(messages: LlmMessage[]): boolean {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'user' || typeof last.content === 'string') return false
+  return last.content.some((b) => b.type === 'tool_result')
+}
+
 export type { LlmResponse }

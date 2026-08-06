@@ -7,8 +7,9 @@ import { logger } from '../../logger'
 // —— shell_run 工具（P1 · task.md 7.1）——
 // 让 AI 在用户确认后执行 shell 命令（安装 CLI、跑系统级操作、驱动无 MCP 封装的上游工具）。
 // 复刻 opencli_run / skill_run_script 的 async spawn 纪律（铁律 23）。
-// 安全：approvalMode='always'（P0 闸门执行）+ DANGER_PATTERNS 辅助硬拦（preCheck）+ env 敏感值过滤。
-// 正则黑名单可被绕过，真正边界是 P0 的每次确认 + 用户知情。
+// 安全：approvalMode='always'（P0 闸门）+ 可选「本会话允许」跳过后续弹窗
+// + DANGER_PATTERNS 辅助硬拦（preCheck，会话放行也不绕过）+ env 敏感值过滤。
+// 正则黑名单可被绕过，真正边界是 P0 确认（或会话级信任）+ 用户知情。
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_SEC = 300

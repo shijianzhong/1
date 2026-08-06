@@ -36,6 +36,7 @@ import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolsForAgents } from '../tools/mcp'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
+import { resolveApprovalDecision } from '../tools/sessionApprovals'
 import {
   newRequestId,
   rejectAllUserInputs,
@@ -263,6 +264,7 @@ export function registerHomeHandlers(): void {
           }
         },
         // HITL 工具审批桥（shell_run / MCP always 工具）：approval_request 事件 + 挂起等用户确认
+        // 应答 approved / approved_session / denied（本会话允许写入 sessionApprovals）
         onApprove: async ({ toolName, args }) => {
           const requestId = newRequestId()
           const emit = (event: import('@shared/types').StreamEvent): void =>
@@ -271,7 +273,7 @@ export function registerHomeHandlers(): void {
           try {
             const response = await waitForUserInput(requestId, { nodeId: 'home', question: `approve ${toolName}` }, signal)
             emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response })
-            return { approved: response === 'approved', reason: response === 'approved' ? undefined : response }
+            return resolveApprovalDecision(response, sid, toolName)
           } catch (e) {
             emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response: '' })
             return { approved: false, reason: 'timeout or cancelled' }
@@ -345,7 +347,7 @@ export function registerHomeHandlers(): void {
                 throw e
               }
             },
-            // HITL 工具审批桥：approvalMode='always' → approval_request 事件 + 挂起等用户确认
+            // HITL 工具审批桥：approvalMode='always' → approval_request；支持本会话允许
             onApprove: async ({ toolName, args }) => {
               const requestId = newRequestId()
               const emit = (event: import('@shared/types').StreamEvent): void =>
@@ -354,7 +356,7 @@ export function registerHomeHandlers(): void {
               try {
                 const response = await waitForUserInput(requestId, { nodeId: node.id, question: `approve ${toolName}` }, signal)
                 emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
-                return { approved: response === 'approved', reason: response === 'approved' ? undefined : response }
+                return resolveApprovalDecision(response, sid, toolName)
               } catch (e) {
                 emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
                 return { approved: false, reason: 'timeout or cancelled' }
@@ -418,6 +420,9 @@ export function registerHomeHandlers(): void {
       )
       finalText = result.finalText
       finalThinking = result.finalThinking
+      if (result.hitIterationLimit) {
+        logger.warn('[home] 主 Agent 达工具轮次上限，已强制无工具收尾')
+      }
 
       // 流结束：判定直答 vs 组队
       const decision = detector.decide()
@@ -463,8 +468,11 @@ export function registerHomeHandlers(): void {
         logger.warn('[l2] 精炼失败', e),
       )
 
-      // 10. 结束事件
-      emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+      // 10. 结束事件：触顶收尾用 max_iterations，便于前端/日志区分假 end_turn
+      emitStream({
+        type: 'message_stop',
+        stop_reason: result.hitIterationLimit ? 'max_iterations' : 'end_turn',
+      })
     } catch (e) {
       // 错误推到 AI 气泡位置（而非聊天区上方），含可重试提示
       const msg = e instanceof Error ? e.message : String(e)

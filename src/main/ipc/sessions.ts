@@ -10,6 +10,7 @@ import {
   removeSession,
   renameSession,
 } from '../storage/sessions'
+import { clearSessionToolApprovals } from '../tools/sessionApprovals'
 
 // —— 会话历史 IPC（§八之二 B）——
 // 入参 Zod 校验：IPC 边界不做隐式 as 断言，畸形参数在入口处结构化报错（P1-12）。
@@ -31,7 +32,11 @@ const AddMessageSchema = z.object({
 export function registerSessionsHandlers(): void {
   withHandler<Session[]>('sessions:list', () => listSessions())
   withHandler<Session | null>('sessions:get', (_e, id) => getSession(IdSchema.parse(id)))
-  withHandler<void>('sessions:remove', (_e, id) => removeSession(IdSchema.parse(id)))
+  withHandler<void>('sessions:remove', (_e, id) => {
+    const sid = IdSchema.parse(id)
+    removeSession(sid)
+    clearSessionToolApprovals(sid) // 删会话时清掉「本会话允许」放行
+  })
   withHandler<void>('sessions:rename', (_e, id, title) =>
     renameSession(IdSchema.parse(id), z.string().min(1).parse(title)),
   )

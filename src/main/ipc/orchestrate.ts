@@ -21,6 +21,7 @@ import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } fr
 import { addMessage } from '../storage/sessions'
 import { SkillContextProvider } from '../skills/provider'
 import { listToolsForAgents } from '../tools/mcp'
+import { resolveApprovalDecision } from '../tools/sessionApprovals'
 import { resolveThinkingConfig } from '../llm/thinking'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -59,6 +60,8 @@ function makeResolveAgent(
   signal?: AbortSignal,
   /** R1/R2：builtin + 显式暴露的 MCP 工具快照（一次运行内固定） */
   agentTools: LlmToolDef[] = [],
+  /** 会话 id：本会话允许工具审批放行键；编辑器试跑可能为空 */
+  sessionId?: string,
 ): {
   resolveAgent: (node: GraphNode) => AgentExecutorOptions | null
   /** 本运行创建的全部 SkillContextProvider（运行结束统一 afterRun 审计，铁律22） */
@@ -139,6 +142,7 @@ function makeResolveAgent(
       config,
       llmOpts: { apiKey, baseURL, authHeader },
       toolCtx: {
+        sessionId,
         signal,
         // HITL 提问桥：ask_user → request_info 事件推前端 + 挂起等作答（userInput 队列）
         onAskUser: async ({ question, context }) => {
@@ -154,14 +158,14 @@ function makeResolveAgent(
             throw e
           }
         },
-        // HITL 工具审批桥：approvalMode='always' → approval_request 事件 + 挂起等用户确认
+        // HITL 工具审批桥：支持本会话允许（sessionId 有值时写入放行表）
         onApprove: async ({ toolName, args }) => {
           const requestId = newRequestId()
           emitStream({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
           try {
             const response = await waitForUserInput(requestId, { nodeId: node.id, question: `approve ${toolName}` }, signal)
             emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
-            return { approved: response === 'approved', reason: response === 'approved' ? undefined : response }
+            return resolveApprovalDecision(response, sessionId, toolName)
           } catch (e) {
             emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
             return { approved: false, reason: 'timeout or cancelled' }
@@ -200,7 +204,7 @@ export function registerOrchestrateHandlers(): void {
       const { signal } = currentAbortController
       const agentTools = await listToolsForAgents()
       const { resolveAgent, skillProviders } = makeResolveAgent(
-        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools,
+        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId,
       )
       const deps: BuildDeps = { resolveAgent }
 

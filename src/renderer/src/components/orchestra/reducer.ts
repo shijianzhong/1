@@ -96,13 +96,17 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     }
 
     case 'approval_resolved': {
-      // 审批卡片定格：response='approved' → approved；response='denied' → denied；空 = 超时/失效
+      // 定格：approved / approved_session → approved；denied → denied；空 = 超时/失效
       return prev.map((m) =>
         m.approval?.requestId === ev.request_id && m.approval.status === 'pending'
           ? {
               ...m,
-              approval: ev.response === 'approved'
-                ? { ...m.approval, status: 'approved' as const }
+              approval: ev.response === 'approved' || ev.response === 'approved_session'
+                ? {
+                    ...m.approval,
+                    status: 'approved' as const,
+                    sessionWide: ev.response === 'approved_session',
+                  }
                 : ev.response === 'denied'
                   ? { ...m.approval, status: 'denied' as const }
                   : { ...m.approval, status: 'expired' as const },

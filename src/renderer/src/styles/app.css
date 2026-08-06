@@ -1524,6 +1524,7 @@ html[data-platform='darwin'] .titlebar__inner {
 .approval-card__actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1563,6 +1564,17 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .approval-card__btn--approve:hover:not(:disabled) {
   background: var(--color-brand-600);
+}
+
+.approval-card__btn--session {
+  border: 1px solid var(--color-brand-400);
+  background: color-mix(in oklch, var(--color-brand-500) 12%, transparent);
+  color: var(--color-brand-600);
+}
+
+.approval-card__btn--session:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--color-brand-500) 22%, transparent);
+  border-color: var(--color-brand-500);
 }
 
 .approval-card__resolved {

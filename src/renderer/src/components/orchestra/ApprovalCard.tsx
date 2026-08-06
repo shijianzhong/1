@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { ShieldCheck, ShieldX, Terminal, Clock } from 'lucide-react'
+import { ShieldCheck, ShieldX, Terminal, Clock, Infinity as InfinityIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { unwrap } from '@renderer/api/client'
 import type { ApprovalPrompt } from './types'
 
 // —— HITL 工具审批卡（approvalMode='always' → approval_request 事件渲染）——
-// pending：展示工具名 + 完整入参，用户点「允许」/「拒绝」；
+// pending：展示工具名 + 完整入参；用户可选「允许 / 本会话允许 / 拒绝」；
 // approved / denied / expired：定格只读。应答走 orchestrate:respond（同一应答队列）。
+// approved_session → 主进程写入会话放行表，后续同 session 同工具不再弹窗。
+
+type ApprovalResponse = 'approved' | 'approved_session' | 'denied'
 
 export function ApprovalCard({
   prompt,
@@ -17,7 +20,7 @@ export function ApprovalCard({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const respond = async (response: 'approved' | 'denied'): Promise<void> => {
+  const respond = async (response: ApprovalResponse): Promise<void> => {
     if (submitting || prompt.status !== 'pending') return
     setSubmitting(true)
     setSubmitError(null)
@@ -66,6 +69,14 @@ export function ApprovalCard({
           </button>
           <button
             type="button"
+            className="approval-card__btn approval-card__btn--session"
+            disabled={submitting}
+            onClick={() => void respond('approved_session')}
+          >
+            <InfinityIcon size={14} /> {t('common:approval.approveSession')}
+          </button>
+          <button
+            type="button"
             className="approval-card__btn approval-card__btn--approve"
             disabled={submitting}
             onClick={() => void respond('approved')}
@@ -75,7 +86,10 @@ export function ApprovalCard({
         </div>
       ) : prompt.status === 'approved' ? (
         <div className="approval-card__resolved approval-card__resolved--approved">
-          <ShieldCheck size={14} /> {t('common:approval.approved')}
+          <ShieldCheck size={14} />{' '}
+          {prompt.sessionWide
+            ? t('common:approval.approvedSession')
+            : t('common:approval.approved')}
         </div>
       ) : prompt.status === 'denied' ? (
         <div className="approval-card__resolved approval-card__resolved--denied">
