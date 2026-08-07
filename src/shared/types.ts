@@ -215,6 +215,21 @@ export type HomeStreamEvent =
   | { type: 'run_id'; sessionId: string }
   | { type: 'orch_event'; event: StreamEvent }
   | { type: 'proposal'; draft: CreateDraft }
+  /** propose_* 校验/执行失败 → 前端失败卡（用户可见，可重试） */
+  | {
+      type: 'proposal_error'
+      kind: CreateDraft['kind']
+      error: string
+      messageKey?: string
+      detail?: unknown
+    }
+  /** 创建链路系统提示（补跑中/补跑失败等）；渲染层按 messageKey 翻译 */
+  | {
+      type: 'create_notice'
+      messageKey: string
+      params?: Record<string, string>
+      level?: 'info' | 'warn' | 'error'
+    }
 
 /** 重试回调参数 */
 export interface RetryInfo {
@@ -592,9 +607,12 @@ export interface RegistryExportResult {
 // ============================================================================
 
 /** 创建提案草稿（前端确认卡数据源；payload 即对应类型的可入库字段） */
-export type CreateDraft =
+export type CreateDraft = {
+  draftId: string
+  /** 所属聊天会话；回合结束后按 session 重挂未确认卡，避免被 streamMsgs 清空吞掉 */
+  sessionId?: string
+} & (
   | {
-      draftId: string
       kind: 'agent'
       payload: {
         name: string
@@ -606,17 +624,14 @@ export type CreateDraft =
       }
     }
   | {
-      draftId: string
       kind: 'capability'
       payload: { name: string; description?: string; graph: WorkflowGraph }
     }
   | {
-      draftId: string
       kind: 'skill'
       payload: { name: string; description?: string; content: string; discipline?: string }
     }
   | {
-      draftId: string
       kind: 'persona'
       /** 人设更新：instructions 为新的人设正文（全量替换）；不传 = 保留当前人设（仅改档案） */
       payload: {
@@ -629,6 +644,16 @@ export type CreateDraft =
         }
       }
     }
+)
+
+/** 聊天创建状态（assistant 消息 meta.create；事实源，非模型正文） */
+export type CreateMetaStatus = 'proposed' | 'confirmed' | 'failed' | 'hallucination_recovered'
+
+export interface CreateMeta {
+  status: CreateMetaStatus
+  kind?: CreateDraft['kind']
+  draftId?: string
+}
 
 /** 首页主助手人设（独立于角色，固定人格） */
 export interface Persona {

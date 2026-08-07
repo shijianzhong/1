@@ -110,3 +110,32 @@ export function listMessages(sessionId: string): SessionMessage[] {
       }
     }) as SessionMessage[]
 }
+
+/** 合并更新消息 meta（聊天创建 confirm 后写 status=confirmed 等） */
+export function updateMessageMeta(messageId: string, patch: Record<string, unknown>): SessionMessage | null {
+  const row = getDb()
+    .prepare(
+      `SELECT id, session_id as sessionId, role, content, meta, created_at as createdAt
+       FROM messages WHERE id = ?`,
+    )
+    .get(messageId) as (SessionMessage & { meta: string | null }) | undefined
+  if (!row) return null
+  const prev = row.meta ? (JSON.parse(row.meta) as Record<string, unknown>) : {}
+  const next = { ...prev, ...patch }
+  getDb()
+    .prepare('UPDATE messages SET meta = ? WHERE id = ?')
+    .run(JSON.stringify(next), messageId)
+  return { ...row, meta: next }
+}
+
+/** 按创建草稿 id 查找带 meta.create.draftId 的消息（confirmCreate 用） */
+export function findMessageByCreateDraftId(
+  sessionId: string,
+  draftId: string,
+): SessionMessage | null {
+  for (const m of listMessages(sessionId)) {
+    const create = (m.meta as { create?: { draftId?: string } } | undefined)?.create
+    if (create?.draftId === draftId) return m
+  }
+  return null
+}

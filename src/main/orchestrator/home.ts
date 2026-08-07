@@ -281,6 +281,16 @@ function summarizeCapabilityGraph(cap: Capability): string {
   return parts.length > 0 ? parts.join(' → ') : '（空编排）'
 }
 
+// needsCreateRecovery / inferCreateKind 见 ./createRecovery.ts（A2/A3）
+export {
+  needsCreateRecovery,
+  inferCreateKind,
+  inferCreateKindFromText,
+  createKindFromToolName,
+  proposeToolNameForKind,
+  type CreateKind,
+} from './createRecovery'
+
 /**
  * 创建指令段（聊天创建/修改能力/角色/Skill/人设）。
  * 引导主 Agent：识别创建/修改意图 → 多轮澄清 → 调 propose_* 工具产出草稿 →
@@ -312,10 +322,11 @@ export function buildCreateInstruction(persona?: Persona | null): string {
     '创建/修改规则：',
     '1. 识别意图：当用户表达"创建一个/帮我做一个/新增一个 X"且指向上述四类时，进入创建流程。当用户说"改一下你的人设/你以后用xx风格回答/调整一下你的角色"时，进入人设修改流程。当用户说"叫我XX/我是做XX的/以后用英文回复"等想改称呼、角色或偏好语种时，也走 propose_persona。',
     '2. 先澄清再产出：通过追问明确需求（角色定位与职责、能力目标与参与角色与协作模式、技能用途与内容、人设风格与语气），不要一次就调工具。信息足够后才调用对应 propose_* 工具。',
-    '3. propose_* 只生成预览卡片，不会直接入库。调用后请告诉用户"已生成预览，请在下方卡片中确认或修改后入库"。',
-    '4. 能力编排图 graph 约定：nodes 为 agent 节点（data 含 label + instructions，或引用已有角色）与编排容器节点（sequential/concurrent/groupchat/handoff，容器 data 含 participantIds 等）；edges 描述连线。必须产出结构合法的 graph。',
-    '5. 人设修改：propose_persona 的 instructions 是完整的新人设正文（全量替换）。改人设时必须基于【当前人设原文】修改，产出完整版，而非"增加以下内容"之类的片段。只改称呼/角色/语种时 instructions 不传，只带 alias/role/preferredLanguage——系统会自动保留人设原文，无需回传。',
-    '6. 用户在卡片上可修改字段；用户确认后系统会自动入库，你无需重复调用。',
+    '3. propose_* 只生成预览卡片，不会直接入库。调用后必须告诉用户「已生成预览，请在下方确认卡中点确认入库」——卡片由系统弹出，你无法代替用户确认。',
+    '4. 【严禁幻觉入库】本环境已具备 propose_* → 确认卡 → 入库链路，绝不是「没有持久化/只能模拟」。在未成功调用 propose_* 之前，禁止声称已创建/已保存/已入库，也禁止声称没有存储机制；调用后到用户点确认之前，只能说「预览已生成，待你确认」。',
+    '5. 能力编排图 graph 约定：nodes 为 agent 节点（data 含 label + instructions，或引用已有角色）与编排容器节点（sequential/concurrent/groupchat/handoff，容器 data 含 participantIds 等）；edges 描述连线。必须产出结构合法的 graph。',
+    '6. 人设修改：propose_persona 的 instructions 是完整的新人设正文（全量替换）。改人设时必须基于【当前人设原文】修改，产出完整版，而非"增加以下内容"之类的片段。只改称呼/角色/语种时 instructions 不传，只带 alias/role/preferredLanguage——系统会自动保留人设原文，无需回传。',
+    '7. 用户在卡片上可修改字段；用户确认后系统会自动入库，你无需重复调用。',
     ...personaAnchor,
   ].join('\n')
 }

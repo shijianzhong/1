@@ -12,6 +12,7 @@ import {
 import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra/types'
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
+import type { CreateDraft } from '@shared/types'
 import {
   Brain,
   FolderOpen,
@@ -109,14 +110,40 @@ export function HomePage() {
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // 切换会话时清空流式 + 强制滚动到底部
+  // 把未确认创建草稿挂回消息流（回合结束清 stream / 切回会话时用）
+  const draftCardsFrom = useCallback((drafts: CreateDraft[]): ChatMessage[] => {
+    return drafts.map((draft) => ({
+      id: draft.draftId,
+      role: 'assistant' as const,
+      text: '',
+      draft,
+      cardStatus: 'pending' as const,
+    }))
+  }, [])
+
+  // 切换会话：清空流式，但重挂该会话未确认的创建卡（防「确认入库」卡被吞掉）
   useEffect(() => {
-    setStreamMsgs([])
     setError(null)
     isNearBottomRef.current = true
-    // 延迟一帧确保 DOM 更新后再滚动
+    if (!sessionId) {
+      setStreamMsgs([])
+      return
+    }
+    let cancelled = false
+    void window.one.home
+      .listPendingDrafts({ sessionId })
+      .then(unwrap)
+      .then((drafts) => {
+        if (!cancelled) setStreamMsgs(draftCardsFrom(drafts))
+      })
+      .catch(() => {
+        if (!cancelled) setStreamMsgs([])
+      })
     requestAnimationFrame(() => scrollToBottom(true))
-  }, [sessionId, scrollToBottom])
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, scrollToBottom, draftCardsFrom])
 
   // 订阅流式
   useEffect(() => {
@@ -196,6 +223,35 @@ export function HomePage() {
             cardStatus: 'pending' as const,
           },
         ])
+      } else if (delta.type === 'proposal_error') {
+        setStreamMsgs((prev) => [
+          ...prev,
+          {
+            id: `propose_err_${crypto.randomUUID()}`,
+            role: 'assistant' as const,
+            text: '',
+            proposalError: {
+              kind: delta.kind,
+              error: delta.error,
+              messageKey: delta.messageKey,
+              detail: delta.detail,
+            },
+          },
+        ])
+      } else if (delta.type === 'create_notice') {
+        setStreamMsgs((prev) => [
+          ...prev,
+          {
+            id: `create_notice_${crypto.randomUUID()}`,
+            role: 'assistant' as const,
+            text: '',
+            createNotice: {
+              messageKey: delta.messageKey,
+              params: delta.params,
+              level: delta.level,
+            },
+          },
+        ])
       }
     })
     return () => streamRef.current?.()
@@ -222,11 +278,23 @@ export function HomePage() {
 
     try {
       const result = await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
-      // 把本轮流式产出的消息（user + assistant）拉成持久化历史，清空流式态避免重复。
-      // selectSession 一次性 set sessionId+messages（含新会话），无需单独 setState。
+      // 把本轮流式产出拉成持久化历史；未确认创建卡绝不能跟 streamMsgs 一起清掉——
+      // 否则 propose_* 弹卡后回合一结束卡就消失，用户永远点不到「确认入库」。
+      // 失败卡 / 补跑失败提示也要保留（否则用户看不到可重试出口）。
       if (result.runId) {
         await useChatStore.getState().selectSession(result.runId)
-        setStreamMsgs([])
+        const pending = await window.one.home
+          .listPendingDrafts({ sessionId: result.runId })
+          .then(unwrap)
+          .catch(() => [] as CreateDraft[])
+        setStreamMsgs((prev) => {
+          const keep = prev.filter(
+            (m) =>
+              m.proposalError ||
+              (m.createNotice?.messageKey.includes('recovery.failed') ?? false),
+          )
+          return [...draftCardsFrom(pending), ...keep]
+        })
       }
       // 刷新会话列表（新建会话后标题有了）
       void useChatStore.getState().loadSessions()
@@ -238,8 +306,26 @@ export function HomePage() {
     }
   }
 
+  const pendingCreateCount = messages.filter(
+    (m) => m.draft && (m.cardStatus === undefined || m.cardStatus === 'pending'),
+  ).length
+
+  const scrollToPendingCreate = (): void => {
+    const el = scrollContainerRef.current?.querySelector('.create-card--pending, .create-card:not(.create-card--saved):not(.create-card--cancelled):not(.create-card--error)')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   return (
     <div className="chat-shell">
+      {pendingCreateCount > 0 ? (
+        <button
+          type="button"
+          className="create-pending-bar"
+          onClick={scrollToPendingCreate}
+        >
+          {t('home:create.pendingBar', { count: pendingCreateCount })}
+        </button>
+      ) : null}
       <div
         className="chat-messages"
         ref={scrollContainerRef}
@@ -270,6 +356,12 @@ export function HomePage() {
                 setStreamMsgs((prev) => prev.filter((x) => x.id !== target.id))
                 void onSend(prevUser.text)
               }
+            }}
+            onRetryProposalError={(target) => {
+              if (!target.proposalError) return
+              const kindLabel = t(`home:create.kind.${target.proposalError.kind}`)
+              setStreamMsgs((prev) => prev.filter((x) => x.id !== target.id))
+              void onSend(t('home:create.error.retryPrompt', { kind: kindLabel }))
             }}
           />
         ))}

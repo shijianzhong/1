@@ -1,5 +1,7 @@
 {
-  "ipc": { "prefix": "Connection failed" },
+  "ipc": {
+    "prefix": "Connection failed"
+  },
   "tools": {
     "precheck_failed": "Tool pre-check failed, blocked",
     "approval_unavailable": "Tool approval not available in this environment",
@@ -21,5 +23,10 @@
     "tool_call_failed": "MCP tool call failed",
     "config_invalid": "MCP config invalid",
     "name_conflict": "Tool name conflict, skipped"
+  },
+  "create": {
+    "invalid_args": "Create args failed validation (e.g. empty graph nodes or missing fields)",
+    "empty_payload": "Persona update payload empty: provide instructions or a profile field",
+    "propose_failed": "Create proposal failed"
   }
 }

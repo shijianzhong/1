@@ -6,6 +6,7 @@ import {
   buildMemoryInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
+  needsCreateRecovery,
   resolveMentions,
 } from './home'
 
@@ -208,6 +209,30 @@ describe('TeamJsonDetector（铁律24）', () => {
   })
 })
 
+describe('needsCreateRecovery（创建幻觉补跑）', () => {
+  it('自称已入库 / 正式创建成功 → true', () => {
+    expect(needsCreateRecovery('✅ 正式创建成功！X 热评刺客 已入库')).toBe(true)
+    expect(needsCreateRecovery('角色创建成功！')).toBe(true)
+  })
+
+  it('否认持久化 / 只是模拟 → true', () => {
+    expect(
+      needsCreateRecovery('坦白说——还没有真正保存。目前对话环境中没有实际的 agent 持久化存储机制。'),
+    ).toBe(true)
+    expect(needsCreateRecovery('刚才只是模拟了运行状态')).toBe(true)
+  })
+
+  it('正常澄清追问 → false', () => {
+    expect(needsCreateRecovery('好的，先确认一下风格：犀利还是温和？')).toBe(false)
+    expect(needsCreateRecovery('已生成预览，请在下方卡片中确认入库')).toBe(false)
+  })
+
+  it('扩展词表：技能已添加 / 已配好 → true', () => {
+    expect(needsCreateRecovery('技能已添加')).toBe(true)
+    expect(needsCreateRecovery('能力已配好')).toBe(true)
+  })
+})
+
 describe('buildCreateInstruction', () => {
   const persona = {
     id: 'home',
@@ -227,6 +252,9 @@ describe('buildCreateInstruction', () => {
     expect(s).toContain('编排图')
     // 引导先澄清再产出（避免一次就调工具）
     expect(s).toContain('先澄清')
+    // 严禁未确认就宣称已入库（防幻觉成功）
+    expect(s).toContain('严禁幻觉入库')
+    expect(s).toContain('待你确认')
     // 人设修改引导：全量替换 + 基于原文
     expect(s).toContain('全量替换')
     expect(s).toContain('人设修改')

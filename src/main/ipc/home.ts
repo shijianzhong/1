@@ -1,5 +1,12 @@
 import { BrowserWindow } from 'electron'
-import type { AgentConfig, CreateDraft, HomeStreamEvent, LlmMessage, Persona } from '@shared/types'
+import type {
+  AgentConfig,
+  CreateDraft,
+  CreateMeta,
+  HomeStreamEvent,
+  LlmMessage,
+  Persona,
+} from '@shared/types'
 import { withHandler } from './handler'
 import {
   getDefaultProvider,
@@ -16,7 +23,13 @@ import {
   saveSkill,
   savePersona,
 } from '../storage/models'
-import { addMessage, createSession, listMessages } from '../storage/sessions'
+import {
+  addMessage,
+  createSession,
+  findMessageByCreateDraftId,
+  listMessages,
+  updateMessageMeta,
+} from '../storage/sessions'
 import { Agent } from '../orchestrator/agent'
 import {
   TeamJsonDetector,
@@ -25,8 +38,13 @@ import {
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
   buildTeamGraph,
+  createKindFromToolName,
+  inferCreateKind,
+  needsCreateRecovery,
+  proposeToolNameForKind,
   resolveMentions,
   runTeam,
+  type CreateKind,
 } from '../orchestrator/home'
 import { SkillContextProvider } from '../skills/provider'
 import { injectL0 } from '../storage/memory/l0'
@@ -63,6 +81,36 @@ const DRAFT_TTL_MS = 30 * 60 * 1000
 /** 草稿驻留硬上限：正常流程单 figure 确认即删到不了上限；防异常 propose 风暴撑内存 */
 const MAX_PENDING_DRAFTS = 100
 const pendingDrafts = new Map<string, { draft: CreateDraft; ts: number }>()
+
+/** propose_* 工具结果是否表示失败（Zod invalid_args / empty_payload 等） */
+function parseProposeFailure(content: string): {
+  error: string
+  messageKey: string
+  detail?: unknown
+} | null {
+  try {
+    const parsed = JSON.parse(content) as {
+      ok?: boolean
+      error?: string
+      messageKey?: string
+      detail?: unknown
+      hint?: string
+    }
+    if (parsed.ok === true) return null
+    if (!parsed.error && parsed.ok !== false) return null
+    const error = parsed.error ?? 'propose_failed'
+    const messageKey =
+      parsed.messageKey ??
+      (error === 'invalid_args'
+        ? 'errors.create.invalid_args'
+        : error === 'empty_payload'
+          ? 'errors.create.empty_payload'
+          : 'errors.create.propose_failed')
+    return { error, messageKey, detail: parsed.detail ?? parsed.hint }
+  } catch {
+    return null
+  }
+}
 
 /** 惰性清理超时草稿（随新提案/确认调用，防用户不点按钮直接离开导致的内存驻留） */
 function pruneDrafts(): void {
@@ -216,6 +264,8 @@ export function registerHomeHandlers(): void {
 
     // R1/R2：builtin + 显式 exposeToAgents 且已连接的 MCP 工具（同一快照供主 Agent / 组队节点共用）
     const agentTools = await listToolsForAgents()
+    const proposeToolNames = agentTools.filter((t) => t.name.startsWith('propose_')).map((t) => t.name)
+    logger.info('[home] propose_* 工具:', proposeToolNames.length ? proposeToolNames.join(',') : '（无！创建链路不可用）')
 
     // 6. Agent（带 memory 工具：L3 recall/search/retain）
     // thinking：按供应商开关 + 模型类型选择 thinking 参数格式
@@ -231,21 +281,47 @@ export function registerHomeHandlers(): void {
       defaultOptions: { maxTokens: 16384 },
       thinking,
     }
+    /** 本回合是否已弹出 propose_* 确认卡（用于幻觉入库补跑） */
+    let proposeCount = 0
+    /** 用数组承接闭包写入，避免 TS 把 let 收窄成恒 null → never */
+    const proposedThisTurn: CreateDraft[] = []
+    let lastProposeFailKind: CreateKind | null = null
+    let createRecovered = false
+    const emitProposeFailure = (toolName: string, content: string): void => {
+      const kind = createKindFromToolName(toolName)
+      if (!kind) return
+      const fail = parseProposeFailure(content)
+      if (!fail) return
+      lastProposeFailKind = kind
+      logger.warn(`[home:create] propose failed: kind=${kind} code=${fail.error}`)
+      emitStream({
+        type: 'proposal_error',
+        kind,
+        error: fail.error,
+        messageKey: fail.messageKey,
+        detail: fail.detail,
+      })
+    }
     const agent = new Agent(config, {
       llmOpts: { apiKey, baseURL, authHeader },
       toolCtx: {
         sessionId: sid,
         signal,
         // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
+        // 打上 sessionId：回合结束清 streamMsgs 后仍可按会话重挂，避免确认卡闪没
         onPropose: (draft) => {
+          proposeCount += 1
           pruneDrafts()
+          const stamped: CreateDraft = { ...draft, sessionId: sid }
+          proposedThisTurn.push(stamped)
           // 超上限挤掉最旧草稿（Map 迭代序即插入序）
-          if (pendingDrafts.size >= MAX_PENDING_DRAFTS && !pendingDrafts.has(draft.draftId)) {
+          if (pendingDrafts.size >= MAX_PENDING_DRAFTS && !pendingDrafts.has(stamped.draftId)) {
             const oldest = pendingDrafts.keys().next().value
             if (oldest) pendingDrafts.delete(oldest)
           }
-          pendingDrafts.set(draft.draftId, { draft, ts: Date.now() })
-          emitStream({ type: 'proposal', draft })
+          pendingDrafts.set(stamped.draftId, { draft: stamped, ts: Date.now() })
+          emitStream({ type: 'proposal', draft: stamped })
+          logger.info(`[home:create] propose invoked: kind=${stamped.kind} draftId=${stamped.draftId}`)
         },
         // HITL 提问桥（ask_user 工具）：事件经 orch_event 包装，前端渲染 AskUserCard；
         // respond 收口在 orchestrate:respond（与组队节点同一 userInput 队列）
@@ -400,29 +476,118 @@ export function registerHomeHandlers(): void {
       let finalText = ''
       let finalThinking = ''
 
+      const streamCallbacks = {
+        onText: (text: string) => {
+          const safe = detector.feed(text)
+          if (safe) emitStream({ type: 'text', text: safe })
+        },
+        onThinking: (text: string) => emitStream({ type: 'thinking', text }),
+        onRetry: (info: {
+          attempt: number
+          maxRetries: number
+          delayMs: number
+          reason: string
+        }) =>
+          emitStream({
+            type: 'retry',
+            attempt: info.attempt,
+            maxRetries: info.maxRetries,
+            delayMs: info.delayMs,
+            reason: info.reason,
+          }),
+        onToolResult: (tool: string, result: unknown) => {
+          if (tool.startsWith('propose_')) emitProposeFailure(tool, String(result))
+        },
+      }
+
       const result = await agent.run(
         { messages: l1Messages, runId: sid, signal },
-        {
-          onText: (text) => {
-            const safe = detector.feed(text)
-            if (safe) emitStream({ type: 'text', text: safe })
-          },
-          onThinking: (text) => emitStream({ type: 'thinking', text }),
-          onRetry: (info) =>
-            emitStream({
-              type: 'retry',
-              attempt: info.attempt,
-              maxRetries: info.maxRetries,
-              delayMs: info.delayMs,
-              reason: info.reason,
-            }),
-        },
+        streamCallbacks,
       )
       finalText = result.finalText
       finalThinking = result.finalThinking
       if (result.hitIterationLimit) {
         logger.warn('[home] 主 Agent 达工具轮次上限，已强制无工具收尾')
       }
+
+      // —— 创建幻觉补跑：自称已入库 / 否认持久化，但从未调 propose_* → 按 kind 定向挂工具再跑 ——
+      // 挡「嘴上创建成功、确认卡从未出现」；澄清追问不触发（见 needsCreateRecovery）。
+      if (
+        proposeCount === 0 &&
+        needsCreateRecovery(finalText) &&
+        !signal.aborted &&
+        proposeToolNames.length > 0
+      ) {
+        const inferred = inferCreateKind(message, finalText)
+        const createTools = inferred
+          ? agentTools.filter((t) => t.name === proposeToolNameForKind(inferred))
+          : agentTools.filter((t) => t.name.startsWith('propose_'))
+        const toolsForRecovery = createTools.length > 0 ? createTools : agentTools.filter((t) => t.name.startsWith('propose_'))
+        const kindParam = inferred ?? 'unknown'
+        logger.warn(
+          `[home:create] recovery triggered: kind=${kindParam} reason=hallucination tools=${toolsForRecovery.map((t) => t.name).join(',')}`,
+        )
+        emitStream({
+          type: 'create_notice',
+          messageKey: 'home:create.recovery.pending',
+          params: { kind: kindParam },
+          level: 'warn',
+        })
+        const toolList = toolsForRecovery.map((t) => t.name).join(' / ')
+        const recoveryAgent = new Agent(
+          {
+            ...config,
+            tools: toolsForRecovery,
+            instructions: `${config.instructions}\n\n【系统强制】你必须立即调用 ${toolList} 生成确认卡。本环境已具备入库链路。禁止声称没有存储或已入库。只调与对话匹配的一个 propose_*。`,
+          },
+          agent.deps,
+        )
+        const recovery = await recoveryAgent.run(
+          {
+            messages: [
+              ...result.messages,
+              {
+                role: 'user',
+                content: inferred
+                  ? `（系统纠正）你刚才没有调用 propose_*，资产未入库。请立刻调用 ${proposeToolNameForKind(inferred)} 弹出确认卡。禁止再说「已入库」「没有持久化」「只是模拟」。`
+                  : '（系统纠正）你刚才没有调用 propose_* 工具，资产并未写入库。请根据本对话里已确认的需求，立刻调用对应 propose_* 工具弹出确认卡。禁止再说「已入库」「没有持久化」「只是模拟」。',
+              },
+            ],
+            runId: sid,
+            signal,
+          },
+          streamCallbacks,
+          { maxIterations: 4 },
+        )
+        if (recovery.finalThinking) finalThinking = recovery.finalThinking
+        if (proposeCount > 0) {
+          createRecovered = true
+          // 补跑已弹出卡：历史不要留「已入库/没有持久化」谎言；正文由前端 notice/卡表达
+          finalText = recovery.finalText?.trim() || ''
+          logger.info(`[home:create] recovery done: proposed=${proposeCount}`)
+        } else {
+          logger.error(`[home:create] recovery done: proposed=0 kind=${kindParam}`)
+          emitStream({
+            type: 'create_notice',
+            messageKey: 'home:create.recovery.failed',
+            params: { kind: kindParam },
+            level: 'error',
+          })
+          if (recovery.finalText) finalText = recovery.finalText
+        }
+      }
+
+      // 创建事实源（A5）：proposed / hallucination_recovered / failed
+      const lastProposed = proposedThisTurn[proposedThisTurn.length - 1]
+      const createMeta: CreateMeta | undefined = lastProposed
+        ? {
+            status: createRecovered ? 'hallucination_recovered' : 'proposed',
+            kind: lastProposed.kind,
+            draftId: lastProposed.draftId,
+          }
+        : lastProposeFailKind && proposeCount === 0
+          ? { status: 'failed', kind: lastProposeFailKind }
+          : undefined
 
       // 流结束：判定直答 vs 组队
       const decision = detector.decide()
@@ -437,7 +602,11 @@ export function registerHomeHandlers(): void {
             sessionId: sid,
             role: 'assistant',
             content: teamResult.output,
-            meta: { thinking: finalThinking || undefined, team: decision.json },
+            meta: {
+              thinking: finalThinking || undefined,
+              team: decision.json,
+              ...(createMeta ? { create: createMeta } : {}),
+            },
           })
         } else {
           // 组队 JSON 指向的 role/capability 全失效 → 回退直答
@@ -448,7 +617,10 @@ export function registerHomeHandlers(): void {
             sessionId: sid,
             role: 'assistant',
             content: finalText,
-            meta: finalThinking ? { thinking: finalThinking } : undefined,
+            meta: {
+              ...(finalThinking ? { thinking: finalThinking } : {}),
+              ...(createMeta ? { create: createMeta } : {}),
+            },
           })
         }
       } else {
@@ -459,7 +631,10 @@ export function registerHomeHandlers(): void {
           sessionId: sid,
           role: 'assistant',
           content: finalText,
-          meta: finalThinking ? { thinking: finalThinking } : undefined,
+          meta: {
+            ...(finalThinking ? { thinking: finalThinking } : {}),
+            ...(createMeta ? { create: createMeta } : {}),
+          },
         })
       }
 
@@ -564,7 +739,22 @@ export function registerHomeHandlers(): void {
     }
 
     pendingDrafts.delete(draftId)
-    logger.info(`[home:create] 已入库 ${kind}:`, saved.id)
+    // R3：confirm 成功后写 meta.create.status=confirmed（供 B 期降级/事实源）
+    const sessionId = cached?.sessionId
+    if (sessionId) {
+      const msg = findMessageByCreateDraftId(sessionId, draftId)
+      if (msg) {
+        const prevCreate = (msg.meta as { create?: CreateMeta } | undefined)?.create
+        updateMessageMeta(msg.id, {
+          create: {
+            status: 'confirmed' as const,
+            kind: prevCreate?.kind ?? kind,
+            draftId,
+          },
+        })
+      }
+    }
+    logger.info(`[home:create] confirmCreate: kind=${kind} id=${saved.id}`)
     return { id: saved.id }
   })
 
@@ -573,5 +763,16 @@ export function registerHomeHandlers(): void {
     const { draftId } = input as { draftId: string }
     pendingDrafts.delete(draftId)
     logger.info('[home:create] 已取消草稿:', draftId)
+  })
+
+  // 列出未确认草稿（按会话）：回合结束 / 切回会话时重挂确认卡，防 streamMsgs 清空后卡片消失
+  withHandler<CreateDraft[]>('home:listPendingDrafts', (_e, input) => {
+    pruneDrafts()
+    const sessionId = (input as { sessionId?: string } | undefined)?.sessionId
+    const drafts: CreateDraft[] = []
+    for (const { draft } of pendingDrafts.values()) {
+      if (!sessionId || draft.sessionId === sessionId) drafts.push(draft)
+    }
+    return drafts
   })
 }

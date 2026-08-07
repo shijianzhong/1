@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react'
 import { Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CreateConfirmCard, type CardStatus } from '@renderer/components/CreateConfirmCard'
+import { CreateProposalErrorCard } from '@renderer/components/CreateProposalErrorCard'
+import { CreateNoticeBar } from '@renderer/components/CreateNoticeBar'
 import { ThinkingOrb, type OrbState } from '@renderer/components/ThinkingOrb'
 import { ThinkingBlock } from './ThinkingBlock'
 import { AskUserCard } from './AskUserCard'
@@ -37,6 +39,7 @@ export function MessageItem({
   speakerName,
   onRetryError,
   onDraftStatusChange,
+  onRetryProposalError,
 }: {
   msg: ChatMessage
   speakerName: (id: string) => string
@@ -44,6 +47,8 @@ export function MessageItem({
   onRetryError?: (msg: ChatMessage) => void
   /** 创建确认卡状态变化（仅首页主助手有 draft 场景） */
   onDraftStatusChange?: (msg: ChatMessage, status: CardStatus) => void
+  /** propose_* 失败卡「让助手重试」 */
+  onRetryProposalError?: (msg: ChatMessage) => void
 }) {
   const { t } = useTranslation(['common'])
   const m = msg
@@ -53,8 +58,10 @@ export function MessageItem({
   // 阶段 2（有文本 + streaming）：20px 行内 orb 替代 ▋ 闪烁光标
   const isActive = m.streaming || m.retrying
   const orbState = m.orbState ?? 'working'
-  const showOrbHeader = isActive && !m.text && !m.draft && !m.askUser && !m.approval
-  const showInlineOrb = m.streaming && !!m.text && !m.draft && !m.askUser && !m.approval
+  const showOrbHeader =
+    isActive && !m.text && !m.draft && !m.askUser && !m.approval && !m.proposalError && !m.createNotice
+  const showInlineOrb =
+    m.streaming && !!m.text && !m.draft && !m.askUser && !m.approval && !m.proposalError && !m.createNotice
 
   return (
     // 入场动效用 CSS（.message 上的 message-enter keyframes）：framer-motion 全项目仅此一处
@@ -72,11 +79,18 @@ export function MessageItem({
       >
         {m.thinking ? <ThinkingBlock text={m.thinking} collapsed={m.thinkingCollapsed} /> : null}
         {m.speaker ? <div className="message__speaker">{speakerName(m.speaker)}</div> : null}
-        {m.draft ? (
+        {m.createNotice ? (
+          <CreateNoticeBar notice={m.createNotice} />
+        ) : m.draft ? (
           <CreateConfirmCard
             draft={m.draft}
             status={m.cardStatus ?? 'pending'}
             onStatusChange={(status) => onDraftStatusChange?.(m, status)}
+          />
+        ) : m.proposalError ? (
+          <CreateProposalErrorCard
+            error={m.proposalError}
+            onRetry={() => onRetryProposalError?.(m)}
           />
         ) : m.askUser ? (
           <AskUserCard prompt={m.askUser} speakerName={speakerName} />

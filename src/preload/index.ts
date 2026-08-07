@@ -105,6 +105,8 @@ export interface OneApi {
       payload: import('@shared/types').CreateDraft['payload']
     }) => Promise<IpcResult<{ id: string }>>
     cancelCreate: (input: { draftId: string }) => Promise<IpcResult<void>>
+    /** 未确认创建草稿（按会话重挂确认卡） */
+    listPendingDrafts: (input?: { sessionId?: string }) => Promise<IpcResult<import('@shared/types').CreateDraft[]>>
   }
   orchestrate: {
     run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string }) => Promise<IpcResult<{ runId: string; output: string }>>
@@ -228,6 +230,7 @@ const api: OneApi = {
     cancel: () => ipcRenderer.invoke('home:cancel'),
     confirmCreate: (input) => ipcRenderer.invoke('home:confirmCreate', input),
     cancelCreate: (input) => ipcRenderer.invoke('home:cancelCreate', input),
+    listPendingDrafts: (input) => ipcRenderer.invoke('home:listPendingDrafts', input),
   },
   orchestrate: {
     run: (input) => ipcRenderer.invoke('orchestrate:run', input),

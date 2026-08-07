@@ -117,7 +117,13 @@ export async function executeTool(
   if (!r.success) {
     return {
       toolUseId,
-      content: JSON.stringify({ error: 'invalid_args', detail: r.error.issues }),
+      content: JSON.stringify({
+        error: 'invalid_args',
+        detail: r.error.issues,
+        ...(name.startsWith('propose_')
+          ? { messageKey: 'errors.create.invalid_args' }
+          : {}),
+      }),
       isError: true,
     }
   }

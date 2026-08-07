@@ -1,5 +1,7 @@
 {
-  "ipc": { "prefix": "连接失败" },
+  "ipc": {
+    "prefix": "连接失败"
+  },
   "tools": {
     "precheck_failed": "工具预检失败，已拦截",
     "approval_unavailable": "当前环境不支持工具审批",
@@ -21,5 +23,10 @@
     "tool_call_failed": "MCP 工具调用失败",
     "config_invalid": "MCP 配置无效",
     "name_conflict": "工具名冲突，已跳过"
+  },
+  "create": {
+    "invalid_args": "创建参数校验失败（如编排图节点为空或字段缺失）",
+    "empty_payload": "人设更新载荷为空：至少提供人设正文或一个档案字段",
+    "propose_failed": "创建提案失败"
   }
 }

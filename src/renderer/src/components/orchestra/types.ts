@@ -1,5 +1,7 @@
 import type { CreateDraft, SessionMessage } from '@shared/types'
 import type { CardStatus } from '@renderer/components/CreateConfirmCard'
+import type { ProposalErrorInfo } from '@renderer/components/CreateProposalErrorCard'
+import type { CreateNoticeInfo } from '@renderer/components/CreateNoticeBar'
 import type { OrbState } from '@renderer/components/ThinkingOrb'
 
 // —— 编排聊天共享类型（HomePage 与 EditorPage 运行面板共用）——
@@ -18,6 +20,10 @@ export interface ChatMessage {
   draft?: CreateDraft
   /** 确认卡状态（pending 可交互；saved/cancelled 定格） */
   cardStatus?: CardStatus
+  /** propose_* 失败卡 */
+  proposalError?: ProposalErrorInfo
+  /** 创建链路系统提示（补跑等） */
+  createNotice?: CreateNoticeInfo
   /** 编排发言者（orch_event output 气泡，executor_id == agent name） */
   speaker?: string
   /** HITL 提问卡（request_info 事件生成）；与 text 互斥 */

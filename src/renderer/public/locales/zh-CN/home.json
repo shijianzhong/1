@@ -1,1 +1,65 @@
-{"welcome": {"title": "你好，我是 ONE", "subtitle": "我可以帮你完成各种任务，以下是我的核心能力：", "cap": {"chat": "直接对话，回答问题、分析和建议", "team": "组建团队，编排多角色协作工作流", "create": "创建角色、能力和技能包", "memory": "长期记忆，记住你的偏好和上下文", "file": "读写和搜索本地文件", "web": "联网搜索和网页内容读取"}, "hint": "输入消息开始对话，用 @ 提及角色或能力"}, "assistantPlaceholder": "阶段 0 已经开始落地：窗口壳、preload 白名单、Hash Router、主题变量、命令面板和首页聊天骨架都在这一轮接起来。", "userPlaceholder": "好的，基于文档项目开始开发", "composerPlaceholder": "问你所想，想你所问", "mention": {"agent": "角色", "capability": "能力", "skill": "技能", "empty": "没有匹配的角色 / 能力 / 技能"}, "create": {"kind": {"agent": "角色", "capability": "能力", "skill": "技能", "persona": "人设更新"}, "title": "新建{{kind}}预览", "savedTitle": "已入库：{{name}}", "cancelledTitle": "已取消", "field": {"name": "名称", "description": "描述", "instructions": "系统提示词", "personaInstructions": "人设正文", "personaKeepHint": "留空 = 保留当前人设，仅更新档案", "content": "技能内容（SKILL.md）", "graph": "编排图"}, "confirm": "确认入库", "savedHint": "已加入对应库，可在管理页查看。", "cancelledHint": "草稿已丢弃，未入库。"}, "recent": {"item1": "阶段 0 桌面壳初始化", "item2": "主题系统接线", "item3": "编排画布骨架"}}
+{
+  "welcome": {
+    "title": "你好，我是 ONE",
+    "subtitle": "我可以帮你完成各种任务，以下是我的核心能力：",
+    "cap": {
+      "chat": "直接对话，回答问题、分析和建议",
+      "team": "组建团队，编排多角色协作工作流",
+      "create": "创建角色、能力和技能包",
+      "memory": "长期记忆，记住你的偏好和上下文",
+      "file": "读写和搜索本地文件",
+      "web": "联网搜索和网页内容读取"
+    },
+    "hint": "输入消息开始对话，用 @ 提及角色或能力"
+  },
+  "assistantPlaceholder": "阶段 0 已经开始落地：窗口壳、preload 白名单、Hash Router、主题变量、命令面板和首页聊天骨架都在这一轮接起来。",
+  "userPlaceholder": "好的，基于文档项目开始开发",
+  "composerPlaceholder": "问你所想，想你所问",
+  "mention": {
+    "agent": "角色",
+    "capability": "能力",
+    "skill": "技能",
+    "empty": "没有匹配的角色 / 能力 / 技能"
+  },
+  "create": {
+    "kind": {
+      "agent": "角色",
+      "capability": "能力",
+      "skill": "技能",
+      "persona": "人设更新",
+      "unknown": "资产"
+    },
+    "title": "新建{{kind}}预览",
+    "savedTitle": "已入库：{{name}}",
+    "cancelledTitle": "已取消",
+    "field": {
+      "name": "名称",
+      "description": "描述",
+      "instructions": "系统提示词",
+      "personaInstructions": "人设正文",
+      "personaKeepHint": "留空 = 保留当前人设，仅更新档案",
+      "content": "技能内容（SKILL.md）",
+      "graph": "编排图"
+    },
+    "confirm": "确认入库",
+    "savedHint": "已加入对应库，可在管理页查看。",
+    "cancelledHint": "草稿已丢弃，未入库。",
+    "pendingBar": "有 {{count}} 个创建预览待确认 — 点击定位",
+    "error": {
+      "title": "{{kind}}创建失败",
+      "hint": "未入库。可让助手按校验要求重试生成确认卡。",
+      "retry": "让助手重试",
+      "retryPrompt": "刚才创建{{kind}}失败了，请重新调用对应的 propose_* 工具生成确认卡；不要宣称已入库或没有持久化。"
+    },
+    "recovery": {
+      "pending": "刚才尚未真正写入{{kind}}库。正在根据对话生成确认卡，请在下方点「确认入库」。",
+      "failed": "助手未能生成{{kind}}确认卡。请重试，或到管理页手动新建。",
+      "openManage": "打开{{kind}}管理"
+    }
+  },
+  "recent": {
+    "item1": "阶段 0 桌面壳初始化",
+    "item2": "主题系统接线",
+    "item3": "编排画布骨架"
+  }
+}

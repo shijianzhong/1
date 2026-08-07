@@ -151,6 +151,9 @@
 - [ ] 7.1 内置工具 TS 重写（shell / grep / glob / browser_use / desktop_screenshot）—— 已有 `memory_*` / `propose_*` / `ask_user` / `web_search` / `web_read` / `opencli_run` / `file_write` / `file_read` / `file_search` / `shell_run`；browser_use 未做
 - [x] 7.1d shell_run 工具（2026-08-05）：`spawn` async + 进程组 SIGKILL + 120s 默认超时（max 300s）+ stdout 256KB 上限 + env 敏感值过滤（`_KEY`/`_SECRET`/`_TOKEN`/`_ID` 后缀置空）+ `DANGER_PATTERNS` preCheck 硬拦 + approvalMode='always'；**本会话允许**（2026-08-06：`approved_session` → sessionApprovals 放行表，同会话同工具跳过弹窗；危险命令仍硬拦）
 - [x] Agent `maxIterations` 默认 10→32；触顶且末轮仍 tool_use 时强制无工具收尾轮 + `hitIterationLimit` / `message_stop: max_iterations`（2026-08-06，防半截话当终局）
+- [x] 聊天创建确认卡回合结束被清空修复（2026-08-06）：`listPendingDrafts` + 草稿打 sessionId；回合结束/切会话重挂未确认卡；创建指令严禁幻觉「已入库」
+- [x] 创建幻觉强制补跑（2026-08-06）：`needsCreateRecovery` 检测「已入库/没有持久化/只是模拟」且未调 propose_* → 只挂创建工具再跑一轮弹出确认卡
+- [x] 聊天创建入库根治 A+B1/B2/B4（2026-08-07）：四类 `propose_*` 描述对称防幻觉；扩展幻觉词表 + R1 kind 定向补跑；`proposal_error` 失败卡可重试；`meta.create` proposed/confirmed；待确认指示条；补跑失败 notice + i18n；见 `docs/CHAT_CREATE_PERSISTENCE_FIX.md`（C 期 tool_choice/草稿落盘延后）
 - [x] 7.1c 文件工具（2026-08-01）：`file_write`（原子写/自动建目录/append）+ `file_read` + `file_search`（文件名+内容 OR 匹配）；路径围栏限允许根目录（默认 `~/sh/DailyNotes` Obsidian vault + `userData/exports`，`config/file-roots.json` 或 `ONE_FILE_ROOTS` env 扩展）；4 个 skill 的 agent-reach/search_files 失效引用已全部改指真实工具
 - [x] 7.1a 联网工具（2026-08-01）：`web_read`（Jina Reader 免 key）；`web_search`（默认 Bing CN HTML 免 key国内直连，摘要自带相对日期；`JINA_API_KEY` 切 Jina Search；4xx 不重试直接结构化错误）；`opencli_run`（OpenCLI 白名单 spawn，写操作动词拦截，退出码→可行动提示；生产走随包 `vendor/opencli` + `ELECTRON_RUN_AS_NODE` 用户零安装，开发回退系统 PATH）
 - [ ] 7.1b `opencli_run` 增强：以 `opencli list -f json` 的 `access: write` 字段做写拦截（自维护，替代静态动词表）；Chrome 扩展未连接的首次运行引导 UI

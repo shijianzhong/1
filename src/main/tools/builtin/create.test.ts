@@ -11,6 +11,22 @@ describe('tools/builtin/create', () => {
     registerCreateTools()
   })
 
+  it('四类 propose_* 工具描述均含防幻觉措辞（A1）', async () => {
+    const { listToolDefs } = await import('../registry')
+    const defs = listToolDefs().filter((d) => d.name.startsWith('propose_'))
+    expect(defs.map((d) => d.name).sort()).toEqual([
+      'propose_agent',
+      'propose_capability',
+      'propose_persona',
+      'propose_skill',
+    ])
+    for (const d of defs) {
+      expect(d.description).toMatch(/不等于已入库|禁止向用户宣称/)
+    }
+    const cap = defs.find((d) => d.name === 'propose_capability')
+    expect(cap?.description).toMatch(/通过校验的 graph|校验失败不会弹卡/)
+  })
+
   it('propose_agent：产出 agent 草稿并经 onPropose 桥推出，不落库', async () => {
     const drafts: CreateDraft[] = []
     const result = await executeTool(
@@ -63,7 +79,7 @@ describe('tools/builtin/create', () => {
     expect(drafts[0]).toMatchObject({ kind: 'capability', payload: { name: '写作流', graph } })
   })
 
-  it('propose_capability：非法 graph（空 nodes）被 zod 拦截返回错误 JSON', async () => {
+  it('propose_capability：非法 graph（空 nodes）被 zod 拦截返回错误 JSON + messageKey', async () => {
     const drafts: CreateDraft[] = []
     const result = await executeTool(
       'propose_capability',
@@ -73,6 +89,7 @@ describe('tools/builtin/create', () => {
     )
     expect(result.isError).toBe(true)
     expect(result.content).toContain('invalid_args')
+    expect(result.content).toContain('errors.create.invalid_args')
     expect(drafts).toHaveLength(0)
   })
 
