@@ -37,7 +37,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { unwrap } from '@renderer/api/client'
+import { unwrap, errorMessage } from '@renderer/api/client'
 import { useAgents, useCapability, useSaveCapability, useSessions, useSkills } from '@renderer/api/hooks'
 import { Button } from '@renderer/components/ui/Button'
 import { Badge } from '@renderer/components/ui/Badge'
@@ -384,12 +384,29 @@ function EditorCanvas() {
       lastGraphHashRef.current = currentHash
 
       const cap = capQ.data as Capability | undefined
-      void saveCap.mutateAsync({
-        id: capabilityId,
-        name: cap?.name ?? t('editor:untitled'),
-        description: cap?.description,
-        graph,
-      })
+      // 崩溃草稿：与 save 并行落盘，进程中途崩仍可从 drafts/ 恢复
+      void window.one.app
+        .writeDraft({
+          name: `editor-${capabilityId}.json`,
+          content: JSON.stringify({
+            kind: 'editor-graph',
+            capabilityId,
+            name: cap?.name,
+            graph,
+            updatedAt: Date.now(),
+          }),
+        })
+        .catch(() => undefined)
+      void saveCap
+        .mutateAsync({
+          id: capabilityId,
+          name: cap?.name ?? t('editor:untitled'),
+          description: cap?.description,
+          graph,
+        })
+        .then(() => {
+          void window.one.app.removeDraft(`editor-${capabilityId}.json`).catch(() => undefined)
+        })
     }, 800)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -948,7 +965,7 @@ function EditorCanvas() {
         {
           id: crypto.randomUUID(),
           role: 'assistant',
-          text: e instanceof Error ? e.message : String(e),
+          text: errorMessage(e, t),
           error: true,
         },
       ])

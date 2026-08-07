@@ -2,6 +2,42 @@
   "ipc": {
     "prefix": "连接失败"
   },
+  "home": {
+    "no_provider": "未配置供应商，请先在模型页添加供应商",
+    "no_default_model": "供应商未配置默认模型",
+    "graph_build_failed": "组队图构建失败"
+  },
+  "orchestrate": {
+    "no_provider": "未配置供应商",
+    "no_default_model": "供应商未配置默认模型",
+    "missing_params": "参数缺失",
+    "request_expired": "提问已失效（超时或已作答）"
+  },
+  "skills": {
+    "zip_only": "仅支持 .zip 格式的技能包（ZIP 内须包含 SKILL.md）",
+    "no_skill_md": "ZIP 内未找到 SKILL.md"
+  },
+  "graph": {
+    "cycle": "编排图存在环（不支持循环图）",
+    "empty": "编排图无节点"
+  },
+  "registry": {
+    "export_empty": "导出清单为空",
+    "invalid_repo": "仓库地址格式无效（需 owner/name）",
+    "invalid_ref": "分支名不能为空",
+    "invalid_sources": "至少保留一个源",
+    "invalid_source_id": "源 ID 为空或重复",
+    "invalid_source_template": "源模板需 https:// 且含 {path} 占位",
+    "pr_no_token": "自动提交 PR 需要先在设置 → Registry 配置有写权限的 GitHub Token（或改用手动 fork + PR）",
+    "pr_missing_dir": "缺少导出目录",
+    "pr_missing_manifest": "缺少文件清单或资产清单",
+    "pr_rate_limited": "GitHub API 限额已满，一小时后再试",
+    "pr_forbidden": "Token 权限不足（自动 PR 需 classic 勾 repo，或 fine-grained 对 fork 授 Contents+Pull requests 读写；设置页有引导）",
+    "pr_unauthorized": "Token 无效或已撤销，请到设置页重新配置",
+    "pr_not_found": "仓库不可达或 Token 无权限（检查 repo 配置与 Token 权限）",
+    "pr_failed": "自动 PR 提交失败",
+    "pr_fork_timeout": "Fork 等待超时"
+  },
   "tools": {
     "precheck_failed": "工具预检失败，已拦截",
     "approval_unavailable": "当前环境不支持工具审批",
@@ -22,11 +58,20 @@
     "connect_failed": "MCP 服务器连接失败",
     "tool_call_failed": "MCP 工具调用失败",
     "config_invalid": "MCP 配置无效",
-    "name_conflict": "工具名冲突，已跳过"
+    "name_conflict": "工具名冲突，已跳过",
+    "server_not_found": "MCP 服务器不存在"
   },
   "create": {
     "invalid_args": "创建参数校验失败（如编排图节点为空或字段缺失）",
     "empty_payload": "人设更新载荷为空：至少提供人设正文或一个档案字段",
     "propose_failed": "创建提案失败"
+  },
+  "secrets": {
+    "key_id_required": "keyId 必填",
+    "safe_storage_unavailable": "系统密钥链不可用，无法加解密 API Key"
+  },
+  "drafts": {
+    "invalid_args": "草稿参数无效",
+    "write_failed": "草稿写入失败"
   }
 }

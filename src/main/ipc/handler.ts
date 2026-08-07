@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import { err, isIpcFailure, ok, type IpcResult } from '@shared/types'
+import { err, isIpcFailure, ok, type IpcResult, IpcErrorThrow } from '@shared/types'
 import { logger } from '../logger'
 
 // —— withHandler：所有 ipcMain.handle 统一 try/catch，返回结构化 IpcResult（§11.3）——
@@ -17,8 +17,9 @@ export function withHandler<T>(channel: string, handler: InvokeHandler): void {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const retryable = isTransient(error)
+      const messageKey = error instanceof IpcErrorThrow ? error.messageKey : undefined
       logger.error(`[ipc:${channel}]`, error)
-      return err(`ipc.${channel}`, message, retryable)
+      return err(`ipc.${channel}`, message, retryable, messageKey)
     }
   })
 }

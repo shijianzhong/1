@@ -7,6 +7,7 @@ import type {
   LlmMessage,
   Persona,
 } from '@shared/types'
+import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
 import {
   getDefaultProvider,
@@ -135,9 +136,10 @@ function makeCompressFn(
   apiKey?: string,
   baseURL?: string,
   authHeader?: string,
+  apiFormat?: import('@shared/types').ApiFormat,
 ) {
   return async (text: string): Promise<string> => {
-    const client = getClient(modelId, { apiKey, baseURL, authHeader })
+    const client = getClient(modelId, { apiKey, baseURL, authHeader, apiFormat })
     const res = await client.stream({
       model: modelId,
       system: '你是摘要助手。把对话压缩成不超过 300 字的要点摘要，保留关键事实与意图。',
@@ -160,11 +162,15 @@ export function registerHomeHandlers(): void {
     // 2. persona + provider + key（cc switch：从 provider 取凭据 + modelId）
     const persona = getPersona()
     const provider = getDefaultProvider()
-    if (!provider) throw new Error('未配置供应商，请先在模型页添加供应商')
+    if (!provider) {
+      throw new IpcErrorThrow('errors:home.no_provider', '未配置供应商，请先在模型页添加供应商')
+    }
     const { apiKey, baseURL, authHeader, modelId, enableThinking, apiFormat } = resolveProviderCredentials(provider, 'default')
     logger.info('[home] provider:', provider.name, 'enableThinking:', enableThinking, 'modelId:', modelId)
-    if (!modelId) throw new Error('供应商未配置默认模型')
-    const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader)
+    if (!modelId) {
+      throw new IpcErrorThrow('errors:home.no_default_model', '供应商未配置默认模型')
+    }
+    const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader, apiFormat)
 
     // 3. 历史 + 当前消息
     const history = listMessages(sid)
@@ -303,7 +309,7 @@ export function registerHomeHandlers(): void {
       })
     }
     const agent = new Agent(config, {
-      llmOpts: { apiKey, baseURL, authHeader },
+      llmOpts: { apiKey, baseURL, authHeader, apiFormat },
       toolCtx: {
         sessionId: sid,
         signal,
@@ -471,7 +477,7 @@ export function registerHomeHandlers(): void {
           getAgent,
           getCapability,
         )
-        if (!graph) throw new Error('组队图构建失败')
+        if (!graph) throw new IpcErrorThrow('errors:home.graph_build_failed', '组队图构建失败')
         const question = mentions.cleanText || message
         logger.info(`[trace:cap] home.directAgent → runTeam agents=${directAgent.map((a) => a.id).join(',')}`)
         const result = await runTeam(graph, question, sid, buildDeps, emitStream, signal)

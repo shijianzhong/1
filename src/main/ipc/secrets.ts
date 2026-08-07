@@ -1,4 +1,4 @@
-import type { LLMConfig } from '@shared/types'
+import { IpcErrorThrow, type LLMConfig } from '@shared/types'
 import { withHandler } from './handler'
 import { getKey, isVaultAvailable, removeKey, setKey } from '../secrets/vault'
 
@@ -18,9 +18,9 @@ export function registerSecretsHandlers(): void {
 
   withHandler<void>('secrets:setLLMConfig', (_e, input) => {
     const cfg = input as LLMConfig & { keyId?: string }
-    if (!cfg.keyId) throw new Error('keyId 必填')
+    if (!cfg.keyId) throw new IpcErrorThrow('errors.secrets.key_id_required')
     if (cfg.apiKey) {
-      if (!isVaultAvailable()) throw new Error('safeStorage 不可用')
+      if (!isVaultAvailable()) throw new IpcErrorThrow('errors.secrets.safe_storage_unavailable')
       setKey(cfg.keyId, cfg.apiKey)
     }
     // baseUrl/defaultModel 存到 model 配置（阶段2 client 读取），此处只管 key

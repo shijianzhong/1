@@ -86,6 +86,30 @@ describe('RetryingClient', () => {
     expect(res.stopReason).toBe('end_turn')
   })
 
+  it('OpenAI 适配器 Error.status=503 可重试', async () => {
+    const err = new Error('OpenAI API 503: unavailable') as Error & { status?: number }
+    err.status = 503
+    const stream = vi.fn().mockRejectedValueOnce(err).mockResolvedValueOnce(mockResponse())
+    const client = new RetryingClient(makeClient((req) => stream()))
+
+    const p = client.stream(mockReq())
+    await vi.advanceTimersToNextTimerAsync()
+    const res = await p
+
+    expect(stream).toHaveBeenCalledTimes(2)
+    expect(res.stopReason).toBe('end_turn')
+  })
+
+  it('OpenAI 适配器 Error.status=401 不重试', async () => {
+    const err = new Error('OpenAI API 401: bad key') as Error & { status?: number }
+    err.status = 401
+    const stream = vi.fn().mockRejectedValue(err)
+    const client = new RetryingClient(makeClient((req) => stream()))
+
+    await expect(client.stream(mockReq())).rejects.toThrow('OpenAI API 401')
+    expect(stream).toHaveBeenCalledTimes(1)
+  })
+
   it('网络异常重试（关键词识别）', async () => {
     const stream = vi
       .fn()

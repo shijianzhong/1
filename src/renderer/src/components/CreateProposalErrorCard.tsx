@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import type { CreateDraft } from '@shared/types'
+import { normalizeI18nKey, type CreateDraft } from '@shared/types'
 
 /** propose_* 失败卡：展示可读原因 +「让助手重试」（R2） */
 export interface ProposalErrorInfo {
@@ -18,7 +18,7 @@ export function CreateProposalErrorCard({ error, onRetry }: Props) {
   const { t } = useTranslation(['home', 'errors', 'common'])
   const kindLabel = t(`home:create.kind.${error.kind}`)
   const reason = error.messageKey
-    ? t(error.messageKey, { defaultValue: error.error })
+    ? t(normalizeI18nKey(error.messageKey), { defaultValue: error.error })
     : error.error
 
   return (

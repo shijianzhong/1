@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { APIError, AuthenticationError, BadRequestError } from '@anthropic-ai/sdk'
 import type { LlmRequest, LlmResponse } from '@shared/types'
 import { logger } from '../logger'
-import { LLMClient, type LLMClientOptions } from './client'
+import { LLMClient, type LLMClientOptions, type LLMProtocol } from './client'
+import { OpenAILLMClient } from './openai-client'
 
 // —— 重试包装层（§三之三 H + 铁律10）——
 // 必须包在 LLMClient.stream()（真正调 beta.messages.stream 的方法）外层，
@@ -23,6 +24,12 @@ const GATEWAY_RETRY_KEYWORDS = [
   'backend returned',
 ]
 
+function statusOf(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const s = (error as { status?: unknown }).status
+  return typeof s === 'number' ? s : undefined
+}
+
 function isRetryable(error: unknown): boolean {
   // 401/400/ValidationError 不重试（§三之三 H）
   if (error instanceof AuthenticationError) return false
@@ -32,6 +39,13 @@ function isRetryable(error: unknown): boolean {
   if (error instanceof APIError) {
     const status = error.status ?? 0
     return status === 429 || (status >= 500 && status <= 504)
+  }
+
+  // OpenAI 适配器等：普通 Error 挂 .status（非 APIError 实例）
+  const duckStatus = statusOf(error)
+  if (duckStatus !== undefined) {
+    if (duckStatus === 401 || duckStatus === 400) return false
+    return duckStatus === 429 || (duckStatus >= 500 && duckStatus <= 504)
   }
 
   // —— duck-typing 兜底（SDK 在 ESM/打包下 instanceof 可能失效，§三之三 H）——
@@ -53,6 +67,8 @@ function isRetryable(error: unknown): boolean {
     if (/network|fetch|abort|timeout|connection|econn|enotfound/i.test(name)) return true
   }
   if (/network|fetch|abort|timeout|connection|econn|enotfound/i.test(errStr)) return true
+  // 消息里带 5xx 状态码（如 "OpenAI API 503: ..."）也重试
+  if (/\b(429|500|502|503|504)\b/.test(errStr)) return true
   return GATEWAY_RETRY_KEYWORDS.some((kw) => errStr.includes(kw))
 }
 
@@ -83,14 +99,25 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 export class RetryingClient {
-  private readonly inner: LLMClient
+  private readonly inner: LLMProtocol
 
-  constructor(clientOrOpts: LLMClient | LLMClientOptions = {}) {
+  constructor(clientOrOpts: LLMProtocol | LLMClientOptions = {}) {
     // duck-type：有 stream 方法即视为已构造的 client（便于测试注入 mock）
-    this.inner =
-      clientOrOpts && typeof (clientOrOpts as LLMClient).stream === 'function'
-        ? (clientOrOpts as LLMClient)
-        : new LLMClient(clientOrOpts as LLMClientOptions)
+    if (clientOrOpts && typeof (clientOrOpts as LLMProtocol).stream === 'function') {
+      this.inner = clientOrOpts as LLMProtocol
+    } else {
+      const opts = clientOrOpts as LLMClientOptions
+      // P1#4：按 apiFormat 路由到对应协议适配器
+      // custom = 仍走 Anthropic SDK（兼容网关）；非 Anthropic 端点请显式选 openai
+      if (opts.apiFormat === 'custom') {
+        logger.warn(
+          '[llm] apiFormat=custom 按 Anthropic 协议发送；若端点是 OpenAI 兼容请改选 openai',
+        )
+      }
+      this.inner = opts.apiFormat === 'openai'
+        ? new OpenAILLMClient(opts)
+        : new LLMClient(opts)
+    }
   }
 
   async stream(req: LlmRequest): Promise<LlmResponse> {
@@ -130,10 +157,10 @@ export class RetryingClient {
 const clientCache = new Map<string, RetryingClient>()
 const MAX_CACHE = 16
 
-/** 生成缓存键：modelId + baseURL + authHeader + apiKey 哈希 */
+/** 生成缓存键：modelId + baseURL + authHeader + apiFormat + apiKey 哈希 */
 function makeCacheKey(modelId: string, opts: LLMClientOptions): string {
   const keyHash = opts.apiKey ? hashApiKey(opts.apiKey) : 'none'
-  return `${modelId}|${opts.baseURL ?? ''}|${opts.authHeader ?? ''}|${keyHash}`
+  return `${modelId}|${opts.baseURL ?? ''}|${opts.authHeader ?? ''}|${opts.apiFormat ?? ''}|${keyHash}`
 }
 
 /** 哈希 apiKey（sha256 截 96bit），避免明文存入 Map key */

@@ -2,6 +2,42 @@
   "ipc": {
     "prefix": "Connection failed"
   },
+  "home": {
+    "no_provider": "No provider configured. Add one in the Models page first.",
+    "no_default_model": "Provider has no default model configured",
+    "graph_build_failed": "Team graph build failed"
+  },
+  "orchestrate": {
+    "no_provider": "No provider configured",
+    "no_default_model": "Provider has no default model configured",
+    "missing_params": "Missing required parameters",
+    "request_expired": "Request expired (timed out or already answered)"
+  },
+  "skills": {
+    "zip_only": "Only .zip skill packs are supported (must contain SKILL.md inside)",
+    "no_skill_md": "SKILL.md not found in ZIP"
+  },
+  "graph": {
+    "cycle": "Orchestration graph contains a cycle (cycles not supported)",
+    "empty": "Orchestration graph has no nodes"
+  },
+  "registry": {
+    "export_empty": "Export list is empty",
+    "invalid_repo": "Invalid repository format (expected owner/name)",
+    "invalid_ref": "Branch name cannot be empty",
+    "invalid_sources": "At least one source must be kept",
+    "invalid_source_id": "Source ID is empty or duplicate",
+    "invalid_source_template": "Source template must use https:// and contain {path} placeholder",
+    "pr_no_token": "Auto PR requires a write-enabled GitHub Token in Settings → Registry (or use manual fork + PR)",
+    "pr_missing_dir": "Missing export directory",
+    "pr_missing_manifest": "Missing file list or asset list",
+    "pr_rate_limited": "GitHub API rate limit exceeded, try again in an hour",
+    "pr_forbidden": "Token insufficient permissions (auto PR needs classic with repo scope, or fine-grained with Contents+Pull requests read/write on fork; see Settings guide)",
+    "pr_unauthorized": "Token invalid or revoked, please reconfigure in Settings",
+    "pr_not_found": "Repository unreachable or token lacks access (check repo config and token permissions)",
+    "pr_failed": "Auto PR submission failed",
+    "pr_fork_timeout": "Fork wait timed out"
+  },
   "tools": {
     "precheck_failed": "Tool pre-check failed, blocked",
     "approval_unavailable": "Tool approval not available in this environment",
@@ -22,11 +58,20 @@
     "connect_failed": "MCP server connection failed",
     "tool_call_failed": "MCP tool call failed",
     "config_invalid": "MCP config invalid",
-    "name_conflict": "Tool name conflict, skipped"
+    "name_conflict": "Tool name conflict, skipped",
+    "server_not_found": "MCP server not found"
   },
   "create": {
     "invalid_args": "Create args failed validation (e.g. empty graph nodes or missing fields)",
     "empty_payload": "Persona update payload empty: provide instructions or a profile field",
     "propose_failed": "Create proposal failed"
+  },
+  "secrets": {
+    "key_id_required": "keyId is required",
+    "safe_storage_unavailable": "System keychain unavailable, cannot encrypt/decrypt API key"
+  },
+  "drafts": {
+    "invalid_args": "Invalid draft arguments",
+    "write_failed": "Failed to write draft"
   }
 }

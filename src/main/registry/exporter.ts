@@ -10,6 +10,7 @@ import type {
   RegistryExportResult,
   Skill,
 } from '@shared/types'
+import { IpcErrorThrow } from '@shared/types'
 import { logger } from '../logger'
 import { getSkillUploadTempDir } from '../skills/upload'
 import {
@@ -213,7 +214,7 @@ export async function applyExport(
   items: RegistryExportConfirmItem[],
   targetDir: string,
 ): Promise<RegistryExportResult> {
-  if (items.length === 0) throw new Error('导出清单为空')
+  if (items.length === 0) throw new IpcErrorThrow('errors.registry.export_empty')
   // slug 合法性 + 跨类型唯一 + version semver（对齐仓库 validate CI 规则，提前在本地拦下）
   const slugSeen = new Set<string>()
   for (const item of items) {

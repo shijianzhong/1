@@ -66,7 +66,7 @@ describe('tools/builtin/web', () => {
   it('web_read：401 不重试，直接返回带 JINA_API_KEY 引导的错误 JSON', async () => {
     fetchMock.mockResolvedValue(new Response('unauthorized', { status: 401 }))
     const r = await executeTool('web_read', { url: 'https://example.com/x' }, 'tu_4', {})
-    expect(r.isError).toBe(false)
+    expect(r.isError).toBe(true) // { ok: false } → 协议语义 is_error=true
     const data = JSON.parse(r.content)
     expect(data.ok).toBe(false)
     expect(data.error).toBe('http_401')

@@ -153,7 +153,7 @@ describe('tools/builtin/create', () => {
     const result = await executeTool('propose_persona', {}, 'tu_p4', {
       onPropose: (d) => drafts.push(d),
     })
-    expect(result.isError).toBe(false) // 工具不抛，错误经 content JSON 返回（铁律11）
+    expect(result.isError).toBe(true) // { ok: false } → 协议语义 is_error=true（铁律11 不抛，但 is_error=true）
     expect(result.content).toContain('empty_payload')
     expect(drafts).toHaveLength(0)
   })

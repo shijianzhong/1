@@ -36,6 +36,8 @@ export interface IpcError {
   code: string
   message: string
   retryable: boolean
+  /** i18n key（规范：`errors:home.no_provider`）；渲染层优先用此 key 做 t() 查询，无则降级到 message */
+  messageKey?: string
 }
 
 export type IpcSuccess<T> = { ok: true; data: T }
@@ -46,8 +48,40 @@ export function ok<T>(data: T): IpcSuccess<T> {
   return { ok: true, data }
 }
 
-export function err(code: string, message: string, retryable = false): IpcFailure {
-  return { ok: false, code, message, retryable }
+/**
+ * 把历史点号写法 `errors.foo.bar` 归一成 i18next 的 `errors:foo.bar`。
+ * 已含 `:` 的 key 原样返回；工具 JSON 里仍可能是点号，渲染层统一过此函数。
+ */
+export function normalizeI18nKey(messageKey: string): string {
+  if (!messageKey || messageKey.includes(':')) return messageKey
+  const knownNs = ['errors', 'home', 'common', 'editor', 'settings', 'registry', 'mcp']
+  for (const ns of knownNs) {
+    if (messageKey === ns) return `${ns}:`
+    if (messageKey.startsWith(`${ns}.`)) return `${ns}:${messageKey.slice(ns.length + 1)}`
+  }
+  return messageKey
+}
+
+export function err(code: string, message: string, retryable = false, messageKey?: string): IpcFailure {
+  return {
+    ok: false,
+    code,
+    message,
+    retryable,
+    ...(messageKey ? { messageKey: normalizeI18nKey(messageKey) } : {}),
+  }
+}
+
+/** 带 messageKey 的错误类，供主进程 throw 使用（withHandler 会提取 messageKey） */
+export class IpcErrorThrow extends Error {
+  public readonly messageKey: string
+  constructor(messageKey: string, message?: string) {
+    const key = normalizeI18nKey(messageKey)
+    // 可读 fallback：有显式 message 用它；否则至少不是裸 key（渲染层再 t()）
+    super(message ?? key)
+    this.messageKey = key
+    this.name = 'IpcErrorThrow'
+  }
 }
 
 export function isIpcFailure<T>(value: IpcResult<T>): value is IpcFailure {

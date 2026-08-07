@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join, sep } from 'node:path'
-import type { RegistryExportConfirmItem } from '@shared/types'
+import { IpcErrorThrow, type RegistryExportConfirmItem } from '@shared/types'
 import { logger } from '../logger'
 import { getKey } from '../secrets/vault'
 import { loadRegistryConfig, REGISTRY_TOKEN_KEY_ID } from './sources'
@@ -82,21 +82,21 @@ async function waitForkReady(token: string, forkFullName: string): Promise<void>
     }
   }
   const last = lastError instanceof Error ? lastError.message : String(lastError ?? 'unknown')
-  throw new Error(`registry_pr_failed: fork ${forkFullName} 等待超时（最后错误：${last}）`)
+  throw new IpcErrorThrow('errors.registry.pr_fork_timeout', `registry_pr_failed: fork ${forkFullName} 等待超时（最后错误：${last}）`)
 }
 
-function toGhMessage(error: unknown): string {
+function toGhError(error: unknown): IpcErrorThrow {
   if (error instanceof GhError) {
     if (error.status === 403) {
       return error.message.includes('rate limit')
-        ? 'registry_rate_limited: GitHub API 限额已满，一小时后再试'
-        : 'registry_pr_forbidden: Token 权限不足（自动 PR 需 classic 勾 repo，或 fine-grained 对 fork 授 Contents+Pull requests 读写；设置页有引导）'
+        ? new IpcErrorThrow('errors.registry.pr_rate_limited', 'registry_rate_limited')
+        : new IpcErrorThrow('errors.registry.pr_forbidden', 'registry_pr_forbidden')
     }
-    if (error.status === 401) return 'registry_pr_unauthorized: Token 无效或已撤销，请到设置页重新配置'
-    if (error.status === 404) return 'registry_pr_forbidden: 仓库不可达或 Token 无权限（检查 repo 配置与 Token 权限）'
-    return `registry_pr_failed: ${error.message}`
+    if (error.status === 401) return new IpcErrorThrow('errors.registry.pr_unauthorized', 'registry_pr_unauthorized')
+    if (error.status === 404) return new IpcErrorThrow('errors.registry.pr_not_found', 'registry_pr_not_found')
+    return new IpcErrorThrow('errors.registry.pr_failed', `registry_pr_failed: ${error.message}`)
   }
-  return `registry_pr_failed: ${error instanceof Error ? error.message : String(error)}`
+  return new IpcErrorThrow('errors.registry.pr_failed', `registry_pr_failed: ${error instanceof Error ? error.message : String(error)}`)
 }
 
 /**
@@ -112,7 +112,7 @@ export async function submitExportAsPr(
 ): Promise<PublishPrResult> {
   const token = getKey(REGISTRY_TOKEN_KEY_ID)
   if (!token) {
-    throw new Error('registry_pr_no_token: 自动提交 PR 需要先在 设置 → Registry 配置有写权限的 GitHub Token（或改用手动 fork + PR）')
+    throw new IpcErrorThrow('errors.registry.pr_no_token')
   }
   const upstream = loadRegistryConfig().repo
   const upstreamRef = loadRegistryConfig().ref
@@ -209,7 +209,7 @@ export async function submitExportAsPr(
     }
   } catch (error) {
     logger.warn('[registry] 自动 PR 失败', error)
-    throw new Error(toGhMessage(error))
+    throw toGhError(error)
   }
 }
 

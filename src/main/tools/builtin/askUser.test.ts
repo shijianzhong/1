@@ -20,7 +20,7 @@ describe('tools/builtin/askUser', () => {
 
   it('未注入 onAskUser：返回 user_input_unavailable 错误 JSON，不抛', async () => {
     const result = await executeTool('ask_user', { question: 'q' }, 'tu_1', {})
-    expect(result.isError).toBe(false) // 工具本身执行成功，业务错误在 JSON 里
+    expect(result.isError).toBe(true) // { ok: false } → 协议语义 is_error=true
     const parsed = JSON.parse(result.content) as { ok: boolean; error: string }
     expect(parsed).toMatchObject({ ok: false, error: 'user_input_unavailable' })
   })
@@ -49,7 +49,7 @@ describe('tools/builtin/askUser', () => {
         throw new Error('user_input_timeout')
       },
     })
-    expect(result.isError).toBe(false)
+    expect(result.isError).toBe(true) // { ok: false } → 协议语义 is_error=true
     const parsed = JSON.parse(result.content) as { ok: boolean; error: string; hint: string }
     expect(parsed.ok).toBe(false)
     expect(parsed.error).toBe('user_input_timeout')

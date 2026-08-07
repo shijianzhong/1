@@ -1,3 +1,4 @@
+import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
 import {
   loadMcpConfig,
@@ -90,7 +91,7 @@ export function registerMcpHandlers(): void {
     const id = idRaw as string
     const configs = await loadMcpConfig()
     const config = configs.find((s) => s.id === id)
-    if (!config) throw new Error('Server not found')
+    if (!config) throw new IpcErrorThrow('errors.mcp.server_not_found')
     // 先注销旧工具（重连场景：旧工具仍在 registry → hasTool 拦截 → 注册 0 个）
     unregisterMcpTools(id)
     await connectServer(config)

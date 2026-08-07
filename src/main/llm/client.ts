@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { LlmDelta, LlmRequest, LlmResponse } from '@shared/types'
+import type { ApiFormat, LlmDelta, LlmRequest, LlmResponse } from '@shared/types'
 import { logger } from '../logger'
 import { ThinkingTagParser } from './thinking-tag-parser'
 
@@ -10,6 +10,11 @@ import { ThinkingTagParser } from './thinking-tag-parser'
 
 const BETAS = ['mcp-client-2025-04-04', 'code-execution-2025-08-25']
 
+/** 协议适配器统一接口（P1#4）：Anthropic / OpenAI 均实现此接口 */
+export interface LLMProtocol {
+  stream(req: LlmRequest): Promise<LlmResponse>
+}
+
 export interface LLMClientOptions {
   apiKey?: string
   /** 中转地址；空走官方 */
@@ -18,9 +23,11 @@ export interface LLMClientOptions {
    *  有 baseURL（中转）→ Authorization: Bearer <apiKey>（铁律9）
    *  无 baseURL（官方）→ SDK 默认 x-api-key */
   authHeader?: string
+  /** API 协议格式（P1#4）：anthropic 走 SDK，openai 走 fetch 原生协议 */
+  apiFormat?: ApiFormat
 }
 
-export class LLMClient {
+export class LLMClient implements LLMProtocol {
   private readonly sdk: Anthropic
 
   constructor(opts: LLMClientOptions = {}) {

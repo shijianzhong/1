@@ -57,6 +57,9 @@
       "openManage": "Open {{kind}} manage"
     }
   },
+  "retry": {
+    "waiting": "Retry {{attempt}}/{{maxRetries}}, retrying in {{delay}}s ({{reason}})"
+  },
   "recent": {
     "item1": "Stage 0 desktop shell init",
     "item2": "Theme wiring",

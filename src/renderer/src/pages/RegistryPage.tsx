@@ -13,17 +13,8 @@ import {
   Star,
   Wrench,
 } from 'lucide-react'
-import {
-  useAgents,
-  useApplyRegistryImport,
-  useCapabilities,
-  usePlanRegistryImport,
-  useRefreshRegistryIndex,
-  useRegistryIndex,
-  useRegistryManifest,
-  useRegistryRepoStats,
-  useSkills,
-} from '@renderer/api/hooks'
+import { useAgents, useApplyRegistryImport, useCapabilities, usePlanRegistryImport, useRefreshRegistryIndex, useRegistryIndex, useRegistryManifest, useRegistryRepoStats, useSkills } from '@renderer/api/hooks'
+import { errorMessage, IpcError } from '@renderer/api/client'
 import { Badge } from '@renderer/components/ui/Badge'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -63,8 +54,21 @@ interface Selected {
   entry: RegistryIndexEntry
 }
 
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
+function errMsg(e: unknown, t?: (key: string, opts?: { defaultValue?: string }) => string): string {
+  return errorMessage(e, t)
+}
+
+/** 检查错误是否为 registry 限流（兼容 messageKey 和原始 message 两种路径） */
+function isRateLimited(e: unknown): boolean {
+  if (e instanceof IpcError) {
+    const key = e.messageKey ?? ''
+    return (
+      key === 'errors:registry.pr_rate_limited' ||
+      key === 'errors.registry.pr_rate_limited' ||
+      e.message.includes('registry_rate_limited')
+    )
+  }
+  return e instanceof Error ? e.message.includes('registry_rate_limited') : String(e).includes('registry_rate_limited')
 }
 
 export function RegistryPage() {
@@ -135,7 +139,7 @@ export function RegistryPage() {
     try {
       setPlan(await planImport.mutateAsync({ kind: selected.kind, id: selected.entry.id }))
     } catch (e) {
-      setErrorMsg(t('registry:result.failed', { message: errMsg(e) }))
+      setErrorMsg(t('registry:result.failed', { message: errMsg(e, t) }))
     }
   }
 
@@ -173,7 +177,7 @@ export function RegistryPage() {
       setPlan(null)
       setResultMsg(resultSummary(r))
     } catch (e) {
-      setErrorMsg(t('registry:result.failed', { message: errMsg(e) }))
+      setErrorMsg(t('registry:result.failed', { message: errMsg(e, t) }))
     }
   }
 
@@ -192,7 +196,7 @@ export function RegistryPage() {
       const r = await applyImport.mutateAsync({ kind, id: entry.id })
       setQuickMsg(resultSummary(r))
     } catch (e) {
-      setQuickMsg(t('registry:result.failed', { message: errMsg(e) }))
+      setQuickMsg(t('registry:result.failed', { message: errMsg(e, t) }))
     } finally {
       setQuickBusy(null)
     }
@@ -276,7 +280,7 @@ export function RegistryPage() {
       ) : null}
 
       {/* 限流引导条（§4.3：403 → 引导配置 Token 提升限额） */}
-      {indexQ.isError && errMsg(indexQ.error).includes('registry_rate_limited') ? (
+      {indexQ.isError && isRateLimited(indexQ.error) ? (
         <div
           role="alert"
           className="glass-panel"
@@ -311,7 +315,7 @@ export function RegistryPage() {
         <EmptyState text={t('common:state.loading')} />
       ) : indexQ.isError ? (
         <EmptyState
-          text={t('registry:errors.loadFailed', { message: errMsg(indexQ.error) })}
+          text={t('registry:errors.loadFailed', { message: errMsg(indexQ.error, t) })}
           danger
         />
       ) : entries.length === 0 ? (

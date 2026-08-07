@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Pencil, Upload, Wrench, FileCode2 } from 'lucide-react'
+import { errorMessage } from '@renderer/api/client'
 import {
   useSkills,
   useRemoveSkill,
@@ -109,7 +110,7 @@ export function SkillsPage() {
         scriptPath: parsed.scriptPath,
       })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = errorMessage(err, t)
       setUploadError(t('common:skills.uploadFailed', { message: msg }))
     } finally {
       setUploading(false)

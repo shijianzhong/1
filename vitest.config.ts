@@ -14,7 +14,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // 支持 .tsx 组件测试（文件顶部用 // @vitest-environment jsdom 切换环境）
+    include: ['src/**/*.test.{ts,tsx}'],
     globals: false,
   },
 })

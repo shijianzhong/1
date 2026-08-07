@@ -1,4 +1,5 @@
 import type { GraphNode, WorkflowGraph } from '@shared/types'
+import { IpcErrorThrow } from '@shared/types'
 import type {
   BuilderContext,
   Executor,
@@ -34,7 +35,7 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
 
   // 环检测
   if (hasCycle(graph)) {
-    throw new Error('编排图存在环（不支持循环图）')
+    throw new IpcErrorThrow('errors.graph.cycle')
   }
 
   const bctx: BuilderContext = {
@@ -133,7 +134,7 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
   // - 普通 agent 节点：入口 = 自身 id。
   const startExecutor = resolveStartExecutor(graph)
   if (!startExecutor) {
-    throw new Error('编排图无节点')
+    throw new IpcErrorThrow('errors.graph.empty')
   }
 
   return { executors, startExecutor, edges, conditions, nodes }

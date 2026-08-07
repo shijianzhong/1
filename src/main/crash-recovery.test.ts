@@ -70,4 +70,14 @@ describe('crash-recovery sentinel', () => {
     removeDraft('ok.json')
     expect(listDrafts()).toEqual([])
   })
+
+  it('writeDraft 原子写入 + 拒绝非法名', async () => {
+    const { writeDraft, listDrafts, removeDraft } = await load()
+    writeDraft('../evil.json', '{"x":1}')
+    expect(listDrafts()).toEqual([])
+    writeDraft('home-composer.json', '{"text":"hi"}')
+    expect(listDrafts()).toEqual([{ name: 'home-composer.json', content: '{"text":"hi"}' }])
+    removeDraft('home-composer.json')
+    expect(listDrafts()).toEqual([])
+  })
 })

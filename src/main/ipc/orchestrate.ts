@@ -8,6 +8,7 @@ import type {
   StreamEvent,
   WorkflowGraph,
 } from '@shared/types'
+import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
 import { buildWorkflow, type BuildDeps } from '../orchestrator/builder'
 import { runWorkflow } from '../orchestrator/runner'
@@ -140,7 +141,7 @@ function makeResolveAgent(
     }
     return {
       config,
-      llmOpts: { apiKey, baseURL, authHeader },
+      llmOpts: { apiKey, baseURL, authHeader, apiFormat },
       toolCtx: {
         sessionId,
         signal,
@@ -189,9 +190,14 @@ export function registerOrchestrateHandlers(): void {
       }
 
       const provider = getDefaultProvider()
-      if (!provider) throw new Error('未配置供应商')
-      const { apiKey, baseURL, authHeader, modelId, enableThinking, apiFormat } = resolveProviderCredentials(provider, 'default')
-      if (!modelId) throw new Error('供应商未配置默认模型')
+      if (!provider) {
+        throw new IpcErrorThrow('errors:orchestrate.no_provider', '未配置供应商')
+      }
+      const { apiKey, baseURL, authHeader, modelId, enableThinking, apiFormat } =
+        resolveProviderCredentials(provider, 'default')
+      if (!modelId) {
+        throw new IpcErrorThrow('errors:orchestrate.no_default_model', '供应商未配置默认模型')
+      }
 
       // 先建 AbortController：signal 贯穿 toolCtx（agent 循环 + ask_user 挂起），
       // cancel 才能真正打断「等用户作答」与工具循环（原来只断 superstep 间隙）。
@@ -233,9 +239,13 @@ export function registerOrchestrateHandlers(): void {
   // home 通道的组队运行也走同一 userInput 队列，故 respond 收口在本通道。
   withHandler<void>('orchestrate:respond', async (_e, input) => {
     const { requestId, response } = input as { requestId: string; response: string }
-    if (!requestId || typeof response !== 'string') throw new Error('参数缺失')
+    if (!requestId || typeof response !== 'string') {
+      throw new IpcErrorThrow('errors:orchestrate.missing_params', '参数缺失')
+    }
     const found = resolveUserInput(requestId, response)
-    if (!found) throw new Error('提问已失效（超时或已作答）')
+    if (!found) {
+      throw new IpcErrorThrow('errors:orchestrate.request_expired', '提问已失效（超时或已作答）')
+    }
   })
 
   withHandler<void>(

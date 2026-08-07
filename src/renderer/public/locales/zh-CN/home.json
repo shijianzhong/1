@@ -57,6 +57,9 @@
       "openManage": "打开{{kind}}管理"
     }
   },
+  "retry": {
+    "waiting": "重试 {{attempt}}/{{maxRetries}}，{{delay}}s 后重试（{{reason}}）"
+  },
   "recent": {
     "item1": "阶段 0 桌面壳初始化",
     "item2": "主题系统接线",

@@ -126,4 +126,123 @@ describe('orchestra/reducer applyOrchEvent', () => {
     ]
     expect(closeStreaming(msgs).every((m) => !m.streaming)).toBe(true)
   })
+
+  it('approval_request → pending 审批卡，定格既有流式气泡', () => {
+    const prev = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '调用工具' })
+    const msgs = applyOrchEvent(prev, {
+      type: 'approval_request',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      tool_name: 'shell_run',
+      args: { cmd: 'ls' },
+    })
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0].streaming).toBe(false)
+    expect(msgs[1].approval).toMatchObject({
+      requestId: 'apr_1',
+      toolName: 'shell_run',
+      status: 'pending',
+    })
+  })
+
+  it('approval_resolved: approved → 审批卡标记 approved', () => {
+    let msgs = applyOrchEvent([], {
+      type: 'approval_request',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      tool_name: 'shell_run',
+      args: {},
+    })
+    msgs = applyOrchEvent(msgs, {
+      type: 'approval_resolved',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      response: 'approved',
+    })
+    expect(msgs[0].approval).toMatchObject({ status: 'approved', sessionWide: false })
+  })
+
+  it('approval_resolved: approved_session → sessionWide=true', () => {
+    let msgs = applyOrchEvent([], {
+      type: 'approval_request',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      tool_name: 'shell_run',
+      args: {},
+    })
+    msgs = applyOrchEvent(msgs, {
+      type: 'approval_resolved',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      response: 'approved_session',
+    })
+    expect(msgs[0].approval).toMatchObject({ status: 'approved', sessionWide: true })
+  })
+
+  it('approval_resolved: denied → 审批卡标记 denied', () => {
+    let msgs = applyOrchEvent([], {
+      type: 'approval_request',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      tool_name: 'shell_run',
+      args: {},
+    })
+    msgs = applyOrchEvent(msgs, {
+      type: 'approval_resolved',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      response: 'denied',
+    })
+    expect(msgs[0].approval).toMatchObject({ status: 'denied' })
+  })
+
+  it('approval_resolved: 空 → expired', () => {
+    let msgs = applyOrchEvent([], {
+      type: 'approval_request',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      tool_name: 'shell_run',
+      args: {},
+    })
+    msgs = applyOrchEvent(msgs, {
+      type: 'approval_resolved',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      response: '',
+    })
+    expect(msgs[0].approval).toMatchObject({ status: 'expired' })
+  })
+
+  it('approval_resolved 幂等：已 resolved 不再变动', () => {
+    let msgs = applyOrchEvent([], {
+      type: 'approval_request',
+      request_id: 'apr_1',
+      node_id: 'a1',
+      tool_name: 'shell_run',
+      args: {},
+    })
+    msgs = applyOrchEvent(msgs, { type: 'approval_resolved', request_id: 'apr_1', node_id: 'a1', response: 'denied' })
+    msgs = applyOrchEvent(msgs, { type: 'approval_resolved', request_id: 'apr_1', node_id: 'a1', response: 'approved' })
+    expect(msgs[0].approval).toMatchObject({ status: 'denied' })
+  })
+
+  it('tool_call → 末条流式气泡标记 searching 态', () => {
+    const prev = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '搜索中' })
+    const msgs = applyOrchEvent(prev, { type: 'tool_call', node_id: 'a1', tool: 'web_search', args: {} })
+    expect(msgs[0].orbState).toBe('searching')
+  })
+
+  it('tool_result → 恢复 working 态', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '处理' })
+    msgs = applyOrchEvent(msgs, { type: 'tool_call', node_id: 'a1', tool: 'web_search', args: {} })
+    expect(msgs[0].orbState).toBe('searching')
+    msgs = applyOrchEvent(msgs, { type: 'tool_result', node_id: 'a1', result: undefined })
+    expect(msgs[0].orbState).toBe('working')
+  })
+
+  it('output final 无前置增量气泡 → 直接建成形气泡（streaming=false）', () => {
+    const msgs = applyOrchEvent([], { type: 'output', node_id: 'gc1', speaker: 'gc1', text: '完整输出', final: true })
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0]).toMatchObject({ text: '完整输出', streaming: false })
+  })
 })

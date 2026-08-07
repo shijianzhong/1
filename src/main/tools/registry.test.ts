@@ -315,4 +315,38 @@ describe('tools/registry', () => {
     expect(mcpServerIdFromToolName('shell_run')).toBeNull()
     expect(mcpServerIdFromToolName('mcp__only')).toBeNull()
   })
+
+  it('handler 返回 { ok: false } → isError=true（协议语义统一）', async () => {
+    const schema = z.object({ path: z.string() })
+    registerTool('fail_tool', 'returns failure', schema, async () => ({
+      ok: false,
+      error: 'file_not_found',
+      hint: '文件不存在',
+    }))
+    const result = await executeTool('fail_tool', { path: '/x' }, 'tu_fail', {})
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('file_not_found')
+  })
+
+  it('handler 返回 { ok: true } → isError=false', async () => {
+    const schema = z.object({ path: z.string() })
+    registerTool('ok_tool', 'returns ok', schema, async () => ({
+      ok: true,
+      output: 'done',
+    }))
+    const result = await executeTool('ok_tool', { path: '/x' }, 'tu_ok', {})
+    expect(result.isError).toBe(false)
+    expect(result.content).toContain('done')
+  })
+
+  it('handler 返回无 ok 字段的对象 → isError=false（向后兼容）', async () => {
+    const schema = z.object({ q: z.string() })
+    registerTool('data_tool', 'returns data', schema, async () => ({
+      results: ['a', 'b'],
+      count: 2,
+    }))
+    const result = await executeTool('data_tool', { q: 'x' }, 'tu_data', {})
+    expect(result.isError).toBe(false)
+    expect(result.content).toContain('results')
+  })
 })

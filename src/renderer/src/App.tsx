@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { AppRoutes } from '@renderer/routes/index'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { ConfirmHost } from '@renderer/components/ui/ConfirmDialog'
+import { CrashRecoveryDialog } from '@renderer/components/CrashRecoveryDialog'
 import { useThemeStore } from '@renderer/store/theme'
 import { isIpcFailure, type SystemPingResponse } from '@shared/types'
 import { startupMark } from '@renderer/lib/startupMark'
@@ -65,6 +66,7 @@ export default function App() {
       <HashRouter>
         <AppRoutes />
         <ConfirmHost />
+        <CrashRecoveryDialog />
       </HashRouter>
     </ErrorBoundary>
   )

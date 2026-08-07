@@ -1,5 +1,7 @@
 import { app, nativeTheme, Notification, type BrowserWindow } from 'electron'
+import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
+import { listDrafts, removeDraft, writeDraft } from '../crash-recovery'
 
 // —— 原生能力 IPC（§六）——
 // 通知 + 开机自启 + nativeTheme 明暗跟随。
@@ -54,5 +56,25 @@ export function registerNativeHandlers(getMainWindow: () => BrowserWindow | null
       win.show()
       win.focus()
     }
+  })
+
+  // —— 崩溃恢复：列出 / 写入 / 删除草稿 ——
+  withHandler<Array<{ name: string; content: string }>>('app:listDrafts', () => listDrafts())
+
+  withHandler<void>('app:writeDraft', (_e, inputRaw) => {
+    const input = inputRaw as { name?: unknown; content?: unknown }
+    if (typeof input?.name !== 'string' || typeof input?.content !== 'string') {
+      throw new IpcErrorThrow('errors:drafts.invalid_args', 'writeDraft 参数无效')
+    }
+    writeDraft(input.name, input.content)
+    return undefined
+  })
+
+  withHandler<void>('app:removeDraft', (_e, nameRaw) => {
+    if (typeof nameRaw !== 'string' || !nameRaw) {
+      throw new IpcErrorThrow('errors:drafts.invalid_args', 'removeDraft 参数无效')
+    }
+    removeDraft(nameRaw)
+    return undefined
   })
 }

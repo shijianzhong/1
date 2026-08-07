@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, join, relative, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { getSkillsPath } from '../storage/paths'
+import { IpcErrorThrow } from '@shared/types'
 
 // —— 技能包上传与导入（借鉴 Proton skills_mgmt + agent-framework ArchiveEntryLoader）——
 // 仅支持 .zip 格式：
@@ -137,7 +138,7 @@ export async function parseSkillZip(
     .sort((a, b) => a.entryName.length - b.entryName.length)
 
   if (skillMdEntries.length === 0) {
-    throw new Error('ZIP 内未找到 SKILL.md')
+    throw new IpcErrorThrow('errors.skills.no_skill_md')
   }
 
   const skillMdEntry = skillMdEntries[0]
@@ -276,7 +277,7 @@ export async function uploadSkillFile(
   const ext = extname(filePath).toLowerCase()
 
   if (ext !== '.zip') {
-    throw new Error('仅支持 .zip 格式的技能包（ZIP 内须包含 SKILL.md）')
+    throw new IpcErrorThrow('errors.skills.zip_only')
   }
 
   const parsed = await parseSkillZip(filePath, overrideName)

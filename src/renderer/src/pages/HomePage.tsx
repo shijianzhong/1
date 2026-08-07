@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { unwrap } from '@renderer/api/client'
-import { IpcError } from '@renderer/api/client'
+import { unwrap, errorMessage } from '@renderer/api/client'
 import { MentionComposer, type MentionComposerHandle } from '@renderer/components/MentionComposer'
 import { useAgents, useCapabilities, useSkills } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
@@ -81,6 +80,30 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<(() => void) | null>(null)
   const composerRef = useRef<MentionComposerHandle>(null)
+
+  // 崩溃恢复：未发送输入 debounce 落盘（2s 轮询 composer）
+  useEffect(() => {
+    const tick = (): void => {
+      const text = composerRef.current?.getText()?.trim() ?? ''
+      if (!text) {
+        void window.one.app.removeDraft('home-composer.json').catch(() => undefined)
+        return
+      }
+      void window.one.app
+        .writeDraft({
+          name: 'home-composer.json',
+          content: JSON.stringify({
+            kind: 'home-composer',
+            text,
+            sessionId: sessionId ?? null,
+            updatedAt: Date.now(),
+          }),
+        })
+        .catch(() => undefined)
+    }
+    const id = window.setInterval(tick, 2000)
+    return () => window.clearInterval(id)
+  }, [sessionId])
   // @提及数据源（角色/能力/技能列表，供下拉补全）
   const agentsQ = useAgents()
   const capabilitiesQ = useCapabilities()
@@ -182,10 +205,10 @@ export function HomePage() {
               ...last,
               streaming: false,
               orbState: 'solving' as const,
-              retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）`,
+              retrying: t('home:retry.waiting', { attempt: delta.attempt, maxRetries: delta.maxRetries, delay: (delta.delayMs / 1000).toFixed(1), reason: delta.reason }),
             }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', orbState: 'solving' as const, retrying: `重试 ${delta.attempt}/${delta.maxRetries}，${(delta.delayMs / 1000).toFixed(1)}s 后重试（${delta.reason}）` }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', orbState: 'solving' as const, retrying: t('home:retry.waiting', { attempt: delta.attempt, maxRetries: delta.maxRetries, delay: (delta.delayMs / 1000).toFixed(1), reason: delta.reason }) }]
         })
       } else if (delta.type === 'error') {
         // 错误显示在 AI 气泡位置（而非顶部），含重试按钮
@@ -263,6 +286,7 @@ export function HomePage() {
     // 发送即清空输入框（overrideText 来自重试按钮，不来自 composer，清空无害）；
     // 修复此前仅 !overrideText 才清空导致 Enter 发送后内容残留的问题。
     composerRef.current?.clear()
+    void window.one.app.removeDraft('home-composer.json').catch(() => undefined)
     setError(null)
     setSending(true)
     // 追加 user 消息 + 立即创建空的 AI 流式气泡（含 orbState=working）
@@ -299,7 +323,7 @@ export function HomePage() {
       // 刷新会话列表（新建会话后标题有了）
       void useChatStore.getState().loadSessions()
     } catch (e) {
-      const msg = e instanceof IpcError ? e.message : String(e)
+      const msg = errorMessage(e, t)
       setError(msg)
     } finally {
       setSending(false)

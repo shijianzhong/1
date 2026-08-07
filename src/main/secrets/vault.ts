@@ -1,4 +1,5 @@
 import { safeStorage } from 'electron'
+import { IpcErrorThrow } from '@shared/types'
 import {
   existsSync,
   mkdirSync,
@@ -48,7 +49,7 @@ export function isVaultAvailable(): boolean {
 /** 存加密 key（base64 blob） */
 export function setKey(keyId: string, plaintext: string): void {
   if (!isVaultAvailable()) {
-    throw new Error('safeStorage 不可用（系统未提供密钥链）')
+    throw new IpcErrorThrow('errors.secrets.safe_storage_unavailable', 'safeStorage 不可用（系统未提供密钥链）')
   }
   const map = readVault()
   map[keyId] = safeStorage.encryptString(plaintext).toString('base64')
@@ -61,7 +62,7 @@ export function getKey(keyId: string): string | null {
   const blob = map[keyId]
   if (!blob) return null
   if (!isVaultAvailable()) {
-    throw new Error('safeStorage 不可用，无法解密 key')
+    throw new IpcErrorThrow('errors.secrets.safe_storage_unavailable', 'safeStorage 不可用，无法解密 key')
   }
   try {
     return safeStorage.decryptString(Buffer.from(blob, 'base64'))

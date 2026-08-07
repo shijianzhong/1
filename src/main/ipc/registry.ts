@@ -8,6 +8,7 @@ import type {
   RegistryImportResult,
   RegistryIndex,
 } from '@shared/types'
+import { IpcErrorThrow } from '@shared/types'
 import { BrowserWindow, dialog, shell } from 'electron'
 import { applyExport, getContributeUrl, planExport } from '../registry/exporter'
 import { applyImport, planImport } from '../registry/importer'
@@ -41,22 +42,22 @@ function parseSlug(raw: unknown): string {
 function parseConfig(raw: unknown): RegistryConfig {
   const cfg = raw as Partial<RegistryConfig>
   if (typeof cfg?.repo !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(cfg.repo.trim())) {
-    throw new Error(`registry_invalid_repo: ${String(cfg?.repo)}`)
+    throw new IpcErrorThrow('errors.registry.invalid_repo', `registry_invalid_repo: ${String(cfg?.repo)}`)
   }
   if (typeof cfg?.ref !== 'string' || !cfg.ref.trim()) {
-    throw new Error(`registry_invalid_ref: ${String(cfg?.ref)}`)
+    throw new IpcErrorThrow('errors.registry.invalid_ref', `registry_invalid_ref: ${String(cfg?.ref)}`)
   }
   if (!Array.isArray(cfg?.sources) || cfg.sources.length === 0) {
-    throw new Error('registry_invalid_sources: 至少保留一个源')
+    throw new IpcErrorThrow('errors.registry.invalid_sources')
   }
   const seen = new Set<string>()
   const sources = cfg.sources.map((s) => {
     const id = typeof s?.id === 'string' ? s.id.trim() : ''
     const urlTemplate = typeof s?.urlTemplate === 'string' ? s.urlTemplate.trim() : ''
-    if (!id || seen.has(id)) throw new Error(`registry_invalid_source_id: ${id || '(空)'}`)
+    if (!id || seen.has(id)) throw new IpcErrorThrow('errors.registry.invalid_source_id', `registry_invalid_source_id: ${id}`)
     seen.add(id)
     if (!urlTemplate.startsWith('https://') || !urlTemplate.includes('{path}')) {
-      throw new Error(`registry_invalid_source_template: ${id}（需 https:// 且含 {path} 占位）`)
+      throw new IpcErrorThrow('errors.registry.invalid_source_template', `registry_invalid_source_template: ${id}`)
     }
     return { id, urlTemplate }
   })
@@ -103,7 +104,7 @@ export function registerRegistryHandlers(): void {
 
   withHandler<RegistryExportResult | null>('registry:applyExport', async (e, inputRaw) => {
     const items = inputRaw as RegistryExportConfirmItem[]
-    if (!Array.isArray(items) || items.length === 0) throw new Error('registry_export_empty')
+    if (!Array.isArray(items) || items.length === 0) throw new IpcErrorThrow('errors.registry.export_empty')
     const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getAllWindows()[0]
     const picked = await dialog.showOpenDialog(win, {
       title: '选择导出目录（将在其中创建 one-registry-export/）',
@@ -121,9 +122,9 @@ export function registerRegistryHandlers(): void {
     'registry:submitPr',
     async (_e, inputRaw) => {
       const input = inputRaw as { dir?: unknown; files?: unknown; items?: unknown }
-      if (typeof input?.dir !== 'string' || !input.dir) throw new Error('registry_pr_failed: 缺导出目录')
+      if (typeof input?.dir !== 'string' || !input.dir) throw new IpcErrorThrow('errors.registry.pr_missing_dir')
       if (!Array.isArray(input?.files) || !Array.isArray(input?.items) || input.items.length === 0) {
-        throw new Error('registry_pr_failed: 缺文件清单/资产清单')
+        throw new IpcErrorThrow('errors.registry.pr_missing_manifest')
       }
       const result = await submitExportAsPr(
         input.dir,

@@ -149,8 +149,22 @@ export interface OneApi {
     notify: (input: { title: string; body: string }) => Promise<IpcResult<void>>
     getSystemColorMode: () => Promise<IpcResult<'light' | 'dark' | 'system'>>
     show: () => Promise<IpcResult<void>>
+    /** 崩溃恢复：订阅主进程推送的草稿列表（preload 缓存，晚订阅不丢） */
+    onCrashRecovery: (cb: (payload: { drafts: Array<{ name: string; content: string }> }) => void) => () => void
+    /** 崩溃恢复：拉取当前草稿（mount 时 pull，防 push 竞态） */
+    listDrafts: () => Promise<IpcResult<Array<{ name: string; content: string }>>>
+    /** 崩溃恢复：debounce 写盘 */
+    writeDraft: (input: { name: string; content: string }) => Promise<IpcResult<void>>
+    /** 崩溃恢复：删除指定草稿 */
+    removeDraft: (name: string) => Promise<IpcResult<void>>
   }
 }
+
+/** 启动早期缓存 crashRecovery，避免 React 订阅前事件丢失 */
+let cachedCrashRecovery: { drafts: Array<{ name: string; content: string }> } | null = null
+ipcRenderer.on('app:crashRecovery', (_e, payload: { drafts: Array<{ name: string; content: string }> }) => {
+  cachedCrashRecovery = payload
+})
 
 const api: OneApi = {
   system: {
@@ -270,6 +284,21 @@ const api: OneApi = {
     notify: (input) => ipcRenderer.invoke('app:notify', input),
     getSystemColorMode: () => ipcRenderer.invoke('app:getSystemColorMode'),
     show: () => ipcRenderer.invoke('app:show'),
+    onCrashRecovery: (cb) => {
+      if (cachedCrashRecovery && cachedCrashRecovery.drafts.length > 0) {
+        // 同步回放：订阅时主进程事件可能已发过
+        queueMicrotask(() => cb(cachedCrashRecovery!))
+      }
+      const handler = (_e: unknown, payload: { drafts: Array<{ name: string; content: string }> }) => {
+        cachedCrashRecovery = payload
+        cb(payload)
+      }
+      ipcRenderer.on('app:crashRecovery', handler)
+      return () => ipcRenderer.off('app:crashRecovery', handler)
+    },
+    listDrafts: () => ipcRenderer.invoke('app:listDrafts'),
+    writeDraft: (input) => ipcRenderer.invoke('app:writeDraft', input),
+    removeDraft: (name) => ipcRenderer.invoke('app:removeDraft', name),
   },
 }
 

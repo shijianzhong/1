@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -69,12 +70,43 @@ export function listDrafts(): Array<{ name: string; content: string }> {
     .filter((v): v is { name: string; content: string } => v !== null)
 }
 
+/** 校验草稿文件名（仅允许 basename + .json，防路径穿越） */
+function safeDraftName(name: string): string | null {
+  if (typeof name !== 'string') return null
+  const base = name.replace(/[/\\]/g, '')
+  if (!base || base !== name || !base.endsWith('.json')) return null
+  return base
+}
+
+/**
+ * 写入草稿（§11.7）：编排画布 / 聊天未发送输入 debounce 落盘。
+ * name 必须是 basename 且以 .json 结尾。
+ */
+export function writeDraft(name: string, content: string): void {
+  const base = safeDraftName(name)
+  if (!base) {
+    logger.warn('[crash] writeDraft 拒绝非法文件名', name)
+    return
+  }
+  try {
+    const dir = getDraftsDir()
+    mkdirSync(dir, { recursive: true })
+    // 临时文件 + rename，防半截写
+    const target = join(dir, base)
+    const tmp = join(dir, `.${base}.${process.pid}.tmp`)
+    writeFileSync(tmp, content, 'utf8')
+    // rename 覆盖目标（同卷原子）
+    renameSync(tmp, target)
+  } catch (error) {
+    logger.warn('[crash] writeDraft 失败', error)
+  }
+}
+
 /** 删除草稿 */
 export function removeDraft(name: string): void {
   try {
-    // basename 防路径穿越（name 来自 IPC / 恢复 UI）
-    const base = name.replace(/[/\\]/g, '')
-    if (!base || base !== name) return
+    const base = safeDraftName(name)
+    if (!base) return
     rmSync(join(getDraftsDir(), base), { force: true })
   } catch {
     // 静默

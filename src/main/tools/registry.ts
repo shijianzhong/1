@@ -193,11 +193,15 @@ export async function executeTool(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const result = await entry.handler(r.data, ctx)
-      return {
-        toolUseId,
-        content: typeof result === 'string' ? result : JSON.stringify(result),
-        isError: false,
-      }
+      const content = typeof result === 'string' ? result : JSON.stringify(result)
+      // 工具业务失败（{ ok: false }）→ 标记 is_error=true（协议语义）
+      // 让 LLM 明确感知工具失败，而非从 JSON 内容自行推断
+      const isError =
+        typeof result === 'object' &&
+        result !== null &&
+        'ok' in result &&
+        (result as Record<string, unknown>).ok === false
+      return { toolUseId, content, isError }
     } catch (error) {
       lastError = error
       if (attempt < maxAttempts - 1) {
