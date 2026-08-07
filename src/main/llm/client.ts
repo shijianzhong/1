@@ -81,9 +81,22 @@ export class LLMClient {
     }
 
     const finalMessage = await stream.finalMessage()
-    logger.debug('[llm] finalMessage content types', finalMessage.content.map((b: { type: string }) => b.type))
-    // 清理最终 text 中的 thinking 标签（中转代理可能把标签留在 text block 里）
     const cleanedContent = fromAnthropicContent(finalMessage.content).map(stripThinkingTags)
+    const textLen = cleanedContent
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .reduce((n, b) => n + b.text.length, 0)
+    const toolNames = cleanedContent
+      .filter((b): b is { type: 'tool_use'; id: string; name: string; input: unknown } => b.type === 'tool_use')
+      .map((b) => b.name)
+    // info：便于追踪「干着干着断了」——尤其 stop=max_tokens
+    logger.info(
+      `[trace:cap] llm.final model=${req.model} stop=${finalMessage.stop_reason ?? 'null'} ` +
+        `textLen=${textLen} tools=[${toolNames.join(',')}] ` +
+        `usage=${JSON.stringify(finalMessage.usage ?? null)}`,
+    )
+    if (finalMessage.stop_reason === 'max_tokens') {
+      logger.warn(`[trace:cap] llm.max_tokens model=${req.model} maxTokens=${req.maxTokens} textLen=${textLen}`)
+    }
     return {
       stopReason: finalMessage.stop_reason ?? null,
       content: cleanedContent,

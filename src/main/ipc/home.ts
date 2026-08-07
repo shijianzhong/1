@@ -452,6 +452,15 @@ export function registerHomeHandlers(): void {
         `caps=[${mentions.capabilities.map((c) => c.name).join(',')}] skills=[${mentions.skills.map((s) => s.name).join(',')}] ` +
         `→ ${focusCap ? 'focusCap(主Agent介绍/组队)' : directAgent ? 'directAgent' : '主Agent路由'}`,
     )
+    logger.info(
+      `[trace:cap] home.chat.start session=${sid} focusCap=${focusCap?.id ?? '-'}(${focusCap?.name ?? '-'}) ` +
+        `msgLen=${message.length} msgHead=${JSON.stringify(message.slice(0, 80))}`,
+    )
+    signal.addEventListener(
+      'abort',
+      () => logger.warn(`[trace:cap] home.signal.abort session=${sid}`),
+      { once: true },
+    )
 
     try {
       if (directAgent) {
@@ -464,9 +473,11 @@ export function registerHomeHandlers(): void {
         )
         if (!graph) throw new Error('组队图构建失败')
         const question = mentions.cleanText || message
+        logger.info(`[trace:cap] home.directAgent → runTeam agents=${directAgent.map((a) => a.id).join(',')}`)
         const result = await runTeam(graph, question, sid, buildDeps, emitStream, signal)
         addMessage({ sessionId: sid, role: 'assistant', content: result.output })
         emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+        logger.info(`[trace:cap] home.directAgent.end session=${sid} outputLen=${result.output.length}`)
         return { runId: sid }
       }
 
@@ -509,6 +520,10 @@ export function registerHomeHandlers(): void {
       if (result.hitIterationLimit) {
         logger.warn('[home] 主 Agent 达工具轮次上限，已强制无工具收尾')
       }
+      logger.info(
+        `[trace:cap] home.mainAgent.end session=${sid} hitIterLimit=${result.hitIterationLimit} ` +
+          `finalTextLen=${finalText.length} textTail=${JSON.stringify(finalText.slice(-80))}`,
+      )
 
       // —— 创建幻觉补跑：自称已入库 / 否认持久化，但从未调 propose_* → 按 kind 定向挂工具再跑 ——
       // 挡「嘴上创建成功、确认卡从未出现」；澄清追问不触发（见 needsCreateRecovery）。
@@ -591,13 +606,25 @@ export function registerHomeHandlers(): void {
 
       // 流结束：判定直答 vs 组队
       const decision = detector.decide()
+      logger.info(
+        `[trace:cap] home.router.decide session=${sid} kind=${decision.kind}` +
+          (decision.kind === 'team' ? ` json=${JSON.stringify(decision.json)}` : ''),
+      )
       if (decision.kind === 'team') {
         // 组队：拼编排图跑 runner，事件经 orch_event 转前端
         logger.info('[home-router] 判为组队:', JSON.stringify(decision.json))
         emitStream({ type: 'run_id', sessionId: sid })
         const graph = buildTeamGraph(decision.json, getAgent, getCapability)
         if (graph) {
+          logger.info(
+            `[trace:cap] home.team.run session=${sid} graphNodes=${graph.nodes.length} ` +
+              `types=[${graph.nodes.map((n) => `${n.id}:${n.type}`).join(',')}]`,
+          )
           const teamResult = await runTeam(graph, message, sid, buildDeps, emitStream, signal)
+          logger.info(
+            `[trace:cap] home.team.done session=${sid} outputLen=${teamResult.output.length} ` +
+              `tail=${JSON.stringify(teamResult.output.slice(-80))}`,
+          )
           addMessage({
             sessionId: sid,
             role: 'assistant',
@@ -611,6 +638,7 @@ export function registerHomeHandlers(): void {
         } else {
           // 组队 JSON 指向的 role/capability 全失效 → 回退直答
           logger.warn('[home-router] 组队图构建失败（role/capability 失效），回退直答')
+          logger.warn(`[trace:cap] home.team.graph_build_failed session=${sid} json=${JSON.stringify(decision.json)}`)
           const direct = detector.flushDirect()
           if (direct) emitStream({ type: 'text', text: direct })
           addMessage({
@@ -625,6 +653,9 @@ export function registerHomeHandlers(): void {
         }
       } else {
         // 直答：flush 尾窗残留推前端，存档
+        logger.info(
+          `[trace:cap] home.direct session=${sid} focusCap=${!!focusCap} finalTextLen=${finalText.length}`,
+        )
         const tail = detector.flushDirect()
         if (tail) emitStream({ type: 'text', text: tail })
         addMessage({
@@ -644,13 +675,16 @@ export function registerHomeHandlers(): void {
       )
 
       // 10. 结束事件：触顶收尾用 max_iterations，便于前端/日志区分假 end_turn
+      const stopReason = result.hitIterationLimit ? 'max_iterations' : 'end_turn'
+      logger.info(`[trace:cap] home.message_stop session=${sid} reason=${stopReason} aborted=${signal.aborted}`)
       emitStream({
         type: 'message_stop',
-        stop_reason: result.hitIterationLimit ? 'max_iterations' : 'end_turn',
+        stop_reason: stopReason,
       })
     } catch (e) {
       // 错误推到 AI 气泡位置（而非聊天区上方），含可重试提示
       const msg = e instanceof Error ? e.message : String(e)
+      logger.error(`[trace:cap] home.error session=${sid} aborted=${signal.aborted} err=${msg}`, e)
       emitStream({ type: 'error', error: msg })
       emitStream({ type: 'message_stop', stop_reason: 'error' })
       throw e

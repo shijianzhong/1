@@ -562,12 +562,28 @@ export async function runTeam(
   onEvent: (e: HomeStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<{ output: string }> {
+  const nodeSummary = graph.nodes
+    .map((n) => `${n.id}:${n.type}`)
+    .join(',')
+  logger.info(
+    `[trace:cap] runTeam.start session=${sessionId} nodes=[${nodeSummary}] ` +
+      `edges=${graph.edges.length} inputLen=${inputText.length}`,
+  )
+  const t0 = Date.now()
   const wf = buildWorkflow(graph, deps)
   const result = await runWorkflow(
     wf,
     { text: inputText, sessionId },
-    (e: StreamEvent) => onEvent({ type: 'orch_event', event: e }),
+    (e: StreamEvent) => {
+      if (e.type === 'failed' || e.type === 'node_error' || e.type === 'done') {
+        logger.info(`[trace:cap] runTeam.event type=${e.type} ${JSON.stringify(e).slice(0, 240)}`)
+      }
+      onEvent({ type: 'orch_event', event: e })
+    },
     signal,
+  )
+  logger.info(
+    `[trace:cap] runTeam.end session=${sessionId} ms=${Date.now() - t0} outputLen=${result.output.length}`,
   )
   return result
 }

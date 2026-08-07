@@ -1335,7 +1335,8 @@ html[data-platform='darwin'] .titlebar__inner {
 /* markdown-body: 兜底溢出约束 — KaTeX 公式/图片等不可断行内容不撑宽 bubble */
 .message__bubble .markdown-body {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .message__bubble .markdown-body img {
@@ -1343,9 +1344,43 @@ html[data-platform='darwin'] .titlebar__inner {
   height: auto;
 }
 
-.message__bubble :where(pre, table) {
+.message__bubble :where(pre) {
   max-width: 100%;
   overflow-x: auto;
+}
+
+/* 宽表：外层滚动（table 元素本身不会出现横向滚动条） */
+.message__bubble .markdown-table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.5em 0;
+}
+
+.message__bubble .markdown-table-wrap table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.message__bubble .markdown-table-wrap th,
+.message__bubble .markdown-table-wrap td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  /* 单元格内可换行，但多列表仍可整体超出 → 外层出横滚 */
+  white-space: normal;
+  word-break: break-word;
+}
+
+.message__bubble .markdown-table-wrap th {
+  border-bottom-color: var(--color-border-strong);
+  font-weight: 600;
 }
 
 .message__bubble :where(code) {
