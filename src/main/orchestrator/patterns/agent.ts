@@ -9,6 +9,7 @@ import type { Executor } from '../models'
 import { Agent } from '../agent'
 import type { AgentConfig } from '@shared/types'
 import type { LLMClientOptions } from '../../llm/client'
+import { logger } from '../../logger'
 
 // —— Agent 叶子 Executor（§三 D + §三之三 G Sequential）——
 // handle 接收消息 → 组装 LlmMessage（strip_tool_blocks_filter 治 2013，
@@ -64,9 +65,16 @@ export class AgentExecutor implements Executor {
       onThinking: () => {},
     }
 
+    logger.info(
+      `[trace:cap] AgentExecutor.run id=${this.id} msgs=${messages.length} cache=${this.cache.length}`,
+    )
     const result = await this.agent.run(
       { messages, signal: this.agent.deps.toolCtx?.signal },
       callbacks,
+    )
+    logger.info(
+      `[trace:cap] AgentExecutor.done id=${this.id} hitIterLimit=${result.hitIterationLimit} ` +
+        `finalTextLen=${result.finalText.length}`,
     )
 
     // 把产出追加到 cache（供下游 fan-out）

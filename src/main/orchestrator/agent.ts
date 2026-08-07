@@ -88,8 +88,14 @@ export class Agent {
     let finalThinking = ''
     let hitIterationLimit = false
 
+    logger.info(
+      `[trace:cap] agent.start name=${this.config.name} model=${this.config.modelId} ` +
+        `maxIter=${maxIter} maxTokens=${this.config.defaultOptions.maxTokens} tools=${tools.length} msgs=${messages.length}`,
+    )
+
     for (let iter = 0; iter < maxIter; iter++) {
       if (input.signal?.aborted) {
+        logger.warn(`[trace:cap] agent.abort name=${this.config.name} iter=${iter}`)
         throw input.signal.reason ?? new Error('aborted')
       }
 
@@ -117,13 +123,24 @@ export class Agent {
       if (thinkingText) finalThinking = thinkingText
 
       // stop_reason 非 tool_use → 终止
-      if (response.stopReason !== 'tool_use') break
-
-      // 执行所有 tool_use 块，追加 tool_result
       const toolUses = response.content.filter(
         (b): b is Extract<LlmContentBlock, { type: 'tool_use' }> =>
           b.type === 'tool_use',
       )
+      logger.info(
+        `[trace:cap] agent.iter name=${this.config.name} iter=${iter}/${maxIter} ` +
+          `stop=${response.stopReason ?? 'null'} textLen=${text?.length ?? 0} ` +
+          `thinkingLen=${thinkingText?.length ?? 0} tools=[${toolUses.map((t) => t.name).join(',')}]`,
+      )
+      // max_tokens 常导致「干着干着断了」——正文被硬截断却当 end_turn 处理
+      if (response.stopReason === 'max_tokens') {
+        logger.warn(
+          `[trace:cap] agent.max_tokens name=${this.config.name} iter=${iter} ` +
+            `textTail=${JSON.stringify((text ?? '').slice(-80))}`,
+        )
+      }
+
+      if (response.stopReason !== 'tool_use') break
 
       if (limits.maxFunctionCalls && functionCallCount + toolUses.length > limits.maxFunctionCalls) {
         logger.warn(`[agent:${this.config.name}] 达 maxFunctionCalls，停止工具调用`)
@@ -135,6 +152,7 @@ export class Agent {
       for (const tu of toolUses) {
         functionCallCount++
         callbacks.onToolCall?.(tu.name, tu.input)
+        const toolStarted = Date.now()
 
         // —— Handoff 短路（铁律12）：handoff_to_X tool 不真执行 ——
         // 注入合成 result + 标记 target + 终止循环（MiddlewareTermination 等价）
@@ -146,6 +164,7 @@ export class Agent {
             content: JSON.stringify({ handoff_to: handoffTarget }),
             is_error: false,
           })
+          logger.info(`[trace:cap] agent.handoff name=${this.config.name} → ${handoffTarget}`)
           continue // 不 executeTool，短路
         }
 
@@ -162,6 +181,10 @@ export class Agent {
           },
         )
         callbacks.onToolResult?.(tu.name, result.content)
+        logger.info(
+          `[trace:cap] agent.tool name=${this.config.name} tool=${tu.name} ` +
+            `err=${result.isError} ms=${Date.now() - toolStarted} resultLen=${result.content.length}`,
+        )
         toolResults.push({
           type: 'tool_result',
           tool_use_id: tu.id,
@@ -188,7 +211,7 @@ export class Agent {
     // 触顶停在 tool_result 之后：强制无工具收尾，让模型基于已有结果给最终答复
     if (hitIterationLimit && needsToolResultFinalization(messages) && !input.signal?.aborted) {
       logger.warn(
-        `[agent:${this.config.name}] 达 maxIterations=${maxIter}，强制无工具收尾轮`,
+        `[trace:cap] agent.force_finalize name=${this.config.name} maxIterations=${maxIter}`,
       )
       const response = await client.stream({
         model: this.config.modelId,
@@ -207,8 +230,16 @@ export class Agent {
       if (text) finalText = text
       const thinkingText = extractThinking(response.content)
       if (thinkingText) finalThinking = thinkingText
+      logger.info(
+        `[trace:cap] agent.force_finalize.done name=${this.config.name} ` +
+          `stop=${response.stopReason ?? 'null'} textLen=${text?.length ?? 0}`,
+      )
     }
 
+    logger.info(
+      `[trace:cap] agent.end name=${this.config.name} hitIterLimit=${hitIterationLimit} ` +
+        `finalTextLen=${finalText.length} textTail=${JSON.stringify(finalText.slice(-60))}`,
+    )
     return { messages, finalText, finalThinking, hitIterationLimit }
   }
 

@@ -142,6 +142,12 @@ export async function runWorkflow(
   signal?: AbortSignal,
 ): Promise<{ output: string }> {
   const ctx = createWorkflowContext(wf, onEvent)
+  const edgeCount = [...wf.edges.values()].reduce((n, arr) => n + arr.length, 0)
+  logger.info(
+    `[trace:cap] runner.start session=${input.sessionId ?? '-'} ` +
+      `start=${wf.startExecutor} executors=${wf.executors.size} edges=${edgeCount} ` +
+      `inputLen=${input.text.length}`,
+  )
 
   // 初始消息投递到 startExecutor
   ctx.source = null
@@ -161,14 +167,18 @@ export async function runWorkflow(
   const failedNodes = new Map<string, string>()
 
   let iteration = 0
+  let stopReason: 'converged' | 'max_supersteps' | 'aborted' = 'converged'
   while (iteration < MAX_SUPERSTEPS) {
     if (signal?.aborted) {
+      stopReason = 'aborted'
+      logger.warn(`[trace:cap] runner.abort superstep=${iteration} pending=${ctx.pending.length}`)
       onEvent({ type: 'failed', error: 'aborted' })
       return { output: ctx.output.join('\n') }
     }
 
     if (ctx.pending.length === 0) {
       // 无 pending 消息 → 收敛
+      stopReason = 'converged'
       break
     }
 
@@ -184,6 +194,11 @@ export async function runWorkflow(
       list.push(env)
       byTarget.set(env.target, list)
     }
+
+    logger.info(
+      `[trace:cap] runner.superstep=${iteration} deliver=[${[...byTarget.keys()].join(',')}] ` +
+        `envelopes=${pending.length}`,
+    )
 
     // 同 superstep 内所有 target executor 并发 deliver（Promise.all，铁律7）
     await Promise.all(
@@ -237,6 +252,10 @@ export async function runWorkflow(
       // builder 已跳过，这里再兜底排除一次防双投）。
       // 语义：容器的出边 = 「本阶段完成后流转到 X」，统一在等齐后投聚合结果。
       const targets = new Set<string>([ex.aggregatorId, ...(wf.edges.get(id) ?? [])])
+      logger.info(
+        `[trace:cap] runner.fanin concurrent=${id} → [${[...targets].join(',')}] ` +
+          `joinedLen=${joined.length} failed=[${[...failedNodes.keys()].join(',')}]`,
+      )
       for (const target of targets) {
         ctx.pending.push({
           source: id,
@@ -251,9 +270,17 @@ export async function runWorkflow(
   }
 
   if (iteration >= MAX_SUPERSTEPS) {
+    stopReason = 'max_supersteps'
     onEvent({ type: 'failed', error: `超过最大 superstep 数 ${MAX_SUPERSTEPS}` })
   }
 
+  logger.info(
+    `[trace:cap] runner.end reason=${stopReason} supersteps=${iteration} ` +
+      `outputLen=${ctx.output.join('\n').length} failed=${failedNodes.size}` +
+      (failedNodes.size
+        ? ` detail=${JSON.stringify(Object.fromEntries(failedNodes))}`
+        : ''),
+  )
   onEvent({ type: 'done' })
   return { output: ctx.output.join('\n') }
 }
@@ -269,6 +296,7 @@ async function deliverToExecutor(
   signal?: AbortSignal,
 ): Promise<void> {
   onEvent({ type: 'node_started', node_id: executor.id })
+  const deliverStarted = Date.now()
 
   // extend cache（所有消息都进 cache，铁律15）
   const messages = envelopes.map((e) => e.message)
@@ -286,6 +314,10 @@ async function deliverToExecutor(
   const anyExplicitFalse = envelopes.some((e) => e.message.shouldRespond === false)
   const allExplicitFalse = envelopes.every((e) => e.message.shouldRespond === false)
   const shouldRespond = !(anyExplicitFalse && allExplicitFalse)
+  logger.info(
+    `[trace:cap] node.start id=${executor.id} shouldRespond=${shouldRespond} ` +
+      `cache=${executor.cache.length} envelopes=${envelopes.length}`,
+  )
 
   try {
     const req = { messages, shouldRespond }
@@ -293,10 +325,16 @@ async function deliverToExecutor(
     for await (const event of eventStream) {
       // 取消提速：abort 到达时停止消费当前 executor 的事件流（for-await break
       // 会调 generator.return() 终止流），不必等整个 chunk 流吐完
-      if (signal?.aborted) break
+      if (signal?.aborted) {
+        logger.warn(`[trace:cap] node.abort_mid_stream id=${executor.id}`)
+        break
+      }
       onEvent(event)
     }
     onEvent({ type: 'node_done', node_id: executor.id })
+    logger.info(
+      `[trace:cap] node.done id=${executor.id} ms=${Date.now() - deliverStarted} aborted=${!!signal?.aborted}`,
+    )
 
     // 已取消：不再 fan-out 触发下游——否则 abort 在 handle 期间到达时，
     // 下游仍会被这次投递点燃，取消语义漏到下一个 superstep 顶部才生效
@@ -317,6 +355,10 @@ async function deliverToExecutor(
     if (edges.length > 0 || conditions.length > 0) {
       const lastMsg = executor.cache[executor.cache.length - 1]
       if (lastMsg) {
+        logger.info(
+          `[trace:cap] node.fanout id=${executor.id} edges=[${edges.join(',')}] ` +
+            `conds=${conditions.length} lastLen=${String(lastMsg.content ?? '').length}`,
+        )
         // 转发载荷（§G full_conversation 保真）：AgentExecutor 把完整 cache 转发下游——
         // 下游 extend 后能看到原始任务 + 所有上游产出，而非仅末条。
         // （顺序管线「调研→拆解→写作」里，写作必须同时看到调研与拆解两份结果；
@@ -361,6 +403,9 @@ async function deliverToExecutor(
     // 记录失败：fan-in 栅栏据此容错聚合；下游普通边不 fan-out（上游失败下游无从继续），
     // 前端经 node_error 事件可见
     failedNodes.set(executor.id, message)
+    logger.error(
+      `[trace:cap] node.error id=${executor.id} ms=${Date.now() - deliverStarted} err=${message}`,
+    )
     onEvent({ type: 'node_error', node_id: executor.id, error: message })
   }
 }

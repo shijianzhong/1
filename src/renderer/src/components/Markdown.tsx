@@ -66,35 +66,14 @@ export function Markdown({ children }: { children: string }) {
               {children}
             </blockquote>
           ),
-          // 表格
+          // 表格：必须外包滚动层——table 自身 overflow-x 无效，宽表会被 bubble 裁切
           table: ({ children }) => (
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: '0.875rem',
-              }}
-            >
-              {children}
-            </table>
+            <div className="markdown-table-wrap">
+              <table>{children}</table>
+            </div>
           ),
-          th: ({ children }) => (
-            <th
-              style={{
-                borderBottom: '1px solid var(--color-border-strong)',
-                padding: '6px 10px',
-                textAlign: 'left',
-                fontWeight: 600,
-              }}
-            >
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td style={{ borderBottom: '1px solid var(--color-border)', padding: '6px 10px' }}>
-              {children}
-            </td>
-          ),
+          th: ({ children }) => <th>{children}</th>,
+          td: ({ children }) => <td>{children}</td>,
         }}
       >
         {children}
