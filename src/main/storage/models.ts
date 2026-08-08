@@ -130,6 +130,7 @@ export function saveCapability(input: unknown, opts?: { now?: number }): Capabil
     name: parsed.name,
     description: parsed.description,
     graph: parsed.graph,
+    allowedToolNames: parsed.allowedToolNames ?? existing?.allowedToolNames,
     // 编辑保存不带 registry 字段时保留既有溯源（导入/发布才显式写入）
     registry: parsed.registry ?? existing?.registry,
     createdAt: existing?.createdAt ?? now,
@@ -168,6 +169,7 @@ export function saveAgent(input: unknown, opts?: { now?: number }): Agent {
     description: parsed.description,
     instructions: parsed.instructions,
     skillIds: parsed.skillIds,
+    allowedToolNames: parsed.allowedToolNames ?? existing?.allowedToolNames,
     modelId: parsed.modelId,
     temperature: parsed.temperature,
     maxTokens: parsed.maxTokens ?? 16384,

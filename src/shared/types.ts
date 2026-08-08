@@ -409,6 +409,11 @@ export interface Agent {
   instructions: string
   /** 绑定的技能 id 列表 */
   skillIds?: string[]
+  /**
+   * 资产级工具白名单（PROJECT_REVIEW P1）。
+   * undefined / 空 = 不限制（沿用运行时工具快照）；非空 = 仅暴露列出的工具名。
+   */
+  allowedToolNames?: string[]
   /** 默认模型 id */
   modelId?: string
   temperature?: number
@@ -445,6 +450,11 @@ export interface Capability {
   name: string
   description?: string
   graph: WorkflowGraph
+  /**
+   * 能力级工具白名单（作用于该能力图内节点）。
+   * undefined / 空 = 不限制。
+   */
+  allowedToolNames?: string[]
   /** registry 溯源 */
   registry?: RegistryProvenance
   createdAt: number
@@ -637,7 +647,7 @@ export interface RegistryExportResult {
 
 // ============================================================================
 // 聊天创建（主 Agent 经 propose_* 工具产出草稿 → 前端确认卡 → 用户确认入库）
-// 草稿不落库；用户确认后才经 home:confirmCreate 落库。payload 为可编辑字段集。
+// 草稿先落 userData/drafts/create-*.json（崩溃可水合）；用户确认后才经 home:confirmCreate 入库。
 // ============================================================================
 
 /** 创建提案草稿（前端确认卡数据源；payload 即对应类型的可入库字段） */

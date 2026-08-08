@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import {
   newRequestId,
   rejectAllUserInputs,
+  rejectUserInputsForRun,
   resolveUserInput,
   waitForUserInput,
 } from './userInput'
@@ -72,5 +73,17 @@ describe('orchestrator/userInput', () => {
     await expect(p1).rejects.toThrow('aborted')
     await expect(p2).rejects.toThrow('aborted')
     expect(rejectAllUserInputs('aborted')).toBe(0)
+  })
+
+  it('rejectUserInputsForRun：只驳回指定 run，不影响其它通道', async () => {
+    const homeId = newRequestId()
+    const orchId = newRequestId()
+    const homeP = waitForUserInput(homeId, { nodeId: 'home', question: 'q1' }, undefined, 'home_1')
+    const orchP = waitForUserInput(orchId, { nodeId: 'n1', question: 'q2' }, undefined, 'orch_1')
+    expect(rejectUserInputsForRun('home_1', 'run_finished')).toBe(1)
+    await expect(homeP).rejects.toThrow('run_finished')
+    // orch 仍可作答
+    expect(resolveUserInput(orchId, 'ok')).toBe(true)
+    await expect(orchP).resolves.toBe('ok')
   })
 })

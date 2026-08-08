@@ -9,22 +9,23 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Agent, Capability, Skill } from '@shared/types'
+import { formatMentionToken, type MentionKind } from '@shared/mentions'
 
 // —— @提及芯片输入框（首页主助手 @角色/@能力/@技能，§三之三 M）——
-// contenteditable 承载文本 + 芯片（contenteditable=false span，data-mention 存元数据）。
+// contenteditable 承载文本 + 芯片（contenteditable=false span，data-kind/data-id 存稳定引用）。
 // @ 触发分组下拉：角色 / 能力 / 技能三组，组标题分隔 + 徽标色，搜索实时过滤，
 // ↑↓ 跨组导航，Enter/Tab 选中，Esc 关闭，近期用过优先排前（localStorage 持久）。
-// 序列化（getText）：芯片还原为 @名字 纯文本，交后端 resolveMentions 正则接住。
+// 序列化（getText）：芯片还原为 @[kind:id] 稳定 token，交后端 resolveMentions 按 id 解析。
 
 export interface MentionTarget {
-  kind: 'agent' | 'capability' | 'skill'
+  kind: MentionKind
   id: string
   name: string
   description?: string
 }
 
 export interface MentionComposerHandle {
-  /** 取当前输入纯文本（芯片已还原为 @名字） */
+  /** 取当前输入纯文本（芯片已还原为 @[kind:id]） */
   getText: () => string
   /** 清空输入 */
   clear: () => void
@@ -141,7 +142,7 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
     )
     const flat = useMemo(() => flatten(groups), [groups])
 
-    // 序列化：遍历 DOM，芯片 span → @名字，文本节点原样拼接
+    // 序列化：遍历 DOM，芯片 span → @[kind:id]，文本节点原样拼接
     const getText = useCallback((): string => {
       const el = editorRef.current
       if (!el) return ''
@@ -153,6 +154,11 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
         }
         if (node.nodeType === Node.ELEMENT_NODE) {
           const elem = node as HTMLElement
+          if (elem.dataset.kind && elem.dataset.id) {
+            out += formatMentionToken(elem.dataset.kind as MentionKind, elem.dataset.id)
+            return
+          }
+          // 兼容旧芯片（仅 data-mention=名字）：仍序列化为 @名字，后端 name 回退可接
           if (elem.dataset.mention) {
             out += `@${elem.dataset.mention}`
             return
@@ -187,9 +193,9 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
         const chip = document.createElement('span')
         chip.className = `mention-chip mention-chip--${target.kind}`
         chip.contentEditable = 'false'
-        chip.dataset.mention = target.name
         chip.dataset.kind = target.kind
         chip.dataset.id = target.id
+        chip.dataset.mention = target.name // 展示名；序列化优先 kind+id
         chip.textContent = `@${target.name}`
 
         if (anchor) {

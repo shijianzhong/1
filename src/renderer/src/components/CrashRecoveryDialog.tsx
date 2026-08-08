@@ -13,6 +13,11 @@ interface DraftItem {
   content: string
 }
 
+/** 创建确认卡草稿由 home:listPendingDrafts 水合重挂，不进崩溃恢复复制弹窗 */
+function isComposerOrEditorDraft(name: string): boolean {
+  return !name.startsWith('create-')
+}
+
 export function CrashRecoveryDialog(): React.JSX.Element {
   const { t } = useTranslation('common')
   const [drafts, setDrafts] = useState<DraftItem[]>([])
@@ -24,13 +29,15 @@ export function CrashRecoveryDialog(): React.JSX.Element {
       .listDrafts()
       .then(unwrap)
       .then((list) => {
-        if (!cancelled && list.length > 0) setDrafts(list)
+        const filtered = list.filter((d) => isComposerOrEditorDraft(d.name))
+        if (!cancelled && filtered.length > 0) setDrafts(filtered)
       })
       .catch(() => undefined)
 
     const unsub = window.one.app.onCrashRecovery((payload) => {
-      if (payload.drafts.length > 0) {
-        setDrafts(payload.drafts)
+      const filtered = payload.drafts.filter((d) => isComposerOrEditorDraft(d.name))
+      if (filtered.length > 0) {
+        setDrafts(filtered)
       }
     })
     return () => {

@@ -262,7 +262,8 @@
 | ~~P2~~ | ~~opencli stdout/stderr 无界累积~~ ✅ 2026-08-01（stdout 256KB 上限 SIGKILL + stderr 末尾 8K 保留；超限结构化返回不走重试） | 7.1a |
 | ~~P2~~ | ~~流式 `tool_use_*` delta ID 不一致~~ ✅ 2026-08-01（index→tool_use_id 映射表，start/delta/stop 全程真 id；text 块不再发伪 tool_use_stop；client.test.ts 3 case） | llm/client.ts |
 | ~~P2~~ | ~~Skill ContextProvider + 脚本~~ ✅ 2026-08-03（provider 三处收口 + discipline 注入 + skill_run_script async spawn；首页组队节点补注入） | ~~7.4 / 铁律 22/23~~ |
-| P2 | 崩溃草稿写盘 + UI | 6.4 |
+| ~~P2~~ | ~~崩溃草稿写盘 + UI~~ 部分 ✅ 2026-08-08（首页 composer / 编辑器画布写盘；`propose_*` → `drafts/create-*.json` 水合 + `listPendingDrafts` 重挂确认卡；CrashRecovery 列表/复制/忽略。**仍缺**：输入框/画布一键自动灌回） | 6.4 / PROJECT_REVIEW |
+| ~~P1~~ | ~~自由召唤协议批次~~ ✅ 2026-08-08（`@[kind:id]` token；能力真子图 `embedCapabilityGraph`；HITL `rejectUserInputsForRun`；`allowedToolNames` 白名单字段+运行时过滤；路由指令强化） | docs/PROJECT_REVIEW.md |
 | P2 | 更多 builtin 工具 | 7.1 |
 | ~~P3~~ | ~~AbortController 模块级单例~~ ✅ 2026-08-01（入口检测已有运行自动取消旧运行 + finally 只清自己句柄，home/orchestrate 双侧） | ipc/home / orchestrate |
 | P3 | win 包 / 编排路径记忆注入 / tasks 落盘 | M6 / M3 尾巴 |

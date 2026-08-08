@@ -1,6 +1,7 @@
 import type {
   Agent,
   Capability,
+  GraphEdge,
   GraphNode,
   HomeStreamEvent,
   OrchMessage,
@@ -9,7 +10,12 @@ import type {
   StreamEvent,
   WorkflowGraph,
 } from '@shared/types'
-import { buildWorkflow, type BuildDeps } from './builder'
+import {
+  MENTION_NAME_RE,
+  MENTION_TOKEN_RE,
+  type MentionKind,
+} from '@shared/mentions'
+import { buildWorkflow, resolveStartExecutor, type BuildDeps } from './builder'
 import { runWorkflow } from './runner'
 import { logger } from '../logger'
 
@@ -214,6 +220,8 @@ export function buildRoutingInstruction(
     '   {"capability_ids": ["能力id"]}',
     '4. 组队 JSON 必须独占全文：以 {"role_ids": 或 {"capability_ids": 开头，前后不加任何解释、标点、markdown 围栏。',
     '5. 只在 id 列表里引用上面列出的真实 id，不得编造。',
+    '6. 角色与能力可同时出现：{"role_ids":[...],"capability_ids":[...]}。系统会先跑能力的真实编排图，再进入角色协作；不要把能力 id 写进 role_ids，也不要把角色 id 写进 capability_ids。',
+    '7. 用户点名多个能力时，把需要的能力 id 全部放入 capability_ids（勿只留一个，除非用户明确只要其中一个）。',
   ].join('\n')
 }
 
@@ -375,14 +383,14 @@ export interface MentionResolution {
 }
 
 /**
- * 解析消息文本里的 @提及（@角色名 / @能力名 / @技能名）。
- * 匹配规则：@后跟名字，名字到下一个空白/标点/@ 结束；按名字精确命中
- * （大小写不敏感），未命中视为普通文本保留。
+ * 解析消息文本里的 @提及。
+ *
+ * 优先稳定 token：`@[agent|capability|skill:<id>]`（芯片序列化产物）。
+ * 回退旧版 `@名字`（手打 / 历史消息）：大小写不敏感，同名冲突 角色 > 能力 > 技能。
  *
  * 三类语义分流：
  *   - 角色/能力 = 可执行实体（@它 = 让它干活，走 buildTeamGraph 跑编排）
  *   - 技能 = 知识/规范包（@它 = 注入当前对话上下文，不跑编排，铁律22）
- * 同名冲突时优先级：角色 > 能力 > 技能（角色是最具体的可执行体）。
  */
 export function resolveMentions(
   text: string,
@@ -393,33 +401,64 @@ export function resolveMentions(
   const hitAgents = new Map<string, Agent>()
   const hitCaps = new Map<string, Capability>()
   const hitSkills = new Map<string, Skill>()
+  const agentsById = new Map(agents.map((a) => [a.id, a]))
+  const capsById = new Map(capabilities.map((c) => [c.id, c]))
+  const skillsById = new Map(skills.map((s) => [s.id, s]))
   const lowerAgents = new Map(agents.map((a) => [a.name.toLowerCase(), a]))
   const lowerCaps = new Map(capabilities.map((c) => [c.name.toLowerCase(), c]))
   const lowerSkills = new Map(skills.map((s) => [s.name.toLowerCase(), s]))
 
-  // @名字：名字到空白/常见标点/@ 结束（允许中文、字母、数字、_、-）
-  const mentionRe = /@([\w\u4e00-\u9fa5-]+)/g
-  let m: RegExpExecArray | null
   const spans: Array<[number, number]> = []
-  while ((m = mentionRe.exec(text)) !== null) {
+  const covered = (start: number, end: number): boolean =>
+    spans.some(([s, e]) => start < e && end > s)
+
+  const record = (kind: MentionKind, id: string, start: number, end: number): void => {
+    if (kind === 'agent') {
+      const a = agentsById.get(id)
+      if (!a) return
+      hitAgents.set(a.id, a)
+    } else if (kind === 'capability') {
+      const c = capsById.get(id)
+      if (!c) return
+      hitCaps.set(c.id, c)
+    } else {
+      const s = skillsById.get(id)
+      if (!s) return
+      hitSkills.set(s.id, s)
+    }
+    spans.push([start, end])
+  }
+
+  // 1) 稳定 token（按 kind+id）
+  MENTION_TOKEN_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = MENTION_TOKEN_RE.exec(text)) !== null) {
+    record(m[1] as MentionKind, m[2], m.index, m.index + m[0].length)
+  }
+
+  // 2) 旧版 @名字（跳过已覆盖区间；`@[` 不会被 NAME_RE 吃掉）
+  MENTION_NAME_RE.lastIndex = 0
+  while ((m = MENTION_NAME_RE.exec(text)) !== null) {
+    const start = m.index
+    const end = start + m[0].length
+    if (covered(start, end)) continue
     const name = m[1].toLowerCase()
     const agent = lowerAgents.get(name)
     const cap = lowerCaps.get(name)
     const skill = lowerSkills.get(name)
     if (agent) {
       hitAgents.set(agent.id, agent)
-      spans.push([m.index, m.index + m[0].length])
+      spans.push([start, end])
     } else if (cap) {
       hitCaps.set(cap.id, cap)
-      spans.push([m.index, m.index + m[0].length])
+      spans.push([start, end])
     } else if (skill) {
       hitSkills.set(skill.id, skill)
-      spans.push([m.index, m.index + m[0].length])
+      spans.push([start, end])
     }
-    // 未命中：不当提及，保留原文
   }
 
-  // 剥掉命中提及后的纯文本（折叠多余空白）
+  spans.sort((a, b) => a[0] - b[0])
   let cleanText = text
   for (let i = spans.length - 1; i >= 0; i--) {
     const [s, e] = spans[i]
@@ -442,11 +481,9 @@ export function resolveMentions(
  * 规则：
  *   - 单能力 → 直接用该能力的图（原样跑）
  *   - 单角色 → 单 agent 图
- *   - 多角色 → groupchat 图（容器 + 各 agent 子节点）
- *   - 角色+能力 → sequential：先跑能力图（作为前置），再进角色 groupchat
- *     —— MVP 简化为「能力在前作 sequential 第一段」不可行（能力本身是子图），
- *     故 MVP：多目标统一进 groupchat，能力节点作为 participant 之一
- *     （能力图被 .as_agent 化的概念在 MVP 用「能力 description 作 instructions」近似）。
+ *   - 多角色（无能力）→ groupchat
+ *   - 多能力 / 角色+能力 → 外层 sequential：嵌入各能力真实子图，再接角色段
+ *     （能力不再降级为 description 伪 agent）
  */
 export function buildTeamGraph(
   json: TeamJson,
@@ -477,36 +514,163 @@ export function buildTeamGraph(
     }
   }
 
-  // 多目标 → groupchat：角色作 participant；能力近似为 participant
-  // （用 capability description 包一个 agent 节点，MVP 近似 .as_agent）
+  // 多角色且无能力 → groupchat（保持原语义）
+  if (caps.length === 0 && agents.length > 1) {
+    const containerId = 'home_team'
+    const childNodes = agents.map((a, i) =>
+      agentNodeFromAgent(a, { x: 80 + i * 220, y: 120 }, containerId),
+    )
+    return {
+      nodes: [
+        {
+          id: containerId,
+          type: 'groupchat',
+          data: {
+            label: '临时组队',
+            participants: childNodes.map((n) => n.id),
+            selector_mode: 'round_robin',
+            max_rounds: Math.max(2, agents.length),
+          },
+          position: { x: 0, y: 0 },
+        },
+        ...childNodes,
+      ],
+      edges: [],
+    }
+  }
+
   const total = agents.length + caps.length
   if (total === 0) return null
 
-  const containerId = 'home_team'
-  const childNodes: GraphNode[] = []
-  agents.forEach((a, i) => {
-    childNodes.push(agentNodeFromAgent(a, { x: 80 + i * 220, y: 120 }, containerId))
-  })
+  // 多能力 / 角色+能力：外层 sequential + 能力真子图嵌入
+  const mixId = 'home_mix'
+  const nodes: GraphNode[] = []
+  const edges: GraphEdge[] = []
+  const stageIds: string[] = []
+
   caps.forEach((c, i) => {
-    childNodes.push(agentNodeFromCapability(c, { x: 80 + (agents.length + i) * 220, y: 120 }, containerId))
+    const embedded = embedCapabilityGraph(c, `cap_${c.id}_`, mixId)
+    nodes.push(...embedded.nodes)
+    edges.push(...embedded.edges)
+    stageIds.push(embedded.rootId)
+    void i
   })
 
-  const container: GraphNode = {
-    id: containerId,
-    type: 'groupchat',
+  if (agents.length === 1) {
+    const a = agents[0]
+    nodes.push(agentNodeFromAgent(a, { x: 80 + caps.length * 220, y: 120 }, mixId))
+    stageIds.push(a.id)
+  } else if (agents.length > 1) {
+    const agentsId = 'home_agents'
+    const childNodes = agents.map((a, i) =>
+      agentNodeFromAgent(a, { x: 80 + i * 220, y: 240 }, agentsId),
+    )
+    nodes.push(
+      {
+        id: agentsId,
+        type: 'groupchat',
+        data: {
+          label: '角色协作',
+          participants: childNodes.map((n) => n.id),
+          selector_mode: 'round_robin',
+          max_rounds: Math.max(2, agents.length),
+          parentId: mixId,
+        },
+        position: { x: 80 + caps.length * 220, y: 120 },
+      },
+      ...childNodes,
+    )
+    stageIds.push(agentsId)
+  }
+
+  if (stageIds.length === 0) return null
+
+  // 阶段间显式边：sequential 边界由 builder.resolveSeqBoundary 改写到真实 executor
+  for (let i = 0; i < stageIds.length - 1; i++) {
+    edges.push({ source: stageIds[i], target: stageIds[i + 1] })
+  }
+
+  nodes.unshift({
+    id: mixId,
+    type: 'sequential',
     data: {
       label: '临时组队',
-      participants: childNodes.map((n) => n.id),
-      selector_mode: 'round_robin',
-      max_rounds: Math.max(2, total), // 至少每人一轮
+      participants: stageIds,
     },
     position: { x: 0, y: 0 },
-  }
+  })
 
-  return {
-    nodes: [container, ...childNodes],
-    edges: [],
+  return { nodes, edges }
+}
+
+/**
+ * 把能力图节点/边 id 加前缀嵌入父图，避免与其它能力或角色节点冲突。
+ * rootId = 原图入口节点（顶层 isEntry / 拓扑起点）的 remap id，供外层 sequential 挂接。
+ */
+export function embedCapabilityGraph(
+  c: Capability,
+  prefix: string,
+  parentId: string,
+): { nodes: GraphNode[]; edges: GraphEdge[]; rootId: string } {
+  const graph = c.graph ?? { nodes: [], edges: [] }
+  const idMap = new Map<string, string>()
+  for (const n of graph.nodes) {
+    idMap.set(n.id, `${prefix}${n.id}`)
   }
+  const remap = (id: string): string => idMap.get(id) ?? `${prefix}${id}`
+
+  const nodes: GraphNode[] = graph.nodes.map((n) => {
+    const d = { ...(n.data as Record<string, unknown>) }
+    const hadParent = typeof d.parentId === 'string' && d.parentId.length > 0
+    if (hadParent) {
+      d.parentId = remap(String(d.parentId))
+    } else {
+      d.parentId = parentId
+    }
+    if (Array.isArray(d.participants)) {
+      d.participants = (d.participants as unknown[]).map((p) =>
+        typeof p === 'string' ? remap(p) : p,
+      )
+    }
+    if (typeof d.aggregator === 'string') d.aggregator = remap(d.aggregator)
+    if (typeof d.output_from === 'string') d.output_from = remap(d.output_from)
+    d.sourceCapabilityId = c.id
+    d.capabilityLabel = c.name
+    if (c.allowedToolNames?.length) d.allowedToolNames = c.allowedToolNames
+    return {
+      id: remap(n.id),
+      type: n.type,
+      data: d,
+      position: n.position,
+    }
+  })
+
+  const edges: GraphEdge[] = (graph.edges ?? []).map((e) => ({
+    ...e,
+    source: remap(e.source),
+    target: remap(e.target),
+  }))
+
+  // stage 挂接点必须是能力图「顶层」节点（容器或顶层 agent），
+  // 不能用 resolveStartExecutor 深挖到的首个 agent——否则外层 sequential
+  // 边界边无法经 resolveSeqBoundary 改写到末 participant。
+  const originalTops = graph.nodes.filter(
+    (n) => !(n.data as { parentId?: string } | undefined)?.parentId,
+  )
+  const topPick =
+    originalTops.find((n) => (n.data as { isEntry?: boolean }).isEntry === true) ??
+    originalTops[0]
+  let rootId = topPick ? remap(topPick.id) : ''
+  if (!rootId && graph.nodes.length > 0) {
+    try {
+      rootId = remap(resolveStartExecutor(graph))
+    } catch {
+      rootId = nodes[0]?.id ?? `${prefix}missing`
+    }
+  }
+  if (!rootId) rootId = `${prefix}missing`
+
+  return { nodes, edges, rootId }
 }
 
 function agentNodeFromAgent(
@@ -522,31 +686,12 @@ function agentNodeFromAgent(
       instructions: a.instructions,
       description: a.description,
       skillIds: a.skillIds,
+      allowedToolNames: a.allowedToolNames,
       modelId: a.modelId,
       temperature: a.temperature,
       maxTokens: a.maxTokens,
       outputConstraints: a.outputConstraints,
       sourceAgentId: a.id,
-      ...(parentId ? { parentId } : {}),
-    },
-    position,
-  }
-}
-
-/** 能力近似为 agent 节点（MVP .as_agent 近似：description+名称作 instructions） */
-function agentNodeFromCapability(
-  c: Capability,
-  position: { x: number; y: number },
-  parentId?: string,
-): GraphNode {
-  return {
-    id: c.id,
-    type: 'agent',
-    data: {
-      label: c.name,
-      instructions: `你是能力「${c.name}」的执行代理。能力说明：${c.description ?? '见编排图'}。请基于你的理解完成用户交给该能力的任务。`,
-      description: c.description,
-      sourceCapabilityId: c.id,
       ...(parentId ? { parentId } : {}),
     },
     position,

@@ -54,13 +54,16 @@ import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { getClient } from '../llm/retry'
 import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolsForAgents } from '../tools/mcp'
+import { filterToolsByAllowlist } from '../tools/allowlist'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
 import { resolveApprovalDecision } from '../tools/sessionApprovals'
 import {
   newRequestId,
-  rejectAllUserInputs,
+  newRunId,
+  rejectUserInputsForRun,
   waitForUserInput,
 } from '../orchestrator/userInput'
+import { listDrafts, removeDraft, writeDraft } from '../crash-recovery'
 import type { BuildDeps } from '../orchestrator/builder'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -76,12 +79,48 @@ const DEFAULT_USER_ID = 'local'
 
 /** 当前聊天的 AbortController（home:cancel 用；组队运行内 ask_user 挂起也受它取消） */
 let currentAbortController: AbortController | null = null
+/** 当前首页 HITL run 作用域（与 orchestrate 通道隔离） */
+let currentHitlRunId: string | null = null
 
-/** 创建提案草稿暂存（draftId → {draft, ts}）；确认/取消删除，超时（30min）惰性清理。 */
+/** 创建提案草稿暂存（draftId → {draft, ts}）；确认/取消删除，超时（30min）惰性清理；同步落盘防崩溃丢失。 */
 const DRAFT_TTL_MS = 30 * 60 * 1000
 /** 草稿驻留硬上限：正常流程单 figure 确认即删到不了上限；防异常 propose 风暴撑内存 */
 const MAX_PENDING_DRAFTS = 100
+const CREATE_DRAFT_PREFIX = 'create-'
 const pendingDrafts = new Map<string, { draft: CreateDraft; ts: number }>()
+
+function createDraftFileName(draftId: string): string {
+  // draftId 已是 uuid 形态；剥路径字符防穿越
+  const safe = draftId.replace(/[/\\]/g, '')
+  return `${CREATE_DRAFT_PREFIX}${safe}.json`
+}
+
+function persistCreateDraft(draftId: string, entry: { draft: CreateDraft; ts: number }): void {
+  writeDraft(createDraftFileName(draftId), JSON.stringify(entry))
+}
+
+function forgetCreateDraft(draftId: string): void {
+  pendingDrafts.delete(draftId)
+  removeDraft(createDraftFileName(draftId))
+}
+
+/** 启动时从 drafts/ 水合未确认创建卡（崩溃恢复后 listPendingDrafts 可重挂） */
+function hydrateCreateDraftsFromDisk(): void {
+  for (const f of listDrafts()) {
+    if (!f.name.startsWith(CREATE_DRAFT_PREFIX) || !f.name.endsWith('.json')) continue
+    try {
+      const parsed = JSON.parse(f.content) as { draft?: CreateDraft; ts?: number }
+      if (!parsed?.draft?.draftId || typeof parsed.ts !== 'number') continue
+      if (Date.now() - parsed.ts > DRAFT_TTL_MS) {
+        removeDraft(f.name)
+        continue
+      }
+      pendingDrafts.set(parsed.draft.draftId, { draft: parsed.draft, ts: parsed.ts })
+    } catch {
+      removeDraft(f.name)
+    }
+  }
+}
 
 /** propose_* 工具结果是否表示失败（Zod invalid_args / empty_payload 等） */
 function parseProposeFailure(content: string): {
@@ -117,7 +156,7 @@ function parseProposeFailure(content: string): {
 function pruneDrafts(): void {
   const now = Date.now()
   for (const [id, entry] of pendingDrafts) {
-    if (now - entry.ts > DRAFT_TTL_MS) pendingDrafts.delete(id)
+    if (now - entry.ts > DRAFT_TTL_MS) forgetCreateDraft(id)
   }
 }
 
@@ -152,6 +191,7 @@ function makeCompressFn(
 }
 
 export function registerHomeHandlers(): void {
+  hydrateCreateDraftsFromDisk()
   withHandler<{ runId: string }>('home:chat', async (_e, input) => {
     const { message, sessionId } = input as { message: string; sessionId?: string }
 
@@ -263,9 +303,13 @@ export function registerHomeHandlers(): void {
     // 虽 JS 闭包延迟取值不会报错，但先创建可避免 TDZ 风险 + 代码意图更清晰
     if (currentAbortController) {
       logger.warn('[home] 已有运行中的聊天，自动取消旧运行')
+      const prevRun = currentHitlRunId
       currentAbortController.abort()
+      if (prevRun) rejectUserInputsForRun(prevRun, 'aborted')
     }
     currentAbortController = new AbortController()
+    const hitlRunId = newRunId('home')
+    currentHitlRunId = hitlRunId
     const { signal } = currentAbortController
 
     // R1/R2：builtin + 显式 exposeToAgents 且已连接的 MCP 工具（同一快照供主 Agent / 组队节点共用）
@@ -323,9 +367,11 @@ export function registerHomeHandlers(): void {
           // 超上限挤掉最旧草稿（Map 迭代序即插入序）
           if (pendingDrafts.size >= MAX_PENDING_DRAFTS && !pendingDrafts.has(stamped.draftId)) {
             const oldest = pendingDrafts.keys().next().value
-            if (oldest) pendingDrafts.delete(oldest)
+            if (oldest) forgetCreateDraft(oldest)
           }
-          pendingDrafts.set(stamped.draftId, { draft: stamped, ts: Date.now() })
+          const entry = { draft: stamped, ts: Date.now() }
+          pendingDrafts.set(stamped.draftId, entry)
+          persistCreateDraft(stamped.draftId, entry)
           emitStream({ type: 'proposal', draft: stamped })
           logger.info(`[home:create] propose invoked: kind=${stamped.kind} draftId=${stamped.draftId}`)
         },
@@ -337,7 +383,7 @@ export function registerHomeHandlers(): void {
             emitStream({ type: 'orch_event', event })
           emit({ type: 'request_info', request_id: requestId, node_id: 'home', question, context })
           try {
-            const answer = await waitForUserInput(requestId, { nodeId: 'home', question }, signal)
+            const answer = await waitForUserInput(requestId, { nodeId: 'home', question }, signal, hitlRunId)
             emit({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: answer })
             return answer
           } catch (e) {
@@ -353,7 +399,12 @@ export function registerHomeHandlers(): void {
             emitStream({ type: 'orch_event', event })
           emit({ type: 'approval_request', request_id: requestId, node_id: 'home', tool_name: toolName, args })
           try {
-            const response = await waitForUserInput(requestId, { nodeId: 'home', question: `approve ${toolName}` }, signal)
+            const response = await waitForUserInput(
+              requestId,
+              { nodeId: 'home', question: `approve ${toolName}` },
+              signal,
+              hitlRunId,
+            )
             emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response })
             return resolveApprovalDecision(response, sid, toolName)
           } catch (e) {
@@ -372,10 +423,13 @@ export function registerHomeHandlers(): void {
           instructions?: string
           description?: string
           skillIds?: string[]
+          allowedToolNames?: string[]
           modelId?: string
           temperature?: number
           maxTokens?: number
           outputConstraints?: string
+          sourceAgentId?: string
+          sourceCapabilityId?: string
         }
         const nodeThinking = resolveThinkingConfig(
           d.modelId ?? modelId,
@@ -395,6 +449,15 @@ export function registerHomeHandlers(): void {
         const finalNodeInstructions = d.outputConstraints
           ? `${nodeInstructions}\n\n【输出约束】\n${d.outputConstraints}`
           : nodeInstructions
+        // 资产级工具白名单：节点快照 → 源角色 → 源能力
+        let allow = d.allowedToolNames
+        if (!allow?.length && d.sourceAgentId) {
+          allow = getAgent(d.sourceAgentId)?.allowedToolNames
+        }
+        if (!allow?.length && d.sourceCapabilityId) {
+          allow = getCapability(d.sourceCapabilityId)?.allowedToolNames
+        }
+        const nodeTools = filterToolsByAllowlist(agentTools, allow)
         const cfg: AgentConfig = {
           // 铁律20：executor_id == 节点 id（runner 按节点 id 路由/查找），
           // 不能用 d.label（角色显示名）——否则 executors.get(node.id) 找不到 → 空白气泡
@@ -402,14 +465,14 @@ export function registerHomeHandlers(): void {
           description: d.description,
           instructions: finalNodeInstructions,
           modelId: d.modelId ?? modelId,
-          tools: agentTools,
+          tools: nodeTools,
           defaultOptions: { maxTokens: d.maxTokens ?? 16384, temperature: d.temperature },
           outputConstraints: d.outputConstraints,
           thinking: nodeThinking,
         }
         const opts: AgentExecutorOptions = {
           config: cfg,
-          llmOpts: { apiKey, baseURL, authHeader },
+          llmOpts: { apiKey, baseURL, authHeader, apiFormat },
           toolCtx: {
             sessionId: sid,
             signal,
@@ -421,7 +484,12 @@ export function registerHomeHandlers(): void {
                 emitStream({ type: 'orch_event', event })
               emit({ type: 'request_info', request_id: requestId, node_id: node.id, question, context })
               try {
-                const answer = await waitForUserInput(requestId, { nodeId: node.id, question }, signal)
+                const answer = await waitForUserInput(
+                  requestId,
+                  { nodeId: node.id, question },
+                  signal,
+                  hitlRunId,
+                )
                 emit({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: answer })
                 return answer
               } catch (e) {
@@ -436,7 +504,12 @@ export function registerHomeHandlers(): void {
                 emitStream({ type: 'orch_event', event })
               emit({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
               try {
-                const response = await waitForUserInput(requestId, { nodeId: node.id, question: `approve ${toolName}` }, signal)
+                const response = await waitForUserInput(
+                  requestId,
+                  { nodeId: node.id, question: `approve ${toolName}` },
+                  signal,
+                  hitlRunId,
+                )
                 emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
                 return resolveApprovalDecision(response, sid, toolName)
               } catch (e) {
@@ -695,22 +768,26 @@ export function registerHomeHandlers(): void {
       emitStream({ type: 'message_stop', stop_reason: 'error' })
       throw e
     } finally {
-      // 聊天结束（含异常/取消）：驳回残留挂起提问 + 清控制器，防泄漏到下一场。
-      // 只清自己的控制器：若期间新运行已接管（入口自动取消旧运行），不动新句柄
-      rejectAllUserInputs('run_finished')
+      // 仅驳回本 run 的挂起提问，避免误伤编辑器 orchestrate 通道
+      rejectUserInputsForRun(hitlRunId, 'run_finished')
       // SkillContextProvider.afterRun（铁律22）：运行结束审计
       for (const p of skillProviders) p.afterRun()
-      if (currentAbortController?.signal === signal) currentAbortController = null
+      if (currentAbortController?.signal === signal) {
+        currentAbortController = null
+        if (currentHitlRunId === hitlRunId) currentHitlRunId = null
+      }
     }
 
     return { runId: sid }
   })
 
   withHandler<void>('home:cancel', () => {
-    rejectAllUserInputs('aborted') // 先驳回挂起提问，让工具侧收尾
+    const runId = currentHitlRunId
+    if (runId) rejectUserInputsForRun(runId, 'aborted')
     if (currentAbortController) {
       currentAbortController.abort()
       currentAbortController = null
+      currentHitlRunId = null
       logger.info('[home:cancel] 已取消当前聊天/组队运行')
     }
   })
@@ -778,7 +855,7 @@ export function registerHomeHandlers(): void {
       throw new Error(`未知创建类型：${String(kind)}`)
     }
 
-    pendingDrafts.delete(draftId)
+    forgetCreateDraft(draftId)
     // R3：confirm 成功后写 meta.create.status=confirmed（供 B 期降级/事实源）
     const sessionId = cached?.sessionId
     if (sessionId) {
@@ -801,7 +878,7 @@ export function registerHomeHandlers(): void {
   // 前端确认卡点「取消」：丢弃草稿，不入库。
   withHandler<void>('home:cancelCreate', (_e, input) => {
     const { draftId } = input as { draftId: string }
-    pendingDrafts.delete(draftId)
+    forgetCreateDraft(draftId)
     logger.info('[home:create] 已取消草稿:', draftId)
   })
 

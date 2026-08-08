@@ -58,6 +58,8 @@ export const AgentSchema = z.object({
   description: z.string().optional(),
   instructions: z.string(),
   skillIds: z.array(z.string()).optional(),
+  /** 资产级工具白名单；缺省/空 = 不限制 */
+  allowedToolNames: z.array(z.string()).optional(),
   modelId: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().positive().optional(),
@@ -90,6 +92,8 @@ export const CapabilitySchema = z.object({
     const g = val as { nodes?: unknown; edges?: unknown }
     return Array.isArray(g.nodes) && Array.isArray(g.edges)
   }),
+  /** 能力级工具白名单（作用于该能力图内节点）；缺省/空 = 不限制 */
+  allowedToolNames: z.array(z.string()).optional(),
   registry: RegistryProvenanceSchema.optional(),
   createdAt: ts,
   updatedAt: ts,

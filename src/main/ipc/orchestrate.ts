@@ -14,7 +14,8 @@ import { buildWorkflow, type BuildDeps } from '../orchestrator/builder'
 import { runWorkflow } from '../orchestrator/runner'
 import {
   newRequestId,
-  rejectAllUserInputs,
+  newRunId,
+  rejectUserInputsForRun,
   resolveUserInput,
   waitForUserInput,
 } from '../orchestrator/userInput'
@@ -22,6 +23,7 @@ import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } fr
 import { addMessage } from '../storage/sessions'
 import { SkillContextProvider } from '../skills/provider'
 import { listToolsForAgents } from '../tools/mcp'
+import { filterToolsByAllowlist } from '../tools/allowlist'
 import { resolveApprovalDecision } from '../tools/sessionApprovals'
 import { resolveThinkingConfig } from '../llm/thinking'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
@@ -36,6 +38,8 @@ const STREAM_CHANNEL = 'orchestrate:stream'
 
 // 当前编排的 AbortController（用于 cancel）
 let currentAbortController: AbortController | null = null
+/** 当前编排 HITL run 作用域（与 home 通道隔离） */
+let currentHitlRunId: string | null = null
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
@@ -63,11 +67,14 @@ function makeResolveAgent(
   agentTools: LlmToolDef[] = [],
   /** 会话 id：本会话允许工具审批放行键；编辑器试跑可能为空 */
   sessionId?: string,
+  /** HITL 队列 run 作用域 */
+  hitlRunId?: string,
 ): {
   resolveAgent: (node: GraphNode) => AgentExecutorOptions | null
   /** 本运行创建的全部 SkillContextProvider（运行结束统一 afterRun 审计，铁律22） */
   skillProviders: SkillContextProvider[]
 } {
+  const runId = hitlRunId ?? 'orchestrate_default'
   // 运行期 skill 缓存：同一次运行内多个节点绑定同一 skill 时只读一次磁盘
   // （每次 run 新建 resolver → 缓存随运行结束丢弃，不会吃到过期内容）
   const skillCache = new Map<string, ReturnType<typeof getSkill>>()
@@ -85,12 +92,14 @@ function makeResolveAgent(
       instructions?: string
       description?: string
       skillIds?: string[]
+      allowedToolNames?: string[]
       modelId?: string
       temperature?: number
       maxTokens?: number
       outputConstraints?: string
       label?: string
       sourceAgentId?: string
+      sourceCapabilityId?: string
       agentId?: string
     }
 
@@ -129,12 +138,19 @@ function makeResolveAgent(
       ? `${instructions}\n\n【输出约束】\n${agentOutputConstraints}`
       : instructions
 
+    // 资产级工具白名单：节点快照 → 源角色（含有快照时也查源角色白名单）
+    let allow = data.allowedToolNames
+    if (!allow?.length && refAgentId) {
+      allow = getAgent(refAgentId)?.allowedToolNames ?? fallbackAgent?.allowedToolNames
+    }
+    const nodeTools = filterToolsByAllowlist(agentTools, allow)
+
     const config: AgentConfig = {
       name: agentName,
       description: agentDescription,
       instructions: finalInstructions,
       modelId: agentModelId,
-      tools: agentTools,
+      tools: nodeTools,
       defaultOptions: { maxTokens: agentMaxTokens, temperature: agentTemperature },
       outputConstraints: agentOutputConstraints,
       thinking,
@@ -150,7 +166,7 @@ function makeResolveAgent(
           const requestId = newRequestId()
           emitStream({ type: 'request_info', request_id: requestId, node_id: node.id, question, context })
           try {
-            const answer = await waitForUserInput(requestId, { nodeId: node.id, question }, signal)
+            const answer = await waitForUserInput(requestId, { nodeId: node.id, question }, signal, runId)
             emitStream({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: answer })
             return answer
           } catch (e) {
@@ -164,7 +180,12 @@ function makeResolveAgent(
           const requestId = newRequestId()
           emitStream({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
           try {
-            const response = await waitForUserInput(requestId, { nodeId: node.id, question: `approve ${toolName}` }, signal)
+            const response = await waitForUserInput(
+              requestId,
+              { nodeId: node.id, question: `approve ${toolName}` },
+              signal,
+              runId,
+            )
             emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
             return resolveApprovalDecision(response, sessionId, toolName)
           } catch (e) {
@@ -204,13 +225,17 @@ export function registerOrchestrateHandlers(): void {
       // 并发防御：已有运行时先取消旧的（渲染层 running 守卫下不会并发，兜底重复 IPC）
       if (currentAbortController) {
         logger.warn('[orchestrate] 已有运行中的编排，自动取消旧运行')
+        const prevRun = currentHitlRunId
         currentAbortController.abort()
+        if (prevRun) rejectUserInputsForRun(prevRun, 'aborted')
       }
       currentAbortController = new AbortController()
+      const hitlRunId = newRunId('orch')
+      currentHitlRunId = hitlRunId
       const { signal } = currentAbortController
       const agentTools = await listToolsForAgents()
       const { resolveAgent, skillProviders } = makeResolveAgent(
-        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId,
+        modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId, hitlRunId,
       )
       const deps: BuildDeps = { resolveAgent }
 
@@ -225,12 +250,14 @@ export function registerOrchestrateHandlers(): void {
         }
         return { runId: sessionId ?? `run_${randomUUID().slice(0, 8)}`, output: result.output }
       } finally {
-        // 运行结束（含异常）：驳回该运行残留的挂起提问，防泄漏到下一场运行。
-        // 只清自己的控制器（期间新运行接管则不动新句柄）
-        rejectAllUserInputs('run_finished')
+        // 仅驳回本 run 的挂起提问，避免误伤首页 home 通道
+        rejectUserInputsForRun(hitlRunId, 'run_finished')
         // SkillContextProvider.afterRun（铁律22）：运行结束审计
         for (const p of skillProviders) p.afterRun()
-        if (currentAbortController?.signal === signal) currentAbortController = null
+        if (currentAbortController?.signal === signal) {
+          currentAbortController = null
+          if (currentHitlRunId === hitlRunId) currentHitlRunId = null
+        }
       }
     },
   )
@@ -251,10 +278,12 @@ export function registerOrchestrateHandlers(): void {
   withHandler<void>(
     'orchestrate:cancel',
     async () => {
-      rejectAllUserInputs('aborted') // 先驳回挂起提问，让工具侧收尾
+      const runId = currentHitlRunId
+      if (runId) rejectUserInputsForRun(runId, 'aborted')
       if (currentAbortController) {
         currentAbortController.abort()
         currentAbortController = null
+        currentHitlRunId = null
         logger.info('[orchestrate] 已取消编排')
       }
     },

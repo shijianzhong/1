@@ -6,6 +6,7 @@ import {
   buildMemoryInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
+  buildTeamGraph,
   needsCreateRecovery,
   resolveMentions,
 } from './home'
@@ -53,6 +54,8 @@ describe('buildRoutingInstruction', () => {
     expect(out).toContain('{"role_ids":')
     expect(out).toContain('{"capability_ids":')
     expect(out).toContain('独占全文')
+    expect(out).toContain('角色与能力可同时出现')
+    expect(out).toContain('真实编排图')
   })
 
   it('只有角色 → 不含能力段', () => {
@@ -142,6 +145,92 @@ describe('resolveMentions', () => {
     expect(r.agents.length).toBe(1)
     expect(r.skills.length).toBe(1)
     expect(r.cleanText).toBe('写标语')
+  })
+
+  it('稳定 token @[kind:id] 按 id 命中（名字可变也不影响）', () => {
+    const r = resolveMentions('@[agent:a1] 帮我写个标语', agents, caps)
+    expect(r.agents.map((a) => a.id)).toEqual(['a1'])
+    expect(r.cleanText).toBe('帮我写个标语')
+  })
+
+  it('稳定 token 支持带点号/空格名的资产（走 id，不依赖展示名正则）', () => {
+    const weird = [agent('a9', 'Foo.Bar v2')]
+    const r = resolveMentions('@[agent:a9] 任务', weird, [])
+    expect(r.agents.map((a) => a.id)).toEqual(['a9'])
+  })
+
+  it('token 与旧 @名字 可混用', () => {
+    const r = resolveMentions('@[capability:c1] @文案专家 一起', agents, caps)
+    expect(r.capabilities.map((c) => c.id)).toEqual(['c1'])
+    expect(r.agents.map((a) => a.id)).toEqual(['a1'])
+    expect(r.cleanText).toBe('一起')
+  })
+
+  it('token kind 与 id 不匹配 → 不计命中', () => {
+    const r = resolveMentions('@[capability:a1] 问题', agents, caps)
+    expect(r.agents).toEqual([])
+    expect(r.capabilities).toEqual([])
+  })
+})
+
+describe('buildTeamGraph（能力真子图组合）', () => {
+  const capGraph: Capability = {
+    id: 'c1',
+    name: '调研写作',
+    description: 'd',
+    graph: {
+      nodes: [
+        {
+          id: 'seq',
+          type: 'sequential',
+          data: { participants: ['a1', 'a2'], label: '流水线' },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'a1',
+          type: 'agent',
+          data: { label: '调研', instructions: 'research', parentId: 'seq' },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'a2',
+          type: 'agent',
+          data: { label: '写作', instructions: 'write', parentId: 'seq' },
+          position: { x: 0, y: 0 },
+        },
+      ],
+      edges: [],
+    },
+    createdAt: 0,
+    updatedAt: 0,
+  }
+
+  it('单能力 → 原图', () => {
+    const g = buildTeamGraph(
+      { capability_ids: ['c1'] },
+      () => null,
+      (id) => (id === 'c1' ? capGraph : null),
+    )
+    expect(g).toBe(capGraph.graph)
+  })
+
+  it('角色+能力 → 外层 sequential，能力节点带前缀且非伪 agent', () => {
+    const role = agent('r1', '审稿')
+    role.instructions = 'review'
+    const g = buildTeamGraph(
+      { role_ids: ['r1'], capability_ids: ['c1'] },
+      (id) => (id === 'r1' ? role : null),
+      (id) => (id === 'c1' ? capGraph : null),
+    )
+    expect(g).not.toBeNull()
+    const mix = g!.nodes.find((n) => n.id === 'home_mix')
+    expect(mix?.type).toBe('sequential')
+    const parts = (mix!.data as { participants: string[] }).participants
+    expect(parts).toContain('cap_c1_seq')
+    expect(parts).toContain('r1')
+    // 能力内 agent 被嵌入，而不是 description 伪 agent（伪 agent 的 id 曾是能力 id）
+    expect(g!.nodes.some((n) => n.id === 'cap_c1_a1')).toBe(true)
+    expect(g!.nodes.some((n) => n.id === 'c1' && n.type === 'agent')).toBe(false)
   })
 })
 
