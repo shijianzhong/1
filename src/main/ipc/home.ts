@@ -193,7 +193,12 @@ function makeCompressFn(
 export function registerHomeHandlers(): void {
   hydrateCreateDraftsFromDisk()
   withHandler<{ runId: string }>('home:chat', async (_e, input) => {
-    const { message, sessionId } = input as { message: string; sessionId?: string }
+    const { message, sessionId, mentions: explicitMentions } = input as {
+      message: string
+      sessionId?: string
+      /** 芯片旁路：展示正文是 @名字，此处带稳定 kind+id */
+      mentions?: Array<{ kind: 'agent' | 'capability' | 'skill'; id: string }>
+    }
 
     // 1. session
     const newSession = sessionId ? undefined : createSession({ title: message.slice(0, 20) })
@@ -247,7 +252,13 @@ export function registerHomeHandlers(): void {
     const allAgents = listAgents()
     const allCapabilities = listCapabilities()
     const allSkills = listSkills()
-    const mentions = resolveMentions(message, allAgents, allCapabilities, allSkills)
+    const mentions = resolveMentions(
+      message,
+      allAgents,
+      allCapabilities,
+      allSkills,
+      Array.isArray(explicitMentions) ? explicitMentions : [],
+    )
 
     // —— @提及意图分流（提前判定：决定路由指令形态 + 后续跑图路径）——
     // focusCap：纯 @单能力 → 不直接跑图，改喂主 Agent 聚焦块（介绍能力 or 输出组队 JSON 跑图）。

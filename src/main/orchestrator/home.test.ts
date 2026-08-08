@@ -171,6 +171,31 @@ describe('resolveMentions', () => {
     expect(r.agents).toEqual([])
     expect(r.capabilities).toEqual([])
   })
+
+  it('显式芯片映射：正文 @名字 + explicit id → 按 id 命中并剥名字', () => {
+    const r = resolveMentions(
+      '@代码审查 看下这段',
+      agents,
+      caps,
+      [],
+      [{ kind: 'capability', id: 'c1' }],
+    )
+    expect(r.capabilities.map((c) => c.id)).toEqual(['c1'])
+    expect(r.cleanText).toBe('看下这段')
+  })
+
+  it('显式映射支持 NAME_RE 吃不到的名字（含点号）', () => {
+    const weird = [capability('c9', 'Foo.Bar')]
+    const r = resolveMentions(
+      '@Foo.Bar 跑一下',
+      [],
+      weird,
+      [],
+      [{ kind: 'capability', id: 'c9' }],
+    )
+    expect(r.capabilities.map((c) => c.id)).toEqual(['c9'])
+    expect(r.cleanText).toBe('跑一下')
+  })
 })
 
 describe('buildTeamGraph（能力真子图组合）', () => {

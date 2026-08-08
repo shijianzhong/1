@@ -9,13 +9,13 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Agent, Capability, Skill } from '@shared/types'
-import { formatMentionToken, type MentionKind } from '@shared/mentions'
+import { formatMentionDisplay, type MentionKind } from '@shared/mentions'
 
 // —— @提及芯片输入框（首页主助手 @角色/@能力/@技能，§三之三 M）——
 // contenteditable 承载文本 + 芯片（contenteditable=false span，data-kind/data-id 存稳定引用）。
 // @ 触发分组下拉：角色 / 能力 / 技能三组，组标题分隔 + 徽标色，搜索实时过滤，
 // ↑↓ 跨组导航，Enter/Tab 选中，Esc 关闭，近期用过优先排前（localStorage 持久）。
-// 序列化（getText）：芯片还原为 @[kind:id] 稳定 token，交后端 resolveMentions 按 id 解析。
+// 序列化：getText → `@名字`（对话好看）；getMentions → {kind,id} 旁路给主进程稳定解析。
 
 export interface MentionTarget {
   kind: MentionKind
@@ -25,8 +25,10 @@ export interface MentionTarget {
 }
 
 export interface MentionComposerHandle {
-  /** 取当前输入纯文本（芯片已还原为 @[kind:id]） */
+  /** 取当前输入纯文本（芯片还原为 @名字，供展示/落库） */
   getText: () => string
+  /** 取芯片稳定引用（kind+id），与 getText 配套发给 home:chat */
+  getMentions: () => Array<{ kind: MentionKind; id: string; name: string }>
   /** 清空输入 */
   clear: () => void
   /** 聚焦 */
@@ -142,7 +144,7 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
     )
     const flat = useMemo(() => flatten(groups), [groups])
 
-    // 序列化：遍历 DOM，芯片 span → @[kind:id]，文本节点原样拼接
+    // 序列化展示文本：芯片 → @名字（对话记录/落库好看）
     const getText = useCallback((): string => {
       const el = editorRef.current
       if (!el) return ''
@@ -154,13 +156,8 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
         }
         if (node.nodeType === Node.ELEMENT_NODE) {
           const elem = node as HTMLElement
-          if (elem.dataset.kind && elem.dataset.id) {
-            out += formatMentionToken(elem.dataset.kind as MentionKind, elem.dataset.id)
-            return
-          }
-          // 兼容旧芯片（仅 data-mention=名字）：仍序列化为 @名字，后端 name 回退可接
           if (elem.dataset.mention) {
-            out += `@${elem.dataset.mention}`
+            out += formatMentionDisplay(elem.dataset.mention)
             return
           }
           if (elem.tagName === 'BR') {
@@ -175,8 +172,38 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
       return out.trim()
     }, [])
 
+    // 芯片稳定引用（旁路，不进正文）
+    const getMentions = useCallback((): Array<{ kind: MentionKind; id: string; name: string }> => {
+      const el = editorRef.current
+      if (!el) return []
+      const out: Array<{ kind: MentionKind; id: string; name: string }> = []
+      const seen = new Set<string>()
+      const walk = (node: Node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          node.childNodes.forEach(walk)
+          return
+        }
+        const elem = node as HTMLElement
+        const kind = elem.dataset.kind as MentionKind | undefined
+        const id = elem.dataset.id
+        const name = elem.dataset.mention
+        if (kind && id && name) {
+          const key = `${kind}:${id}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            out.push({ kind, id, name })
+          }
+          return
+        }
+        node.childNodes.forEach(walk)
+      }
+      el.childNodes.forEach(walk)
+      return out
+    }, [])
+
     useImperativeHandle(ref, () => ({
       getText,
+      getMentions,
       clear: () => {
         if (editorRef.current) editorRef.current.innerHTML = ''
       },

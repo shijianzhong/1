@@ -13,6 +13,7 @@ import type {
 import {
   MENTION_NAME_RE,
   MENTION_TOKEN_RE,
+  type ExplicitMention,
   type MentionKind,
 } from '@shared/mentions'
 import { buildWorkflow, resolveStartExecutor, type BuildDeps } from './builder'
@@ -385,8 +386,10 @@ export interface MentionResolution {
 /**
  * 解析消息文本里的 @提及。
  *
- * 优先稳定 token：`@[agent|capability|skill:<id>]`（芯片序列化产物）。
- * 回退旧版 `@名字`（手打 / 历史消息）：大小写不敏感，同名冲突 角色 > 能力 > 技能。
+ * 优先级：
+ * 1. 芯片显式映射 `explicit`（kind+id，稳定，不依赖展示名）
+ * 2. 正文稳定 token：`@[agent|capability|skill:<id>]`（历史/粘贴兼容）
+ * 3. 正文 `@名字`（手打 / 新发送的展示形态）：大小写不敏感，同名冲突 角色 > 能力 > 技能
  *
  * 三类语义分流：
  *   - 角色/能力 = 可执行实体（@它 = 让它干活，走 buildTeamGraph 跑编排）
@@ -397,6 +400,7 @@ export function resolveMentions(
   agents: Agent[],
   capabilities: Capability[],
   skills: Skill[] = [],
+  explicit: ExplicitMention[] = [],
 ): MentionResolution {
   const hitAgents = new Map<string, Agent>()
   const hitCaps = new Map<string, Capability>()
@@ -412,31 +416,60 @@ export function resolveMentions(
   const covered = (start: number, end: number): boolean =>
     spans.some(([s, e]) => start < e && end > s)
 
-  const record = (kind: MentionKind, id: string, start: number, end: number): void => {
+  const addHit = (kind: MentionKind, id: string): { name: string } | null => {
     if (kind === 'agent') {
       const a = agentsById.get(id)
-      if (!a) return
+      if (!a) return null
       hitAgents.set(a.id, a)
-    } else if (kind === 'capability') {
-      const c = capsById.get(id)
-      if (!c) return
-      hitCaps.set(c.id, c)
-    } else {
-      const s = skillsById.get(id)
-      if (!s) return
-      hitSkills.set(s.id, s)
+      return { name: a.name }
     }
+    if (kind === 'capability') {
+      const c = capsById.get(id)
+      if (!c) return null
+      hitCaps.set(c.id, c)
+      return { name: c.name }
+    }
+    const s = skillsById.get(id)
+    if (!s) return null
+    hitSkills.set(s.id, s)
+    return { name: s.name }
+  }
+
+  const recordSpan = (kind: MentionKind, id: string, start: number, end: number): void => {
+    if (!addHit(kind, id)) return
     spans.push([start, end])
+  }
+
+  // 0) 芯片显式映射（展示文本是 @名字，id 走旁路）
+  const explicitNames: string[] = []
+  for (const em of explicit) {
+    const hit = addHit(em.kind, em.id)
+    if (hit) explicitNames.push(hit.name)
   }
 
   // 1) 稳定 token（按 kind+id）
   MENTION_TOKEN_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = MENTION_TOKEN_RE.exec(text)) !== null) {
-    record(m[1] as MentionKind, m[2], m.index, m.index + m[0].length)
+    recordSpan(m[1] as MentionKind, m[2], m.index, m.index + m[0].length)
   }
 
-  // 2) 旧版 @名字（跳过已覆盖区间；`@[` 不会被 NAME_RE 吃掉）
+  // 2) 显式命中资产的 `@完整名字`（支持名字含点号等 NAME_RE 吃不到的字符）
+  //    长名优先，避免短名前缀误剥。
+  const namesToStrip = [...new Set(explicitNames)].sort((a, b) => b.length - a.length)
+  for (const name of namesToStrip) {
+    const needle = `@${name}`
+    let from = 0
+    while (from < text.length) {
+      const i = text.indexOf(needle, from)
+      if (i < 0) break
+      const end = i + needle.length
+      if (!covered(i, end)) spans.push([i, end])
+      from = end
+    }
+  }
+
+  // 3) 展示名 / 手打 @名字（跳过已覆盖区间）
   MENTION_NAME_RE.lastIndex = 0
   while ((m = MENTION_NAME_RE.exec(text)) !== null) {
     const start = m.index
@@ -459,9 +492,20 @@ export function resolveMentions(
   }
 
   spans.sort((a, b) => a[0] - b[0])
+  // 合并重叠/相邻重复 span（显式名字与 NAME_RE 可能双记）
+  const merged: Array<[number, number]> = []
+  for (const span of spans) {
+    const last = merged[merged.length - 1]
+    if (last && span[0] < last[1]) {
+      last[1] = Math.max(last[1], span[1])
+    } else {
+      merged.push([...span] as [number, number])
+    }
+  }
+
   let cleanText = text
-  for (let i = spans.length - 1; i >= 0; i--) {
-    const [s, e] = spans[i]
+  for (let i = merged.length - 1; i >= 0; i--) {
+    const [s, e] = merged[i]
     cleanText = cleanText.slice(0, s) + cleanText.slice(e)
   }
   cleanText = cleanText.replace(/\s{2,}/g, ' ').trim()

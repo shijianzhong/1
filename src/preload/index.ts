@@ -96,7 +96,12 @@ export interface OneApi {
     testLLM: (modelId: string) => Promise<IpcResult<{ ok: boolean; error?: string }>>
   }
   home: {
-    chat: (input: { message: string; sessionId?: string }) => Promise<IpcResult<{ runId: string }>>
+    chat: (input: {
+      message: string
+      sessionId?: string
+      /** 芯片稳定引用（正文为 @名字；主进程按 id 解析） */
+      mentions?: Array<{ kind: 'agent' | 'capability' | 'skill'; id: string }>
+    }) => Promise<IpcResult<{ runId: string }>>
     onStream: (cb: (delta: import('@shared/types').HomeStreamEvent) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
     confirmCreate: (input: {

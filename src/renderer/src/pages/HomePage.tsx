@@ -12,6 +12,7 @@ import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
 import type { CreateDraft } from '@shared/types'
+import { mentionTokensToDisplay, type MentionKind } from '@shared/mentions'
 import {
   Brain,
   FolderOpen,
@@ -108,6 +109,18 @@ export function HomePage() {
   const agentsQ = useAgents()
   const capabilitiesQ = useCapabilities()
   const skillsQ = useSkills()
+  // 历史里若仍存 @[kind:id]，展示时还原为 @名字
+  const displayHistory = toChatMessages(historyMessages).map((m) => {
+    if (m.role !== 'user') return m
+    return {
+      ...m,
+      text: mentionTokensToDisplay(m.text, (kind: MentionKind, id: string) => {
+        if (kind === 'agent') return agentsQ.data?.find((a) => a.id === id)?.name
+        if (kind === 'capability') return capabilitiesQ.data?.find((c) => c.id === id)?.name
+        return skillsQ.data?.find((s) => s.id === id)?.name
+      }),
+    }
+  })
 
   // 编排 speaker（executor_id == 节点 id）→ 显示名映射（共享 hook，与编辑器运行面板一致）
   const speakerName = useSpeakerNames()
@@ -117,7 +130,7 @@ export function HomePage() {
   const isNearBottomRef = useRef(true)
 
   // 历史消息 + 本轮流式消息
-  const messages = [...toChatMessages(historyMessages), ...streamMsgs]
+  const messages = [...displayHistory, ...streamMsgs]
 
   // 自动滚动到底部（用户接近底部时才触发，避免打断阅读历史消息）
   const scrollToBottom = useCallback((force = false) => {
@@ -281,6 +294,12 @@ export function HomePage() {
   }, [])
 
   const onSend = async (overrideText?: string): Promise<void> => {
+    // 芯片旁路须在 clear 前取（展示正文是 @名字，id 另传）。
+    // Enter 会把 getText() 当 overrideText 传入，此时 composer 里芯片仍在。
+    const chipMentions = (composerRef.current?.getMentions() ?? []).map((m) => ({
+      kind: m.kind,
+      id: m.id,
+    }))
     const text = (overrideText ?? composerRef.current?.getText() ?? '').trim()
     if (!text || sending) return
     // 发送即清空输入框（overrideText 来自重试按钮，不来自 composer，清空无害）；
@@ -301,7 +320,13 @@ export function HomePage() {
     requestAnimationFrame(() => scrollToBottom(true))
 
     try {
-      const result = await window.one.home.chat({ message: text, sessionId: sessionId ?? undefined }).then(unwrap)
+      const result = await window.one.home
+        .chat({
+          message: text,
+          sessionId: sessionId ?? undefined,
+          mentions: chipMentions.length > 0 ? chipMentions : undefined,
+        })
+        .then(unwrap)
       // 把本轮流式产出拉成持久化历史；未确认创建卡绝不能跟 streamMsgs 一起清掉——
       // 否则 propose_* 弹卡后回合一结束卡就消失，用户永远点不到「确认入库」。
       // 失败卡 / 补跑失败提示也要保留（否则用户看不到可重试出口）。
