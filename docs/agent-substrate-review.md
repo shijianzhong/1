@@ -8,7 +8,7 @@
 
 | 编号 | 严重度 | 位置 | 问题 | 状态 |
 |---|---|---|---|---|
-| C1 | Critical | `patterns/agent.ts` | hasTools 分支产出孤儿 tool_result，破坏 tool 配对 | 已修复 |
+| C1 | Critical | `patterns/agent.ts` | hasTools 分支产出孤儿 tool_result，破坏 tool 配对 | 已修复（重建真 tool_use block） |
 | I1 | Important | `grep.ts` | glob 用绝对路径匹配，传 glob 几乎过滤掉全部文件 | 已修复 |
 | I2 | Important | `strReplace.ts` | `text.replace()` 替换串含 `$` 被特殊展开，静默损坏代码 | 已修复 |
 | I3 | Important | `home.ts` | 组队节点 toolCtx 缺 `onPlanUpdate` 桥，行为不一致 | 已修复 |
@@ -24,8 +24,10 @@
 - **结果：** 组装出的消息里存在 `tool_result` block，但整轮消息中**没有任何 `tool_use` block** 与之配对。
 - **为何严重：** 项目自身 `repairToolPairs`（`constraints.ts`）注释明确为治 Anthropic 2013 孤儿 tool 校验而设。带 tools 的 AgentExecutor（`orchestrate.ts` / `home.ts` 节点均注入 `tools: nodeTools`）第二次 handle 重组 cache 时，会把上一轮自己写入的 tool_result 单独变成块、tool_use 变成文本 → 触发 2013/400。这正是计划要治的"多 agent 失忆 + 带工具链路"目标场景。
 - **为何没被测试抓到：** `patterns/agent.test.ts:181-206` 只断言"存在 tool_result block"，不校验是否存在对应 tool_use block。
-- **修复：** 2026-08-10 已修复——hasTools 分支不再转 tool_result 为 block，全部走文本（与 tool_use 占位一致），避免孤儿 tool_result。补了"tool_result 的 id 必须存在匹配 tool_use"断言（当前全文本无 block，天然满足）。
-- **验证：** `npm test -- patterns/agent` 7 个测试全绿；`npm test` 451 个全绿。
+- **修复：** 2026-08-10 两阶段修复。
+  - 阶段 1（全文本路线）：hasTools 分支不再转 tool_result 为 block，全部走文本，避免孤儿 tool_result。补了配对断言。
+  - 阶段 2（重建真 block，方案见 `docs/c1-tool-use-block-rebuild.md`）：`OrchMessage` 加 `toolUseName`/`toolUseInput` 字段；`onToolCall` 写 cache 时存 name + input；`assembleMessages` hasTools 分支重建真 `{ type: 'tool_use', id, name, input }` block，与 `tool_result` block 完整配对。`repairToolPairs` 在重建之前调用，孤儿 tool_use 先降级为纯文本（删 toolUseId），不会进入重建分支。测试断言"每个 tool_result 的 tool_use_id 必须有配对的 tool_use block"。
+- **验证：** `npm test` 452 个全绿（含 C1 重建真 block 强断言 + 并行乱序配对回归）；`npm run typecheck` 干净。
 
 ---
 

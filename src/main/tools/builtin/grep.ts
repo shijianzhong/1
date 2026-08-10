@@ -120,7 +120,7 @@ export function registerGrepTool(): void {
         // 重新走一遍 walk 收集所有含匹配的文件（output_mode 不是 content 时 results 为空）
         const matchedFiles: string[] = []
         for (const file of files) {
-          if (input.glob && !matchesGlob(file, input.glob)) continue
+          if (input.glob && !matchesGlob(relative(ctx.workspaceRoot, file), input.glob)) continue
           if (!GREP_FILE_EXTS.includes(extname(file).toLowerCase())) continue
           let text: string
           try {

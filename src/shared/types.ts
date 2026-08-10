@@ -181,6 +181,10 @@ export interface OrchMessage {
   isFunctionResult?: boolean
   /** 投递时是否触发 handle（false=仅 extend cache，broadcast 模式，铁律15） */
   shouldRespond?: boolean
+  /** C1：tool_use 占位时存工具名，assembleMessages 据此重建真 tool_use block */
+  toolUseName?: string
+  /** C1：tool_use 占位时存入参，assembleMessages 据此重建真 tool_use block */
+  toolUseInput?: unknown
 }
 
 /** Executor 请求（铁律15：should_respond 双语义） */

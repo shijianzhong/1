@@ -70,13 +70,16 @@ export class AgentExecutor implements Executor {
           text,
         })
       },
-      // Task 8a：把 tool 轨迹写入 cache（供下游 fan-out 看到上游工具调用）
-      onToolCall: (tool, _args, toolUseId) => {
+      // Task 8a + C1：把 tool 轨迹写入 cache（供下游 fan-out 看到上游工具调用）
+      // C1 修复：存 name + input，assembleMessages 据此重建真 tool_use block（治孤儿 tool_result）
+      onToolCall: (tool, args, toolUseId) => {
         this.cache.push({
           role: 'assistant',
           author: this.id,
-          content: `[tool:${tool}]`,
+          content: `[tool:${tool}]`,   // 占位文本保留（无-tools 下游降级时用）
           toolUseId,
+          toolUseName: tool,            // C1：供 assembleMessages 重建真 tool_use block
+          toolUseInput: args,           // C1：同上
         })
       },
       onToolResult: (tool, result, toolUseId) => {
@@ -129,10 +132,18 @@ export class AgentExecutor implements Executor {
     const messages: LlmMessage[] = []
     for (const m of source) {
       const role: 'user' | 'assistant' = m.role === 'assistant' ? 'assistant' : 'user'
-      // C1 修复：hasTools 时也不转 tool_result 为 block——否则 tool_use 占位是文本而
-      // tool_result 是 block，组装出孤儿 tool_result（无配对 tool_use），触发 Anthropic 2013。
-      // 全部走文本（tool_use 占位 + tool_result 内容都进 text），由下游 LLM 自行理解。
-      const content: LlmMessage['content'] = m.content
+      let content: LlmMessage['content']
+      if (hasTools && m.isFunctionResult) {
+        // tool_result → 真 block（配对用 tool_use_id）
+        content = [{ type: 'tool_result', tool_use_id: m.toolUseId ?? '', content: m.content }]
+      } else if (hasTools && m.toolUseId && m.toolUseName) {
+        // C1 修复：tool_use 占位 → 重建真 tool_use block（配对完整，不再孤儿）
+        // 注意：repairToolPairs 已在此循环之前调用，孤儿 tool_use（无配对 result）
+        // 已被降级为纯文本（删 toolUseId），不会进入此分支——只有配对完整的才重建
+        content = [{ type: 'tool_use', id: m.toolUseId, name: m.toolUseName, input: m.toolUseInput ?? {} }]
+      } else {
+        content = m.content
+      }
       // full_conversation extend 后 cache 会有连续同角色（原始 user + 多跳 assistant），
       // Anthropic 要求 user/assistant 严格交替 → 连续同角色合并为一条（防 400）
       const last = messages[messages.length - 1]

@@ -83,6 +83,9 @@ describe('AgentExecutor cache 写入 tool 轨迹（Task 8a）', () => {
     expect(toolUseMsg).toBeDefined()
     expect(toolUseMsg?.role).toBe('assistant')
     expect(toolUseMsg?.content).toBe('[tool:grep]')
+    // C1：toolUseName / toolUseInput 也写入 cache（供 assembleMessages 重建真 tool_use block）
+    expect(toolUseMsg?.toolUseName).toBe('grep')
+    expect(toolUseMsg?.toolUseInput).toEqual({ pattern: 'foo' })
     expect(toolResultMsg).toBeDefined()
     expect(toolResultMsg?.role).toBe('user')
     expect(toolResultMsg?.content).toBe('{"ok":true,"files":[]}')
@@ -178,7 +181,7 @@ describe('AgentExecutor thinking 透传（Task 9）', () => {
 })
 
 describe('AgentExecutor assembleMessages（Task 8b）', () => {
-  it('有 tools 时保留 tool_result 配对（文本形态，无孤儿 block）', async () => {
+  it('有 tools 时重建真 tool_use/tool_result 配对（无孤儿 block）', async () => {
     const captured: { messages?: Array<{ role: string; content: unknown }> } = {}
     const agent = makeCaptureAgent(captured, true)
     const ex = new AgentExecutor({
@@ -186,9 +189,9 @@ describe('AgentExecutor assembleMessages（Task 8b）', () => {
       llmOpts: {} as LLMClientOptions,
       agent,
     })
-    // 预置 cache：tool_use + tool_result 对
+    // 预置 cache：tool_use + tool_result 对（含 toolUseName/toolUseInput 供 C1 重建）
     ex.cache.push({ role: 'user', content: '任务' })
-    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_1' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_1', toolUseName: 'grep', toolUseInput: { pattern: 'foo' } })
     ex.cache.push({ role: 'user', content: '结果', toolUseId: 'tu_1', isFunctionResult: true })
 
     const ctx = makeCtx()
@@ -198,26 +201,22 @@ describe('AgentExecutor assembleMessages（Task 8b）', () => {
     )
     for await (const _ of gen) { /* drain */ }
 
-    const allText = JSON.stringify(captured.messages ?? [])
-    // C1 修复：hasTools 时 tool_result 降为文本，不转 block（否则 tool_use 占位是文本而
-    // tool_result 是 block，组装出孤儿 tool_result → Anthropic 2013）
-    expect(allText).not.toContain('tool_result')
-    expect(allText).toContain('[tool:grep]')
-    expect(allText).toContain('结果')
-    // 强断言：每个 tool_result 的 tool_use_id 必须有配对 tool_use（当前全文本无 block，天然满足）
+    // C1 修复：hasTools 时重建真 tool_use block + tool_result block，配对完整
+    const toolUseBlocks = (captured.messages ?? []).flatMap((m) =>
+      Array.isArray(m.content)
+        ? (m.content as Array<{ type: string; id?: string; name?: string }>).filter((b) => b.type === 'tool_use')
+        : [],
+    )
     const toolResultBlocks = (captured.messages ?? []).flatMap((m) =>
       Array.isArray(m.content)
         ? (m.content as Array<{ type: string; tool_use_id?: string }>).filter((b) => b.type === 'tool_result')
         : [],
     )
+    // 产出了真 tool_use block（非全文本）
+    expect(toolUseBlocks.map((u) => u.id)).toContain('tu_1')
+    // 每个 tool_result 的 tool_use_id 必须有配对的 tool_use block
     for (const b of toolResultBlocks) {
-      const hasPair = (captured.messages ?? []).some((m) =>
-        Array.isArray(m.content) &&
-        (m.content as Array<{ type: string; id?: string }>).some(
-          (x) => x.type === 'tool_use' && x.id === b.tool_use_id,
-        ),
-      )
-      expect(hasPair).toBe(true)
+      expect(toolUseBlocks.map((u) => u.id)).toContain(b.tool_use_id)
     }
   })
 
@@ -230,7 +229,7 @@ describe('AgentExecutor assembleMessages（Task 8b）', () => {
       agent,
     })
     ex.cache.push({ role: 'user', content: '任务' })
-    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_1' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_1', toolUseName: 'grep', toolUseInput: { pattern: 'foo' } })
     ex.cache.push({ role: 'user', content: '结果', toolUseId: 'tu_1', isFunctionResult: true })
 
     const ctx = makeCtx()
@@ -241,8 +240,10 @@ describe('AgentExecutor assembleMessages（Task 8b）', () => {
     for await (const _ of gen) { /* drain */ }
 
     const allText = JSON.stringify(captured.messages ?? [])
+    // 无 tools：stripToolBlocksFilter 剥 tool_result，tool_use 占位降级为文本
     expect(allText).not.toContain('tool_result')
-    // 无 tools 时 tool_use 占位文本仍保留（让下游知道上游调了工具）
+    expect(allText).not.toContain('tool_use')
+    // tool_use 占位文本仍保留（让下游知道上游调了工具）
     expect(allText).toContain('[tool:grep]')
   })
 })
@@ -287,8 +288,8 @@ describe('并行乱序 cache 配对（Task 4 + 8a 交互）', () => {
     })
     // 预置乱序 cache：tool_use_A → tool_use_B → result_B → result_A
     ex.cache.push({ role: 'user', content: '任务' })
-    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_A' })
-    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:glob]', toolUseId: 'tu_B' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_A', toolUseName: 'grep', toolUseInput: { pattern: 'a' } })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:glob]', toolUseId: 'tu_B', toolUseName: 'glob', toolUseInput: { pattern: '*.ts' } })
     ex.cache.push({ role: 'user', content: '{"files":["b"]}', toolUseId: 'tu_B', isFunctionResult: true })
     ex.cache.push({ role: 'user', content: '{"files":["a"]}', toolUseId: 'tu_A', isFunctionResult: true })
 
@@ -299,12 +300,22 @@ describe('并行乱序 cache 配对（Task 4 + 8a 交互）', () => {
     )
     for await (const _ of gen) { /* drain */ }
 
-    const allText = JSON.stringify(captured.messages ?? [])
-    // C1 修复后：无 tool_result block，全部走文本
-    expect(allText).not.toContain('tool_result')
-    expect(allText).toContain('[tool:grep]')
-    expect(allText).toContain('[tool:glob]')
-    expect(allText).toContain('{"files":["a"]}'.replace(/"/g, '\\"'))
-    expect(allText).toContain('{"files":["b"]}'.replace(/"/g, '\\"'))
+    // C1 修复后：重建真 tool_use + tool_result block，乱序下配对仍完整
+    const toolUseBlocks = (captured.messages ?? []).flatMap((m) =>
+      Array.isArray(m.content)
+        ? (m.content as Array<{ type: string; id?: string }>).filter((b) => b.type === 'tool_use')
+        : [],
+    )
+    const toolResultBlocks = (captured.messages ?? []).flatMap((m) =>
+      Array.isArray(m.content)
+        ? (m.content as Array<{ type: string; tool_use_id?: string }>).filter((b) => b.type === 'tool_result')
+        : [],
+    )
+    // 两个 tool_use block 都重建了
+    expect(toolUseBlocks.map((u) => u.id).sort()).toEqual(['tu_A', 'tu_B'])
+    // 每个 tool_result 都有配对的 tool_use（乱序不影响配对）
+    for (const b of toolResultBlocks) {
+      expect(toolUseBlocks.map((u) => u.id)).toContain(b.tool_use_id)
+    }
   })
 })

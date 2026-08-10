@@ -59,6 +59,21 @@ describe('grep', () => {
     expect(data.files).toContain(join(tmpDir, 'a.ts'))
   })
 
+  it('files_with_matches + glob 过滤（I1 回归：非空且只含 .ts）', async () => {
+    writeFileSync(join(tmpDir, 'a.ts'), 'target\n')
+    writeFileSync(join(tmpDir, 'b.js'), 'target\n')
+    const r = await executeTool(
+      'grep',
+      { pattern: 'target', output_mode: 'files_with_matches', glob: '*.ts' },
+      'g3b',
+      { workspaceRoot: tmpDir, ...approveAll },
+    )
+    const data = JSON.parse(r.content)
+    expect(data.ok).toBe(true)
+    expect(data.files.length).toBeGreaterThan(0)
+    expect(data.files.every((f: string) => f.endsWith('.ts'))).toBe(true)
+  })
+
   it('count 模式返回统计', async () => {
     writeFileSync(join(tmpDir, 'a.ts'), 'foo\nfoo\n')
     const r = await executeTool(
