@@ -11,6 +11,7 @@ import { registerTool } from '../registry'
 const MAX_WALK = 3000
 const MAX_RESULTS = 30
 const MAX_SNIPPET = 200
+const TRUNCATE_HINT = `搜索被截断（扫描达 ${MAX_WALK} 文件上限）。缩小 path（限定子目录）或加 glob（如 "src/**/*.ts"）后重试。`
 const GREP_FILE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.md', '.json', '.yaml', '.yml', '.txt']
 
 const GrepSchema = z.object({
@@ -128,12 +129,12 @@ export function registerGrepTool(): void {
           }
           if (pattern.test(text)) matchedFiles.push(file)
         }
-        return { ok: true, count: matchedFiles.length, files: matchedFiles, truncated }
+        return { ok: true, count: matchedFiles.length, files: matchedFiles, truncated, hint: truncated ? TRUNCATE_HINT : undefined }
       }
       if (input.output_mode === 'count') {
-        return { ok: true, filesWithMatches, totalMatches, truncated }
+        return { ok: true, filesWithMatches, totalMatches, truncated, hint: truncated ? TRUNCATE_HINT : undefined }
       }
-      return { ok: true, matches: results.slice(0, input.maxResults), truncated }
+      return { ok: true, matches: results.slice(0, input.maxResults), truncated, hint: truncated ? TRUNCATE_HINT : undefined }
     },
   )
 }

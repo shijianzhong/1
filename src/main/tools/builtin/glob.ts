@@ -8,6 +8,7 @@ import { registerTool } from '../registry'
 // 匹配基于相对路径（支持 **/src/**/*.ts 这类跨目录模式）。
 
 const MAX_WALK = 5000
+const TRUNCATE_HINT = `查找被截断（扫描达 ${MAX_WALK} 文件上限）。缩小 path（限定子目录）或用更具体的 pattern 后重试。`
 const MAX_RESULTS = 100
 
 const GlobSchema = z.object({
@@ -97,11 +98,13 @@ export function registerGlobTool(): void {
         }
       }
 
+      const isTruncated = truncated || matched.length > input.maxResults
       return {
         ok: true,
         count: matched.length,
         files: matched.slice(0, input.maxResults),
-        truncated: truncated || matched.length > input.maxResults,
+        truncated: isTruncated,
+        hint: isTruncated ? TRUNCATE_HINT : undefined,
       }
     },
   )

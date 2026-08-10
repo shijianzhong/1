@@ -66,4 +66,22 @@ describe('glob', () => {
     expect(data.ok).toBe(false)
     expect(data.error).toBe('no_workspace')
   })
+
+  it('命中超 maxResults 时 truncated=true 且带收窄 hint', async () => {
+    writeFileSync(join(tmpDir, 'a.ts'), '')
+    writeFileSync(join(tmpDir, 'b.ts'), '')
+    writeFileSync(join(tmpDir, 'c.ts'), '')
+    const r = await executeTool(
+      'glob',
+      { pattern: '**/*.ts', maxResults: 1 },
+      'gl5',
+      { workspaceRoot: tmpDir, ...approveAll },
+    )
+    const data = JSON.parse(r.content)
+    expect(data.ok).toBe(true)
+    expect(data.truncated).toBe(true)
+    expect(data.files.length).toBe(1) // 仍只返回 maxResults 条
+    expect(typeof data.hint).toBe('string')
+    expect(data.hint).toContain('缩小')
+  })
 })

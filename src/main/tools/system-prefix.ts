@@ -21,6 +21,7 @@ export function buildSystemPrefix(): string {
 - 编辑文件用 str_replace_editor 的 str_replace/insert，不要整文件覆写来改一行。
 - 编辑后不要立刻重读整个文件确认——工具已返回成功即可，除非要看改动的上下文。
 - 若 grep/glob/str_replace 返回 no_workspace，说明当前会话未设项目路径——直接告知用户"请在当前页面顶部选择项目目录"（首页或编辑器页均有项目路径选择器），不要在笔记库里搜代码、不要反复重试。
+- 若 grep/glob 返回 truncated=true，说明扫描触顶（大仓库）。缩小 path 限定子目录、加 glob 过滤文件名后重试，不要原样重发。
 
 ## 输出风格
 - 小改动（≤10 行）：2-5 句话或 ≤3 条要点，不加标题。
