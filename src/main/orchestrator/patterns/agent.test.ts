@@ -131,6 +131,51 @@ function makeCaptureAgent(
   } as unknown as Agent
 }
 
+// —— Task 9：编排模式 thinking 转发到事件流 ——
+function makeThinkingAgent(): Agent {
+  return {
+    config: {
+      name: 'thinker',
+      instructions: '',
+      modelId: 'fake',
+      defaultOptions: { maxTokens: 1024 },
+    },
+    deps: { llmOpts: {} },
+    run: vi.fn(async (_input, callbacks) => {
+      callbacks.onThinking?.('正在思考…')
+      callbacks.onText?.('正文')
+      return {
+        messages: [],
+        finalText: 'done',
+        finalThinking: '',
+        hitIterationLimit: false,
+      }
+    }),
+  } as unknown as Agent
+}
+
+describe('AgentExecutor thinking 透传（Task 9）', () => {
+  it('onThinking 触发 add_event type=thinking', async () => {
+    const agent = makeThinkingAgent()
+    const ex = new AgentExecutor({
+      config: agent.config,
+      llmOpts: {} as LLMClientOptions,
+      agent,
+    })
+    const ctx = makeCtx()
+    const gen = ex.handle(
+      { messages: [{ role: 'user', content: 'start' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of gen) { /* drain */ }
+    const thinkingEvents = ctx.events.filter(
+      (e) => (e as { type?: string }).type === 'thinking',
+    )
+    expect(thinkingEvents.length).toBe(1)
+    expect((thinkingEvents[0] as { text?: string }).text).toBe('正在思考…')
+  })
+})
+
 describe('AgentExecutor assembleMessages（Task 8b）', () => {
   it('有 tools 时保留 tool_result 块配对', async () => {
     const captured: { messages?: Array<{ role: string; content: unknown }> } = {}

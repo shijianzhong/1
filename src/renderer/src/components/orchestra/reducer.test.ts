@@ -240,6 +240,22 @@ describe('orchestra/reducer applyOrchEvent', () => {
     expect(msgs[0].orbState).toBe('working')
   })
 
+  it('thinking 事件：追加到同 speaker 末条气泡的 thinking 字段', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '正文' })
+    msgs = applyOrchEvent(msgs, { type: 'thinking', node_id: 'a1', speaker: 'a1', text: '思考中' })
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0]).toMatchObject({ text: '正文', thinking: '思考中', streaming: true })
+  })
+
+  it('thinking 事件：无前置气泡 → 建只含 thinking 的占位气泡', () => {
+    const msgs = applyOrchEvent([], { type: 'thinking', node_id: 'a1', speaker: 'a1', text: '先想' })
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0]).toMatchObject({ text: '', thinking: '先想', streaming: true })
+    const out = applyOrchEvent(msgs, { type: 'output', node_id: 'a1', speaker: 'a1', text: '正文' })
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ text: '正文', thinking: '先想', streaming: true })
+  })
+
   it('output final 无前置增量气泡 → 直接建成形气泡（streaming=false）', () => {
     const msgs = applyOrchEvent([], { type: 'output', node_id: 'gc1', speaker: 'gc1', text: '完整输出', final: true })
     expect(msgs).toHaveLength(1)

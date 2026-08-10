@@ -60,10 +60,15 @@ export class AgentExecutor implements Executor {
           text,
         })
       },
-      // thinking delta 不转发：编排场景 orch_event 流只有 output（正文）一类，
-      // 若把 thinking 混进 output 会被前端当正文渲染，且与 finalText（仅 text block）不一致。
-      // 主页单聊的 thinking 走独立 {type:'thinking'} 事件；编排内 thinking 暂不透传（MVP）。
-      onThinking: () => {},
+      // Task 9：编排模式保留 thinking，转发到事件流（独立 thinking 事件，前端按 type 分流渲染）
+      onThinking: (text) => {
+        void ctx.add_event({
+          type: 'thinking',
+          node_id: this.id,
+          speaker: this.id,
+          text,
+        })
+      },
       // Task 8a：把 tool 轨迹写入 cache（供下游 fan-out 看到上游工具调用）
       onToolCall: (tool, _args, toolUseId) => {
         this.cache.push({

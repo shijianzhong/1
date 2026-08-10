@@ -30,6 +30,34 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
       ]
     }
 
+    case 'thinking': {
+      // 编排内 agent 推理过程：追加到该 speaker 的末条气泡的 thinking 字段（不混进正文）
+      const last = prev[prev.length - 1]
+      if (last?.role === 'assistant' && last.speaker === ev.speaker) {
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...last,
+            thinking: (last.thinking ?? '') + ev.text,
+            thinkingCollapsed: false,
+          },
+        ]
+      }
+      // 尚无该 speaker 的气泡：先建一个只含 thinking 的占位气泡，后续 output 合并
+      return [
+        ...closeStreaming(prev),
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: '',
+          streaming: true,
+          speaker: ev.speaker,
+          thinking: ev.text,
+          thinkingCollapsed: false,
+        },
+      ]
+    }
+
     case 'node_error':
     case 'failed': {
       const errText = ev.type === 'node_error' ? `${ev.node_id}: ${ev.error}` : ev.error
