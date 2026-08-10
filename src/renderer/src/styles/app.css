@@ -472,6 +472,54 @@ html[data-platform='darwin'] .titlebar__inner {
   cursor: not-allowed;
 }
 
+/* —— 项目路径 chip（composer 附加上栏，紧贴 composer 上沿）—— */
+/* 首页 chat-top-bar + 编辑器 RunChatPanel 共用；选目录后 agent 文件工具/shell 才够到代码 */
+.chat-top-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -6px; /* 紧贴下方 composer，消除孤立感 */
+  padding: 0 2px;
+}
+
+.project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px; /* 胶囊形 chip */
+  background: var(--color-bg-1);
+  color: var(--color-fg-2);
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-chip:hover {
+  border-color: var(--color-brand-400);
+  color: var(--color-fg-1);
+}
+
+.project-chip svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.project-chip:hover svg {
+  opacity: 1;
+}
+
+.project-chip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* —— @提及芯片输入框 —— */
 .mention-composer {
   position: relative;

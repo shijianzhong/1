@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Play, Square } from 'lucide-react'
+import { Play, Square, FolderOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
 import type { ChatMessage } from '@renderer/components/orchestra/types'
 
 // —— 编辑器运行聊天面板（与首页 @能力 运行同一渲染体系：MessageItem + applyOrchEvent）——
 // 每条用户消息触发一次 workflow 运行（与首页语义一致：能力运行无状态，turn 间不共享
 // executor cache）；运行中角色经 ask_user 提问 → 提问卡内嵌作答，不抢 composer。
+// 顶部项目选择器：选定的 projectRoot 经 orchestrate.run 写入 sessions.cwd，agent 文件
+// 工具/shell 默认 cwd 用（grep/glob/str_replace 够到代码项目）。
 
 export function RunChatPanel({
   messages,
@@ -14,14 +17,21 @@ export function RunChatPanel({
   running,
   onSend,
   onStop,
+  projectPath,
+  onPickProject,
+  t,
 }: {
   messages: ChatMessage[]
   speakerName: (id: string) => string
   running: boolean
   onSend: (text: string) => void
   onStop: () => void
+  /** 当前项目根（null = 未选） */
+  projectPath: string | null
+  /** 选择项目目录 */
+  onPickProject: () => void
+  t: TFunction
 }) {
-  const { t } = useTranslation(['editor', 'common'])
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
@@ -62,8 +72,23 @@ export function RunChatPanel({
         )}
       </div>
 
-      {/* composer：任务输入（Enter 发送 / Shift+Enter 换行） */}
+      {/* composer：项目路径 chip + 任务输入 + 运行按钮 */}
       <div style={{ display: 'grid', gap: 6 }}>
+        <div className="chat-top-bar">
+          <button
+            type="button"
+            className="project-chip"
+            onClick={onPickProject}
+            title={projectPath ?? undefined}
+          >
+            <FolderOpen size={14} />
+            <span className="project-chip__name">
+              {projectPath
+                ? projectPath.split('/').pop() ?? projectPath
+                : t('editor:runChat.selectProject')}
+            </span>
+          </button>
+        </div>
         <textarea
           value={draft}
           disabled={running}

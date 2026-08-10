@@ -432,13 +432,16 @@ export function HomePage() {
       <div className="chat-top-bar">
         <button
           type="button"
-          className="project-path-btn"
+          className="project-chip"
           onClick={() => void pickProject()}
           title={projectPath ?? undefined}
         >
-          {projectPath
-            ? `📁 ${projectPath.split('/').pop() ?? projectPath}`
-            : t('home:selectProject', '选择项目目录')}
+          <FolderOpen size={14} />
+          <span className="project-chip__name">
+            {projectPath
+              ? projectPath.split('/').pop() ?? projectPath
+              : t('home:selectProject', '选择项目目录')}
+          </span>
         </button>
       </div>
       <div className="composer">

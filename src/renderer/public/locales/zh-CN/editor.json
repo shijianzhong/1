@@ -27,7 +27,8 @@
     "empty": "输入任务开始运行当前能力编排。运行中各角色的发言会按说话人分气泡流式展示；角色向你提问时会在这里暂停等你的回答。",
     "placeholder": "描述要交给这个能力做的事…（Enter 发送，Shift+Enter 换行）",
     "history": "运行记录",
-    "historyEmpty": "还没有运行记录"
+    "historyEmpty": "还没有运行记录",
+    "selectProject": "选择项目目录"
   },
   "status": {
     "idle": "待机",

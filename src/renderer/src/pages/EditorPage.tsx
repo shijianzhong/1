@@ -157,6 +157,12 @@ function EditorCanvas() {
   const [running, setRunning] = useState(false)
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // 项目根（编排运行时 agent 文件工具/shell cwd 用）：新会话选好后随首条任务写入 sessions.cwd
+  const [projectPath, setProjectPath] = useState<string | null>(null)
+  const pickProject = useCallback(async (): Promise<void> => {
+    const p = await window.one.app.pickDirectory().then(unwrap).catch(() => null)
+    if (p) setProjectPath(p)
+  }, [])
   // —— 运行对话（与首页 @能力 运行同一聊天体系：能力运行中可能与用户交互）——
   // 右侧栏 tabs：inspector 属性 / chat 运行对话；composer 第一条消息即任务输入。
   const [rightTab, setRightTab] = useState<'inspector' | 'chat'>('inspector')
@@ -896,12 +902,12 @@ function EditorCanvas() {
 
     // 会话持久化：每次运行新建 session（capabilityId 关联，标记为能力试跑记录——
     // 不进主 Agent 会话列表，在本页「运行对话」历史下拉回看）；
-    // 主进程在 orchestrate:run 内落用户输入 + 聚合输出。
+    // 主进程在 orchestrate:run 内落用户输入 + 聚合输出。带 cwd（项目根）写入。
     let sid: string | null = null
     if (capabilityId) {
       try {
         const s = await window.one.sessions
-          .create({ title: text.slice(0, 20), capabilityId })
+          .create({ title: text.slice(0, 20), capabilityId, cwd: projectPath ?? undefined })
           .then(unwrap)
         sid = s.id
         // 刷新试跑记录下拉（新记录立即可见）
@@ -954,7 +960,12 @@ function EditorCanvas() {
     })
 
     try {
-      await window.one.orchestrate.run({ graph, input: text, sessionId: sid ?? undefined }).then(unwrap)
+      await window.one.orchestrate.run({
+        graph,
+        input: text,
+        sessionId: sid ?? undefined,
+        projectPath: projectPath ?? undefined,
+      }).then(unwrap)
       // 兜底复位：done 事件若晚于 unsub 到达，running 不能卡死
       setRunning(false)
       setActiveNodeId(null)
@@ -1316,6 +1327,9 @@ function EditorCanvas() {
             running={running}
             onSend={(text) => void onRun(text)}
             onStop={() => void window.one.orchestrate.cancel()}
+            projectPath={projectPath}
+            onPickProject={pickProject}
+            t={t}
           />
         )}
       </aside>

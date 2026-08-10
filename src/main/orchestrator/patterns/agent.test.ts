@@ -4,6 +4,7 @@ import { AgentExecutor } from './agent'
 import type { AgentExecutorOptions } from './agent'
 import type { Agent } from '../agent'
 import type { LLMClientOptions } from '../../llm/client'
+import { repairToolPairs } from '../constraints'
 
 // —— Task 8a：AgentExecutor cache 写入 tool 轨迹 ——
 // mock Agent.run 触发 onToolCall/onToolResult，断言 cache 含带 toolUseId 的条目且配对正确
@@ -228,5 +229,69 @@ describe('AgentExecutor assembleMessages（Task 8b）', () => {
     expect(allText).not.toContain('tool_result')
     // 无 tools 时 tool_use 占位文本仍保留（让下游知道上游调了工具）
     expect(allText).toContain('[tool:grep]')
+  })
+})
+
+// —— Task 4 并行乱序配对回归 ——
+// Task 4 并行执行后，onToolResult 按各工具完成时序触发，cache 物理顺序可能为
+// tool_use_A → tool_use_B → result_B → result_A（非 A→result_A→B→result_B）。
+// repairToolPairs 按 toolUseId 集合匹配（非物理位置），须在乱序下仍正确配对——
+// 不降级、不误剥。assembleMessages 用配对后的 source 组装，下游能拿到完整 tool_result。
+
+describe('并行乱序 cache 配对（Task 4 + 8a 交互）', () => {
+  it('result 乱序时 repairToolPairs 仍正确配对（不误降级）', () => {
+    // 模拟并行乱序：A→B 两个 tool_use，但 B 的 result 先入 cache
+    const cache: OrchMessage[] = [
+      { role: 'assistant', author: 'A', content: '[tool:grep]', toolUseId: 'tu_A' },
+      { role: 'assistant', author: 'A', content: '[tool:glob]', toolUseId: 'tu_B' },
+      { role: 'user', author: 'A', content: '{"files":["b"]}', toolUseId: 'tu_B', isFunctionResult: true },
+      { role: 'user', author: 'A', content: '{"files":["a"]}', toolUseId: 'tu_A', isFunctionResult: true },
+    ]
+    const out = repairToolPairs(cache)
+    // 两个 tool_use 都有配对 result → 不应降级（toolUseId 保留）
+    const useA = out.find((m) => m.toolUseId === 'tu_A' && !m.isFunctionResult)
+    const useB = out.find((m) => m.toolUseId === 'tu_B' && !m.isFunctionResult)
+    const resA = out.find((m) => m.toolUseId === 'tu_A' && m.isFunctionResult)
+    const resB = out.find((m) => m.toolUseId === 'tu_B' && m.isFunctionResult)
+    expect(useA?.toolUseId).toBe('tu_A') // 未降级
+    expect(useB?.toolUseId).toBe('tu_B')
+    expect(resA?.toolUseId).toBe('tu_A') // 未剥
+    expect(resB?.toolUseId).toBe('tu_B')
+    // 物理乱序保留（repairToolPairs 不重排）
+    expect(out[2].toolUseId).toBe('tu_B')
+    expect(out[3].toolUseId).toBe('tu_A')
+  })
+
+  it('assembleMessages 乱序 cache 仍能组装出配对的 tool_result block（有 tools）', async () => {
+    const captured: { messages?: Array<{ role: string; content: unknown }> } = {}
+    const agent = makeCaptureAgent(captured, true)
+    const ex = new AgentExecutor({
+      config: agent.config,
+      llmOpts: {} as LLMClientOptions,
+      agent,
+    })
+    // 预置乱序 cache：tool_use_A → tool_use_B → result_B → result_A
+    ex.cache.push({ role: 'user', content: '任务' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_A' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:glob]', toolUseId: 'tu_B' })
+    ex.cache.push({ role: 'user', content: '{"files":["b"]}', toolUseId: 'tu_B', isFunctionResult: true })
+    ex.cache.push({ role: 'user', content: '{"files":["a"]}', toolUseId: 'tu_A', isFunctionResult: true })
+
+    const ctx = makeCtx()
+    const gen = ex.handle(
+      { messages: [{ role: 'user', content: '触发' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of gen) { /* drain */ }
+
+    // 乱序下仍应产出两个 tool_result block（按 toolUseId 配对，非位置依赖）
+    const userMsgs = (captured.messages ?? []).filter((m) => m.role === 'user')
+    const toolResultBlocks = userMsgs.flatMap((m) =>
+      Array.isArray(m.content)
+        ? (m.content as Array<{ type: string; tool_use_id?: string }>).filter((b) => b.type === 'tool_result')
+        : [],
+    )
+    const ids = toolResultBlocks.map((b) => b.tool_use_id).sort()
+    expect(ids).toEqual(['tu_A', 'tu_B'])
   })
 })

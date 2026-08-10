@@ -27,7 +27,8 @@
     "empty": "Send a task to run this capability. Each role's speech streams in its own bubble; when a role asks you a question, the run pauses here for your answer.",
     "placeholder": "Describe the task for this capability… (Enter to send, Shift+Enter for newline)",
     "history": "Run history",
-    "historyEmpty": "No runs yet"
+    "historyEmpty": "No runs yet",
+    "selectProject": "Select project directory"
   },
   "status": {
     "idle": "Idle",

@@ -21,6 +21,7 @@ import {
 } from '../orchestrator/userInput'
 import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
 import { addMessage, getSession } from '../storage/sessions'
+import { getDb } from '../storage/db'
 import { SkillContextProvider } from '../skills/provider'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
@@ -217,10 +218,20 @@ export function registerOrchestrateHandlers(): void {
   withHandler<{ runId: string; output: string }>(
     'orchestrate:run',
     async (_e, input) => {
-      const { graph, input: text, sessionId } = input as {
+      const { graph, input: text, sessionId, projectPath } = input as {
         graph: WorkflowGraph
         input: string
         sessionId?: string
+        /** 项目根绝对路径（写入 sessions.cwd，agent 文件工具/shell 用） */
+        projectPath?: string
+      }
+
+      // 项目根持久化（与 home.chat 对齐）：传了就写 sessions.cwd，makeResolveAgent 回读
+      if (projectPath) {
+        const sid = sessionId
+        if (sid) {
+          getDb().prepare('UPDATE sessions SET cwd = ?, updated_at = ? WHERE id = ?').run(projectPath, Date.now(), sid)
+        }
       }
 
       const provider = getDefaultProvider()
@@ -249,6 +260,7 @@ export function registerOrchestrateHandlers(): void {
       const agentTools = await listToolsForAgents()
       const { resolveAgent, skillProviders } = makeResolveAgent(
         modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId, hitlRunId,
+        projectPath,
       )
       const deps: BuildDeps = { resolveAgent }
 
