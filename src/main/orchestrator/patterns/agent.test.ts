@@ -102,3 +102,86 @@ describe('AgentExecutor cache 写入 tool 轨迹（Task 8a）', () => {
     expect(ex.cache.some((m) => m.content === 'done')).toBe(true)
   })
 })
+
+// —— Task 8b：条件化 assembleMessages ——
+// mock Agent.run 捕获入参 messages，断言有 tools 时保留 tool_result、无 tools 时剥除
+
+function makeCaptureAgent(
+  captured: { messages?: Array<{ role: string; content: unknown }> },
+  withTools: boolean,
+): Agent {
+  return {
+    config: {
+      name: 'cap',
+      instructions: '',
+      modelId: 'fake',
+      tools: withTools ? [{ name: 'grep', description: '', input_schema: {} }] : undefined,
+      defaultOptions: { maxTokens: 1024 },
+    },
+    deps: { llmOpts: {} },
+    run: vi.fn(async (input) => {
+      captured.messages = input.messages as Array<{ role: string; content: unknown }>
+      return {
+        messages: [],
+        finalText: 'done',
+        finalThinking: '',
+        hitIterationLimit: false,
+      }
+    }),
+  } as unknown as Agent
+}
+
+describe('AgentExecutor assembleMessages（Task 8b）', () => {
+  it('有 tools 时保留 tool_result 块配对', async () => {
+    const captured: { messages?: Array<{ role: string; content: unknown }> } = {}
+    const agent = makeCaptureAgent(captured, true)
+    const ex = new AgentExecutor({
+      config: agent.config,
+      llmOpts: {} as LLMClientOptions,
+      agent,
+    })
+    // 预置 cache：tool_use + tool_result 对
+    ex.cache.push({ role: 'user', content: '任务' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_1' })
+    ex.cache.push({ role: 'user', content: '结果', toolUseId: 'tu_1', isFunctionResult: true })
+
+    const ctx = makeCtx()
+    const gen = ex.handle(
+      { messages: [{ role: 'user', content: '触发' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of gen) { /* drain */ }
+
+    const userMsgs = (captured.messages ?? []).filter((m) => m.role === 'user')
+    const hasToolResultBlock = userMsgs.some((m) =>
+      Array.isArray(m.content) &&
+      (m.content as Array<{ type: string }>).some((b) => b.type === 'tool_result'),
+    )
+    expect(hasToolResultBlock).toBe(true)
+  })
+
+  it('无 tools 时剥除 tool 块（治 2013）', async () => {
+    const captured: { messages?: Array<{ role: string; content: unknown }> } = {}
+    const agent = makeCaptureAgent(captured, false)
+    const ex = new AgentExecutor({
+      config: agent.config,
+      llmOpts: {} as LLMClientOptions,
+      agent,
+    })
+    ex.cache.push({ role: 'user', content: '任务' })
+    ex.cache.push({ role: 'assistant', author: 'cap', content: '[tool:grep]', toolUseId: 'tu_1' })
+    ex.cache.push({ role: 'user', content: '结果', toolUseId: 'tu_1', isFunctionResult: true })
+
+    const ctx = makeCtx()
+    const gen = ex.handle(
+      { messages: [{ role: 'user', content: '触发' }], shouldRespond: true },
+      ctx,
+    )
+    for await (const _ of gen) { /* drain */ }
+
+    const allText = JSON.stringify(captured.messages ?? [])
+    expect(allText).not.toContain('tool_result')
+    // 无 tools 时 tool_use 占位文本仍保留（让下游知道上游调了工具）
+    expect(allText).toContain('[tool:grep]')
+  })
+})

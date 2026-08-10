@@ -10,9 +10,10 @@ import { Agent } from '../agent'
 import type { AgentConfig } from '@shared/types'
 import type { LLMClientOptions } from '../../llm/client'
 import { logger } from '../../logger'
+import { repairToolPairs, stripToolBlocksFilter } from '../constraints'
 
 // —— Agent 叶子 Executor（§三 D + §三之三 G Sequential）——
-// handle 接收消息 → 组装 LlmMessage（strip_tool_blocks_filter 治 2013，
+// handle 接收消息 → 组装 LlmMessage（Task 8b 条件化保 tool 块 / strip 无 tool 下游，
 // wake_on_upstream 治复述）→ Agent.run → emit output 事件 → yield_output。
 // executor_id == agent name（铁律20）。
 
@@ -107,23 +108,44 @@ export class AgentExecutor implements Executor {
   }
 
   /**
-   * 组装 messages：cache 里的 OrchMessage → LlmMessage。
-   * strip_tool_blocks_filter（§G Sequential）：下游无 tool 时剥上游 tool 块治 2013。
+   * 组装 messages：cache OrchMessage → LlmMessage。
+   * Task 8b（铁律16-18 条件化）：本 agent 有 tools → repairToolPairs 保留 tool 块配对；
+   * 无 tools → stripToolBlocksFilter 剥上游 tool 块（治 Anthropic 2013）。
    * wake_on_upstream（§G）：末条 assistant 且 author≠self 时追加 user 唤醒指令治复述。
    */
   private assembleMessages(ctx: WorkflowContext): LlmMessage[] {
+    const hasTools =
+      (this.agent.config.tools?.length ?? 0) > 0 ||
+      (this.agent.config.toolNames?.length ?? 0) > 0
+    let source = [...this.cache]
+    source = hasTools ? repairToolPairs(source) : stripToolBlocksFilter(source)
+
     const messages: LlmMessage[] = []
-    for (const m of this.cache) {
-      // tool 块过滤（骨架简化：tool_result 角色跳过，防 2013）
-      if (m.role === 'tool' || m.isFunctionResult) continue
-      const role = m.role === 'assistant' ? ('assistant' as const) : ('user' as const)
+    for (const m of source) {
+      const role: 'user' | 'assistant' = m.role === 'assistant' ? 'assistant' : 'user'
+      let content: LlmMessage['content']
+      if (hasTools && m.isFunctionResult) {
+        content = [{ type: 'tool_result', tool_use_id: m.toolUseId ?? '', content: m.content }]
+      } else {
+        content = m.content
+      }
       // full_conversation extend 后 cache 会有连续同角色（原始 user + 多跳 assistant），
       // Anthropic 要求 user/assistant 严格交替 → 连续同角色合并为一条（防 400）
       const last = messages[messages.length - 1]
-      if (last && last.role === role && typeof last.content === 'string') {
-        last.content = `${last.content}\n\n${m.content}`
+      if (last && last.role === role) {
+        if (typeof last.content === 'string' && typeof content === 'string') {
+          last.content = `${last.content}\n\n${content}`
+        } else {
+          const lastBlocks = typeof last.content === 'string'
+            ? [{ type: 'text' as const, text: last.content }]
+            : (last.content as unknown[])
+          const curBlocks = typeof content === 'string'
+            ? [{ type: 'text' as const, text: content }]
+            : (content as unknown[])
+          last.content = [...lastBlocks, ...curBlocks] as LlmMessage['content']
+        }
       } else {
-        messages.push({ role, content: m.content })
+        messages.push({ role, content })
       }
     }
 
