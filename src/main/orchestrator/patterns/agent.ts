@@ -128,12 +128,10 @@ export class AgentExecutor implements Executor {
     const messages: LlmMessage[] = []
     for (const m of source) {
       const role: 'user' | 'assistant' = m.role === 'assistant' ? 'assistant' : 'user'
-      let content: LlmMessage['content']
-      if (hasTools && m.isFunctionResult) {
-        content = [{ type: 'tool_result', tool_use_id: m.toolUseId ?? '', content: m.content }]
-      } else {
-        content = m.content
-      }
+      // C1 修复：hasTools 时也不转 tool_result 为 block——否则 tool_use 占位是文本而
+      // tool_result 是 block，组装出孤儿 tool_result（无配对 tool_use），触发 Anthropic 2013。
+      // 全部走文本（tool_use 占位 + tool_result 内容都进 text），由下游 LLM 自行理解。
+      const content: LlmMessage['content'] = m.content
       // full_conversation extend 后 cache 会有连续同角色（原始 user + 多跳 assistant），
       // Anthropic 要求 user/assistant 严格交替 → 连续同角色合并为一条（防 400）
       const last = messages[messages.length - 1]

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { readFile, readdir } from 'node:fs/promises'
-import { join, extname, resolve } from 'node:path'
+import { join, extname, resolve, relative } from 'node:path'
 import { registerTool } from '../registry'
 
 // —— grep（任务计划 Task 2）——
@@ -86,7 +86,8 @@ export function registerGrepTool(): void {
 
       for (const file of files) {
         if (results.length >= input.maxResults && input.output_mode === 'content') break
-        if (input.glob && !matchesGlob(file, input.glob)) continue
+        // I1 修复：glob 匹配用相对 workspaceRoot 的路径，不是绝对路径
+        if (input.glob && !matchesGlob(relative(ctx.workspaceRoot, file), input.glob)) continue
         if (!GREP_FILE_EXTS.includes(extname(file).toLowerCase())) continue
 
         let text: string

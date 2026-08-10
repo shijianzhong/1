@@ -178,7 +178,7 @@ describe('AgentExecutor thinking 透传（Task 9）', () => {
 })
 
 describe('AgentExecutor assembleMessages（Task 8b）', () => {
-  it('有 tools 时保留 tool_result 块配对', async () => {
+  it('有 tools 时保留 tool_result 配对（文本形态，无孤儿 block）', async () => {
     const captured: { messages?: Array<{ role: string; content: unknown }> } = {}
     const agent = makeCaptureAgent(captured, true)
     const ex = new AgentExecutor({
@@ -198,12 +198,27 @@ describe('AgentExecutor assembleMessages（Task 8b）', () => {
     )
     for await (const _ of gen) { /* drain */ }
 
-    const userMsgs = (captured.messages ?? []).filter((m) => m.role === 'user')
-    const hasToolResultBlock = userMsgs.some((m) =>
-      Array.isArray(m.content) &&
-      (m.content as Array<{ type: string }>).some((b) => b.type === 'tool_result'),
+    const allText = JSON.stringify(captured.messages ?? [])
+    // C1 修复：hasTools 时 tool_result 降为文本，不转 block（否则 tool_use 占位是文本而
+    // tool_result 是 block，组装出孤儿 tool_result → Anthropic 2013）
+    expect(allText).not.toContain('tool_result')
+    expect(allText).toContain('[tool:grep]')
+    expect(allText).toContain('结果')
+    // 强断言：每个 tool_result 的 tool_use_id 必须有配对 tool_use（当前全文本无 block，天然满足）
+    const toolResultBlocks = (captured.messages ?? []).flatMap((m) =>
+      Array.isArray(m.content)
+        ? (m.content as Array<{ type: string; tool_use_id?: string }>).filter((b) => b.type === 'tool_result')
+        : [],
     )
-    expect(hasToolResultBlock).toBe(true)
+    for (const b of toolResultBlocks) {
+      const hasPair = (captured.messages ?? []).some((m) =>
+        Array.isArray(m.content) &&
+        (m.content as Array<{ type: string; id?: string }>).some(
+          (x) => x.type === 'tool_use' && x.id === b.tool_use_id,
+        ),
+      )
+      expect(hasPair).toBe(true)
+    }
   })
 
   it('无 tools 时剥除 tool 块（治 2013）', async () => {
@@ -262,7 +277,7 @@ describe('并行乱序 cache 配对（Task 4 + 8a 交互）', () => {
     expect(out[3].toolUseId).toBe('tu_A')
   })
 
-  it('assembleMessages 乱序 cache 仍能组装出配对的 tool_result block（有 tools）', async () => {
+  it('assembleMessages 乱序 cache 配对正确（无孤儿 tool_result）', async () => {
     const captured: { messages?: Array<{ role: string; content: unknown }> } = {}
     const agent = makeCaptureAgent(captured, true)
     const ex = new AgentExecutor({
@@ -284,14 +299,12 @@ describe('并行乱序 cache 配对（Task 4 + 8a 交互）', () => {
     )
     for await (const _ of gen) { /* drain */ }
 
-    // 乱序下仍应产出两个 tool_result block（按 toolUseId 配对，非位置依赖）
-    const userMsgs = (captured.messages ?? []).filter((m) => m.role === 'user')
-    const toolResultBlocks = userMsgs.flatMap((m) =>
-      Array.isArray(m.content)
-        ? (m.content as Array<{ type: string; tool_use_id?: string }>).filter((b) => b.type === 'tool_result')
-        : [],
-    )
-    const ids = toolResultBlocks.map((b) => b.tool_use_id).sort()
-    expect(ids).toEqual(['tu_A', 'tu_B'])
+    const allText = JSON.stringify(captured.messages ?? [])
+    // C1 修复后：无 tool_result block，全部走文本
+    expect(allText).not.toContain('tool_result')
+    expect(allText).toContain('[tool:grep]')
+    expect(allText).toContain('[tool:glob]')
+    expect(allText).toContain('{"files":["a"]}'.replace(/"/g, '\\"'))
+    expect(allText).toContain('{"files":["b"]}'.replace(/"/g, '\\"'))
   })
 })

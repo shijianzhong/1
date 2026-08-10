@@ -104,7 +104,10 @@ async function handleStrReplace(
     if (secondIdx !== -1) {
       return { ok: false, error: 'multiple_match', hint: 'old_str matches multiple locations — make it unique or use view to disambiguate' }
     }
-    const next = text.replace(input.old_str, input.new_str)
+    // I2 修复：不用 text.replace()——new_str 含 $& / $$ / $` / $' 会被特殊展开。
+    // 改用 slice 拼接，保持 LLM 插入的代码原样（shell $1、模板字面量等）。
+    const idx = text.indexOf(input.old_str)
+    const next = text.slice(0, idx) + input.new_str + text.slice(idx + input.old_str.length)
     await writeFileAtomic(abs, next)
     return { ok: true, path: abs }
   } catch (error) {

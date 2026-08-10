@@ -30,7 +30,7 @@ describe('grep', () => {
     expect(data.matches[0].content).toContain('foo')
   })
 
-  it('glob 过滤文件', async () => {
+  it('glob 过滤文件（I1 回归：非空且只含 .ts）', async () => {
     writeFileSync(join(tmpDir, 'a.ts'), 'target\n')
     writeFileSync(join(tmpDir, 'a.js'), 'target\n')
     const r = await executeTool(
@@ -41,6 +41,8 @@ describe('grep', () => {
     )
     const data = JSON.parse(r.content)
     expect(data.ok).toBe(true)
+    // I1 修复后真断言：结果非空（空数组 .every() 空真通过是假阳性）
+    expect(data.matches.length).toBeGreaterThan(0)
     expect(data.matches.every((m: { path: string }) => m.path.endsWith('.ts'))).toBe(true)
   })
 

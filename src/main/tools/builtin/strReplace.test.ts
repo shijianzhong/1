@@ -55,6 +55,27 @@ describe('str_replace_editor', () => {
     expect(content).toContain('const b = 42')
   })
 
+  it('str_replace 的 new_str 含 $ 不被特殊展开（I2 回归）', async () => {
+    const file = join(tmpDir, 'b2.sh')
+    writeFileSync(file, 'echo hello\n')
+    const r = await executeTool(
+      'str_replace_editor',
+      {
+        command: 'str_replace',
+        path: file,
+        old_str: 'echo hello',
+        new_str: 'echo $1 && echo $&',
+      },
+      'tu_3b',
+      { workspaceRoot: tmpDir, ...approveAll },
+    )
+    const data = JSON.parse(r.content)
+    expect(data.ok).toBe(true)
+    const content = await import('node:fs/promises').then((m) => m.readFile(file, 'utf-8'))
+    // $1 和 $& 必须原样保留（text.replace 会把 $& 展开为 old_str）
+    expect(content).toBe('echo $1 && echo $&\n')
+  })
+
   it('str_replace 多匹配返回 multiple_match', async () => {
     const file = join(tmpDir, 'c.ts')
     writeFileSync(file, 'foo\nfoo\nbar\n')

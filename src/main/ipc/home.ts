@@ -551,6 +551,18 @@ export function registerHomeHandlers(): void {
                 return { approved: false, reason: 'timeout or cancelled' }
               }
             },
+            // update_plan 计划更新桥（Task 6 统一）：组队/能力节点与主 agent 同款
+            onPlanUpdate: (p) => {
+              emitStream({
+                type: 'orch_event',
+                event: {
+                  type: 'plan_update',
+                  node_id: node.id,
+                  explanation: p.explanation,
+                  plan: p.plan,
+                },
+              })
+            },
           },
         }
         return opts
