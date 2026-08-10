@@ -28,6 +28,7 @@ export interface AgentExecutorOptions {
 export class AgentExecutor implements Executor {
   readonly id: string
   cache: import('@shared/types').OrchMessage[] = []
+  cacheTokens = 0
   private readonly agent: Agent
 
   constructor(opts: AgentExecutorOptions) {

@@ -36,6 +36,7 @@ export interface GroupChatExecutorOptions {
 export class GroupChatExecutor implements Executor {
   readonly id: string
   cache: OrchMessage[] = []
+  cacheTokens = 0
   private round = 0
   private readonly participantIds: string[]
   private readonly selectorMode: 'round_robin' | 'manager'

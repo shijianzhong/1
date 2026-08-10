@@ -8,6 +8,7 @@ import { runWorkflow } from './runner'
 /** 录制 handle 调用次数与 shouldRespond 的测试 executor */
 class RecordingExecutor implements Executor {
   cache: import('@shared/types').OrchMessage[] = []
+  cacheTokens = 0
   calls: ExecutorRequest[] = []
   constructor(
     readonly id: string,

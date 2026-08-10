@@ -20,6 +20,7 @@ export interface ConcurrentConfig {
 export class ConcurrentExecutor implements Executor {
   readonly id: string
   cache: import('@shared/types').OrchMessage[] = []
+  cacheTokens = 0
   /** fan-in 栅栏等齐判定用（runner 只读） */
   readonly participantIds: string[]
   /** 聚合目标 executor id（runner 只读） */

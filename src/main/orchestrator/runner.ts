@@ -21,6 +21,14 @@ const CACHE_SOFT_CAP = 200
 // executor cache token 软上限：超出后保留首条 + 尾部窗口（Task 7 token 感知截断）
 const CACHE_TOKEN_CAP = 24_000
 
+/** 计算 cache 的近似 token 总数（截断后重算用） */
+function calcCacheTokens(cache: OrchMessage[]): number {
+  return cache.reduce(
+    (sum, m) => sum + (typeof m.content === 'string' ? approxTokenCount(m.content) : 0),
+    0,
+  )
+}
+
 interface WorkflowContextImpl extends WorkflowContext {
   source: string | null
   pending: MessageEnvelope[] // 当前轮待投递 + 下一轮累积（N emit / N+1 deliver）
@@ -304,18 +312,23 @@ async function deliverToExecutor(
   // extend cache（所有消息都进 cache，铁律15）
   const messages = envelopes.map((e) => e.message)
   executor.cache.push(...messages)
+  // M3 增量维护：只算新消息的 token，累加到 executor.cacheTokens（避免每次 deliver O(n) 全量扫）
+  const newTokens = messages.reduce(
+    (sum, m) => sum + (typeof m.content === 'string' ? approxTokenCount(m.content) : 0),
+    0,
+  )
+  executor.cacheTokens += newTokens
   // cache 软上限：防长会话（GroupChat 多轮广播）单 executor cache 无界膨胀超
   // context window。超限保留首条（原始任务锚点）+ 最近 N 条——对应 CLAUDE.md
   // 「compaction 先用简单截断保留最近 N 条」的 MVP 取舍，完整 compaction 后置。
   if (executor.cache.length > CACHE_SOFT_CAP) {
     executor.cache = [executor.cache[0], ...executor.cache.slice(-(CACHE_SOFT_CAP - 1))]
+    // 截断后 cache 变化，重算 token（条数截断不频繁，O(n) 一次可接受）
+    executor.cacheTokens = calcCacheTokens(executor.cache)
   }
   // token 感知截断（Task 7）：超 token 上限时保留首条 + 尾部窗口
-  const cacheTokens = executor.cache.reduce(
-    (sum, m) => sum + (typeof m.content === 'string' ? approxTokenCount(m.content) : 0),
-    0,
-  )
-  if (cacheTokens > CACHE_TOKEN_CAP) {
+  // 只在 executor.cacheTokens 超阈值时才扫（避免每次 deliver 都全量 reduce）
+  if (executor.cacheTokens > CACHE_TOKEN_CAP) {
     // 从尾部往前保留窗口，直到不超 cap
     let tailTokens = 0
     let tailStart = executor.cache.length
@@ -327,6 +340,8 @@ async function deliverToExecutor(
       tailStart = i
     }
     executor.cache = [executor.cache[0], ...executor.cache.slice(tailStart)]
+    // 截断后重算 token
+    executor.cacheTokens = calcCacheTokens(executor.cache)
   }
 
   // shouldRespond 双语义（铁律15）：任一 envelope 显式 false 且全部显式 false

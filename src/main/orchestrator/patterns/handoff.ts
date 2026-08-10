@@ -44,6 +44,7 @@ export function parseHandoffTarget(toolName: string): string | null {
 export class HandoffExecutor implements Executor {
   readonly id: string
   cache: OrchMessage[] = []
+  cacheTokens = 0
   private readonly handoffs: Map<string, string[]> // source → targets
 
   constructor(id: string, handoffs: Array<{ source: string; targets: string[] }>) {

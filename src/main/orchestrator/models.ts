@@ -19,6 +19,8 @@ export interface Executor {
   id: string
   /** 本节点消息缓存（broadcast 时 should_respond=false 仅 extend 此 cache） */
   cache: OrchMessage[]
+  /** cache 的 token 累计（增量维护，避免 runner 每次 deliver O(n) 全量扫） */
+  cacheTokens: number
   /**
    * 处理消息请求。
    * @returns 产出的 StreamEvent 流（async iterable，供 runner 转 onEvent）
