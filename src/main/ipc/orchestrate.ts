@@ -20,7 +20,7 @@ import {
   waitForUserInput,
 } from '../orchestrator/userInput'
 import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
-import { addMessage } from '../storage/sessions'
+import { addMessage, getSession } from '../storage/sessions'
 import { SkillContextProvider } from '../skills/provider'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
@@ -69,12 +69,15 @@ function makeResolveAgent(
   sessionId?: string,
   /** HITL 队列 run 作用域 */
   hitlRunId?: string,
+  /** 项目根（文件工具/shell 用）；默认从 sessionId 对应 session.cwd 读 */
+  workspaceRoot?: string,
 ): {
   resolveAgent: (node: GraphNode) => AgentExecutorOptions | null
   /** 本运行创建的全部 SkillContextProvider（运行结束统一 afterRun 审计，铁律22） */
   skillProviders: SkillContextProvider[]
 } {
   const runId = hitlRunId ?? 'orchestrate_default'
+  const effectiveWorkspaceRoot = workspaceRoot ?? (sessionId ? getSession(sessionId)?.cwd : undefined)
   // 运行期 skill 缓存：同一次运行内多个节点绑定同一 skill 时只读一次磁盘
   // （每次 run 新建 resolver → 缓存随运行结束丢弃，不会吃到过期内容）
   const skillCache = new Map<string, ReturnType<typeof getSkill>>()
@@ -160,6 +163,7 @@ function makeResolveAgent(
       llmOpts: { apiKey, baseURL, authHeader, apiFormat },
       toolCtx: {
         sessionId,
+        workspaceRoot: effectiveWorkspaceRoot,
         signal,
         // HITL 提问桥：ask_user → request_info 事件推前端 + 挂起等作答（userInput 队列）
         onAskUser: async ({ question, context }) => {

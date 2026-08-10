@@ -15,6 +15,7 @@
   "assistantPlaceholder": "阶段 0 已经开始落地：窗口壳、preload 白名单、Hash Router、主题变量、命令面板和首页聊天骨架都在这一轮接起来。",
   "userPlaceholder": "好的，基于文档项目开始开发",
   "composerPlaceholder": "问你所想，想你所问",
+  "selectProject": "选择项目目录",
   "mention": {
     "agent": "角色",
     "capability": "能力",

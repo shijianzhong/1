@@ -9,6 +9,7 @@ import type {
   LlmResponse,
 } from '@shared/types'
 import { executeTool, getToolDefs } from '../tools/registry'
+import { buildSystemPrefix } from '../tools/system-prefix'
 import { getClient } from '../llm/retry'
 import type { LLMClientOptions } from '../llm/client'
 import { isHandoffTool, parseHandoffTarget } from './patterns/handoff'
@@ -43,9 +44,10 @@ export function injectRuntimeContext(instructions: string): string {
 export interface AgentDeps {
   /** LLM client 选项（apiKey/baseURL，从 vault + model config 解析） */
   llmOpts: LLMClientOptions
-  /** 工具执行上下文（sessionId / 创建提案回调 / HITL 提问桥 / 工具审批桥等） */
+  /** 工具执行上下文（sessionId / workspaceRoot / 创建提案回调 / HITL 提问桥 / 工具审批桥等） */
   toolCtx?: {
     sessionId?: string
+    workspaceRoot?: string
     signal?: AbortSignal
     onPropose?: (draft: import('@shared/types').CreateDraft) => void
     onAskUser?: (req: { question: string; context?: string }) => Promise<string>
@@ -82,7 +84,8 @@ export class Agent {
     const messages = [...input.messages]
     const tools = this.resolveTools()
     const client = getClient(this.config.modelId, this.deps.llmOpts)
-    const system = injectRuntimeContext(this.config.instructions)
+    // 框架级行为前缀单点注入（Task 5）：只在 Agent 内拼，home/orchestrate 不再重复。
+    const system = injectRuntimeContext(`${buildSystemPrefix()}\n\n${this.config.instructions}`)
 
     let finalText = ''
     let finalThinking = ''
@@ -149,13 +152,9 @@ export class Agent {
 
       const toolResults: LlmContentBlock[] = []
       let handoffTarget: string | null = null
-      for (const tu of toolUses) {
-        functionCallCount++
-        callbacks.onToolCall?.(tu.name, tu.input)
-        const toolStarted = Date.now()
 
-        // —— Handoff 短路（铁律12）：handoff_to_X tool 不真执行 ——
-        // 注入合成 result + 标记 target + 终止循环（MiddlewareTermination 等价）
+      // —— Handoff 短路（铁律12）：串行检测，handoff_to_X 不真执行 ——
+      for (const tu of toolUses) {
         if (isHandoffTool(tu.name)) {
           handoffTarget = parseHandoffTarget(tu.name)
           toolResults.push({
@@ -165,33 +164,43 @@ export class Agent {
             is_error: false,
           })
           logger.info(`[trace:cap] agent.handoff name=${this.config.name} → ${handoffTarget}`)
-          continue // 不 executeTool，短路
         }
-
-        const result = await executeTool(
-          tu.name,
-          tu.input,
-          tu.id,
-          {
-            sessionId: this.deps.toolCtx?.sessionId,
-            signal: input.signal,
-            onPropose: this.deps.toolCtx?.onPropose,
-            onAskUser: this.deps.toolCtx?.onAskUser,
-            onApprove: this.deps.toolCtx?.onApprove,
-          },
-        )
-        callbacks.onToolResult?.(tu.name, result.content)
-        logger.info(
-          `[trace:cap] agent.tool name=${this.config.name} tool=${tu.name} ` +
-            `err=${result.isError} ms=${Date.now() - toolStarted} resultLen=${result.content.length}`,
-        )
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: tu.id,
-          content: result.content,
-          is_error: result.isError,
-        })
       }
+
+      // —— 非 handoff 工具并行执行（Task 4）——
+      const normalToolUses = toolUses.filter((tu) => !isHandoffTool(tu.name))
+      const normalResults = await Promise.all(
+        normalToolUses.map(async (tu) => {
+          functionCallCount++
+          callbacks.onToolCall?.(tu.name, tu.input, tu.id)
+          const toolStarted = Date.now()
+          const result = await executeTool(
+            tu.name,
+            tu.input,
+            tu.id,
+            {
+              sessionId: this.deps.toolCtx?.sessionId,
+              workspaceRoot: this.deps.toolCtx?.workspaceRoot,
+              signal: input.signal,
+              onPropose: this.deps.toolCtx?.onPropose,
+              onAskUser: this.deps.toolCtx?.onAskUser,
+              onApprove: this.deps.toolCtx?.onApprove,
+            },
+          )
+          callbacks.onToolResult?.(tu.name, result.content, tu.id)
+          logger.info(
+            `[trace:cap] agent.tool name=${this.config.name} tool=${tu.name} ` +
+              `err=${result.isError} ms=${Date.now() - toolStarted} resultLen=${result.content.length}`,
+          )
+          return {
+            type: 'tool_result' as const,
+            tool_use_id: tu.id,
+            content: result.content,
+            is_error: result.isError,
+          }
+        }),
+      )
+      toolResults.push(...normalResults)
 
       messages.push({ role: 'user', content: toolResults })
 

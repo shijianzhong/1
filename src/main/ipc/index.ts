@@ -170,6 +170,10 @@ export function registerIpcHandlers(): void {
     if (result.canceled || result.filePaths.length === 0) return null
     return { filePath: result.filePaths[0] }
   })
+  withHandler<string | null>('app:pickDirectory', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  })
   withHandler<{ imageId: string }>('theme:importBackground', async (_e, filePathRaw) => {
     const filePath = filePathRaw as string
     return importBackground(filePath)

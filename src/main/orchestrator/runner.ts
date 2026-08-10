@@ -8,6 +8,7 @@ import type { Executor, RuntimeWorkflow } from './models'
 import { ConcurrentExecutor } from './patterns/concurrent'
 import { AgentExecutor } from './patterns/agent'
 import { logger } from '../logger'
+import { approxTokenCount } from '../llm/token-count'
 
 // —— Pregel superstep 执行模型（§三之三 E + 铁律7）——
 // N emit / N+1 deliver；同 superstep 内所有收到消息的 executor 并发（Promise.all）。
@@ -17,6 +18,8 @@ const MAX_SUPERSTEPS = 50 // 防死循环兜底
 
 // executor cache 软上限：超出后保留首条 + 最近 N 条（见 deliverToExecutor）
 const CACHE_SOFT_CAP = 200
+// executor cache token 软上限：超出后保留首条 + 尾部窗口（Task 7 token 感知截断）
+const CACHE_TOKEN_CAP = 24_000
 
 interface WorkflowContextImpl extends WorkflowContext {
   source: string | null
@@ -306,6 +309,24 @@ async function deliverToExecutor(
   // 「compaction 先用简单截断保留最近 N 条」的 MVP 取舍，完整 compaction 后置。
   if (executor.cache.length > CACHE_SOFT_CAP) {
     executor.cache = [executor.cache[0], ...executor.cache.slice(-(CACHE_SOFT_CAP - 1))]
+  }
+  // token 感知截断（Task 7）：超 token 上限时保留首条 + 尾部窗口
+  const cacheTokens = executor.cache.reduce(
+    (sum, m) => sum + (typeof m.content === 'string' ? approxTokenCount(m.content) : 0),
+    0,
+  )
+  if (cacheTokens > CACHE_TOKEN_CAP) {
+    // 从尾部往前保留窗口，直到不超 cap
+    let tailTokens = 0
+    let tailStart = executor.cache.length
+    for (let i = executor.cache.length - 1; i >= 0; i--) {
+      const c = executor.cache[i].content
+      const t = typeof c === 'string' ? approxTokenCount(c) : 0
+      if (tailTokens + t > CACHE_TOKEN_CAP) break
+      tailTokens += t
+      tailStart = i
+    }
+    executor.cache = [executor.cache[0], ...executor.cache.slice(tailStart)]
   }
 
   // shouldRespond 双语义（铁律15）：任一 envelope 显式 false 且全部显式 false

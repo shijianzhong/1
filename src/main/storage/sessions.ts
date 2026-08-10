@@ -8,6 +8,7 @@ export function createSession(input: {
   title: string
   userId?: string
   capabilityId?: string
+  cwd?: string
 }): Session {
   const now = Date.now()
   const session: Session = {
@@ -15,22 +16,23 @@ export function createSession(input: {
     userId: input.userId ?? 'local',
     title: input.title,
     capabilityId: input.capabilityId,
+    cwd: input.cwd,
     createdAt: now,
     updatedAt: now,
   }
   getDb()
     .prepare(
-      `INSERT INTO sessions (id, user_id, title, capability_id, created_at, updated_at)
-       VALUES (@id, @userId, @title, @capabilityId, @createdAt, @updatedAt)`,
+      `INSERT INTO sessions (id, user_id, title, capability_id, cwd, created_at, updated_at)
+       VALUES (@id, @userId, @title, @capabilityId, @cwd, @createdAt, @updatedAt)`,
     )
-    .run(session)
+    .run({ ...session, cwd: session.cwd ?? null })
   return session
 }
 
 export function listSessions(userId = 'local'): Session[] {
   return getDb()
     .prepare(
-      `SELECT id, user_id as userId, title, capability_id as capabilityId,
+      `SELECT id, user_id as userId, title, capability_id as capabilityId, cwd,
               created_at as createdAt, updated_at as updatedAt
        FROM sessions WHERE user_id = ? ORDER BY updated_at DESC`,
     )
@@ -41,7 +43,7 @@ export function getSession(id: string): Session | null {
   return (
     (getDb()
       .prepare(
-        `SELECT id, user_id as userId, title, capability_id as capabilityId,
+        `SELECT id, user_id as userId, title, capability_id as capabilityId, cwd,
                 created_at as createdAt, updated_at as updatedAt
          FROM sessions WHERE id = ?`,
       )

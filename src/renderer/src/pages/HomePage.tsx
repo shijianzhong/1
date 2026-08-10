@@ -81,6 +81,18 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<(() => void) | null>(null)
   const composerRef = useRef<MentionComposerHandle>(null)
+  // 项目根：会话 cwd（persisted） > 本地暂存（新会话选好后随首条消息写入）
+  const [projectPath, setProjectPath] = useState<string | null>(null)
+  useEffect(() => {
+    if (!sessionId) return
+    void window.one.sessions.getCwd(sessionId).then(unwrap).then((cwd) => {
+      if (cwd) setProjectPath(cwd)
+    }).catch(() => undefined)
+  }, [sessionId])
+  const pickProject = async (): Promise<void> => {
+    const p = await window.one.app.pickDirectory().then(unwrap).catch(() => null)
+    if (p) setProjectPath(p)
+  }
 
   // 崩溃恢复：未发送输入 debounce 落盘（2s 轮询 composer）
   useEffect(() => {
@@ -324,6 +336,7 @@ export function HomePage() {
         .chat({
           message: text,
           sessionId: sessionId ?? undefined,
+          projectPath: projectPath ?? undefined,
           mentions: chipMentions.length > 0 ? chipMentions : undefined,
         })
         .then(unwrap)
@@ -416,6 +429,18 @@ export function HomePage() {
         ))}
       </div>
 
+      <div className="chat-top-bar">
+        <button
+          type="button"
+          className="project-path-btn"
+          onClick={() => void pickProject()}
+          title={projectPath ?? undefined}
+        >
+          {projectPath
+            ? `📁 ${projectPath.split('/').pop() ?? projectPath}`
+            : t('home:selectProject', '选择项目目录')}
+        </button>
+      </div>
       <div className="composer">
         <MentionComposer
           ref={composerRef}

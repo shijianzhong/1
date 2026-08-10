@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import type { L1Summary, LlmMessage } from '@shared/types'
 import { logger } from '../../logger'
+import { messagesTokenCount } from '../../llm/token-count'
 
 // —— L1 会话内滚动压缩（§三之三 D + 铁律21）——
 // L1 是会话级 LLM 摘要存 SQLite，与 agent 运行时 compaction 不同层级
@@ -8,8 +9,8 @@ import { logger } from '../../logger'
 // 触发：单会话消息 token 超阈值时压缩前文成 summary。
 // 受阻先用简单截断兜底（§三之三 D 注）。
 
-/** L1 触发阈值（按消息条数估算，token 精确计数后置） */
-const L1_TRIGGER_MESSAGE_COUNT = 20
+/** L1 触发阈值（按消息 token 估算，~24k 触发压缩） */
+const L1_TRIGGER_TOKENS = 24_000
 /** 压缩后保留的最近窗口消息数 */
 const L1_RECENT_WINDOW = 8
 
@@ -60,7 +61,8 @@ export async function maybeCompressL1(
   compressFn?: (text: string) => Promise<string>,
 ): Promise<{ summary: string | null; recentWindow: LlmMessage[] }> {
   // 未达阈值：不压缩，全部走原文
-  if (messages.length < L1_TRIGGER_MESSAGE_COUNT) {
+  const totalTokens = messagesTokenCount(messages)
+  if (totalTokens < L1_TRIGGER_TOKENS) {
     return { summary: null, recentWindow: messages }
   }
 
@@ -77,7 +79,16 @@ export async function maybeCompressL1(
   }
 
   const textToCompress = toCompress
-    .map((m) => `${m.role}: ${typeof m.content === 'string' ? m.content : '[blocks]'}`)
+    .map((m) => {
+      const text =
+        typeof m.content === 'string'
+          ? m.content
+          : m.content
+              .map((b) => (b.type === 'text' ? b.text : b.type === 'tool_result' ? b.content : ''))
+              .filter(Boolean)
+              .join(' ')
+      return `${m.role}: ${text}`
+    })
     .join('\n')
 
   let summary: string

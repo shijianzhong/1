@@ -15,6 +15,7 @@
   "assistantPlaceholder": "Stage 0 is underway: window shell, preload allowlist, Hash Router, theme tokens, command palette, and the home chat skeleton are all wired up this round.",
   "userPlaceholder": "Got it — let's start building from the docs.",
   "composerPlaceholder": "Ask what you think, think what you ask",
+  "selectProject": "Select project directory",
   "mention": {
     "agent": "Agent",
     "capability": "Capability",

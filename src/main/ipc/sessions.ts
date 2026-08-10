@@ -20,6 +20,7 @@ const IdSchema = z.string().min(1)
 const CreateSessionSchema = z.object({
   title: z.string().min(1),
   capabilityId: z.string().optional(),
+  cwd: z.string().optional(),
 })
 
 const AddMessageSchema = z.object({
@@ -32,6 +33,10 @@ const AddMessageSchema = z.object({
 export function registerSessionsHandlers(): void {
   withHandler<Session[]>('sessions:list', () => listSessions())
   withHandler<Session | null>('sessions:get', (_e, id) => getSession(IdSchema.parse(id)))
+  withHandler<string | null>('sessions:getCwd', (_e, sessionId) => {
+    const s = getSession(IdSchema.parse(sessionId))
+    return s?.cwd ?? null
+  })
   withHandler<void>('sessions:remove', (_e, id) => {
     const sid = IdSchema.parse(id)
     removeSession(sid)

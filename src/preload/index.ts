@@ -81,8 +81,10 @@ export interface OneApi {
     remove: (id: string) => Promise<IpcResult<void>>
     rename: (id: string, title: string) => Promise<IpcResult<void>>
     messages: (sessionId: string) => Promise<IpcResult<SessionMessage[]>>
-    create: (input: { title: string; capabilityId?: string }) => Promise<IpcResult<Session>>
+    create: (input: { title: string; capabilityId?: string; cwd?: string }) => Promise<IpcResult<Session>>
     addMessage: (input: { sessionId: string; role: 'user' | 'assistant' | 'tool'; content: string; meta?: unknown }) => Promise<IpcResult<SessionMessage>>
+    /** 读会话项目根（cwd），无则 null */
+    getCwd: (sessionId: string) => Promise<IpcResult<string | null>>
   }
   tasks: {
     list: () => Promise<IpcResult<TaskRecord[]>>
@@ -99,6 +101,8 @@ export interface OneApi {
     chat: (input: {
       message: string
       sessionId?: string
+      /** 项目根绝对路径（写入 sessions.cwd，agent 文件工具 + shell 默认 cwd 用） */
+      projectPath?: string
       /** 芯片稳定引用（正文为 @名字；主进程按 id 解析） */
       mentions?: Array<{ kind: 'agent' | 'capability' | 'skill'; id: string }>
     }) => Promise<IpcResult<{ runId: string }>>
@@ -154,6 +158,8 @@ export interface OneApi {
     notify: (input: { title: string; body: string }) => Promise<IpcResult<void>>
     getSystemColorMode: () => Promise<IpcResult<'light' | 'dark' | 'system'>>
     show: () => Promise<IpcResult<void>>
+    /** 选择项目目录（openDirectory） */
+    pickDirectory: () => Promise<IpcResult<string | null>>
     /** 崩溃恢复：订阅主进程推送的草稿列表（preload 缓存，晚订阅不丢） */
     onCrashRecovery: (cb: (payload: { drafts: Array<{ name: string; content: string }> }) => void) => () => void
     /** 崩溃恢复：拉取当前草稿（mount 时 pull，防 push 竞态） */
@@ -227,6 +233,7 @@ const api: OneApi = {
     messages: (sessionId) => ipcRenderer.invoke('sessions:messages', sessionId),
     create: (input) => ipcRenderer.invoke('sessions:create', input),
     addMessage: (input) => ipcRenderer.invoke('sessions:addMessage', input),
+    getCwd: (sessionId) => ipcRenderer.invoke('sessions:getCwd', sessionId),
   },
   tasks: {
     list: () => ipcRenderer.invoke('tasks:list'),
@@ -289,6 +296,7 @@ const api: OneApi = {
     notify: (input) => ipcRenderer.invoke('app:notify', input),
     getSystemColorMode: () => ipcRenderer.invoke('app:getSystemColorMode'),
     show: () => ipcRenderer.invoke('app:show'),
+    pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),
     onCrashRecovery: (cb) => {
       if (cachedCrashRecovery && cachedCrashRecovery.drafts.length > 0) {
         // 同步回放：订阅时主进程事件可能已发过

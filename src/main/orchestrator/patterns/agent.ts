@@ -63,6 +63,24 @@ export class AgentExecutor implements Executor {
       // 若把 thinking 混进 output 会被前端当正文渲染，且与 finalText（仅 text block）不一致。
       // 主页单聊的 thinking 走独立 {type:'thinking'} 事件；编排内 thinking 暂不透传（MVP）。
       onThinking: () => {},
+      // Task 8a：把 tool 轨迹写入 cache（供下游 fan-out 看到上游工具调用）
+      onToolCall: (tool, _args, toolUseId) => {
+        this.cache.push({
+          role: 'assistant',
+          author: this.id,
+          content: `[tool:${tool}]`,
+          toolUseId,
+        })
+      },
+      onToolResult: (tool, result, toolUseId) => {
+        this.cache.push({
+          role: 'user',
+          author: this.id,
+          content: typeof result === 'string' ? result : JSON.stringify(result),
+          toolUseId,
+          isFunctionResult: true,
+        })
+      },
     }
 
     logger.info(

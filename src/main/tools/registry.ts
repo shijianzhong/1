@@ -36,6 +36,8 @@ export interface ToolDef extends LlmToolDef {
 
 export interface ToolContext {
   sessionId?: string
+  /** 当前项目根绝对路径——文件工具扩展围栏、shell 默认 cwd 用。无 = 无项目上下文 */
+  workspaceRoot?: string
   signal?: AbortSignal
   /** 创建提案回调（propose_* 工具 → home IPC emitStream 桥，由 home.ts 注入） */
   onPropose?: (draft: import('@shared/types').CreateDraft) => void

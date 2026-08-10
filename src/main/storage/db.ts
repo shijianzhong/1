@@ -92,6 +92,11 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
       );
     `,
   },
+  {
+    // v3：sessions 加 cwd 列（项目根概念，agent 文件工具 + shell 默认 cwd 用）
+    version: 3,
+    sql: 'ALTER TABLE sessions ADD COLUMN cwd TEXT',
+  },
 ]
 
 /** 周期备份：把当前库复制为 .bak（写操作前后调用太频，启动时调一次） */

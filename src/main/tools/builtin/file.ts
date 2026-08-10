@@ -42,20 +42,25 @@ const SearchSchema = z.object({
   maxResults: z.number().int().min(1).max(100).default(SEARCH_MAX_RESULTS),
 })
 
-/** 允许根目录列表：env 整体覆盖 > 默认 + config 扩展 */
-export function getFileRoots(): string[] {
+/** 允许根目录列表：workspaceRoot 优先 > env 覆盖 > 默认 + config 扩展 */
+export function getFileRoots(workspaceRoot?: string): string[] {
+  const roots: string[] = []
+  if (workspaceRoot) roots.push(resolve(expandHome(workspaceRoot)))
   const envRaw = process.env.ONE_FILE_ROOTS
   if (envRaw) {
     try {
       const parsed: unknown = JSON.parse(envRaw)
       if (Array.isArray(parsed)) {
-        return parsed.filter((r): r is string => typeof r === 'string').map((r) => resolve(expandHome(r)))
+        roots.push(
+          ...parsed.filter((r): r is string => typeof r === 'string').map((r) => resolve(expandHome(r))),
+        )
+        return roots
       }
     } catch {
       // env 解析失败按无覆盖处理
     }
   }
-  const roots = [resolve(DEFAULT_VAULT), resolve(join(getUserDataDir(), 'exports'))]
+  roots.push(resolve(DEFAULT_VAULT), resolve(join(getUserDataDir(), 'exports')))
   try {
     const cfg = readJsonFile<string[] | { roots?: string[] }>(FILE_ROOTS_CONFIG(), [])
     const extra = Array.isArray(cfg) ? cfg : (cfg.roots ?? [])
@@ -72,21 +77,21 @@ function expandHome(p: string): string {
 
 /**
  * 把 LLM 给的 path 限定在允许根目录内。
- * 相对路径相对首个根解析。返回 null = 越界（含 ../ 逃逸，resolve 已归一化）。
+ * 相对路径相对 workspaceRoot（若有）或首个根解析。返回 null = 越界（含 ../ 逃逸，resolve 已归一化）。
  */
-function resolveConfined(rawPath: string): string | null {
-  const roots = getFileRoots()
+export function resolveConfined(rawPath: string, workspaceRoot?: string): string | null {
+  const roots = getFileRoots(workspaceRoot)
   const abs = rawPath.startsWith('/') || rawPath.startsWith('~')
     ? resolve(expandHome(rawPath))
-    : resolve(join(roots[0] ?? getUserDataDir(), rawPath))
+    : resolve(join(workspaceRoot ?? roots[0] ?? getUserDataDir(), rawPath))
   for (const root of roots) {
     if (abs === root || abs.startsWith(root + sep)) return abs
   }
   return null
 }
 
-function notAllowedPayload(rawPath: string): Record<string, unknown> {
-  const roots = getFileRoots().map((r) => `  - ${r}`).join('\n')
+export function notAllowedPayload(rawPath: string, workspaceRoot?: string): Record<string, unknown> {
+  const roots = getFileRoots(workspaceRoot).map((r) => `  - ${r}`).join('\n')
   return {
     ok: false,
     error: 'path_not_allowed',
@@ -94,7 +99,7 @@ function notAllowedPayload(rawPath: string): Record<string, unknown> {
   }
 }
 
-function errPayload(error: unknown): Record<string, unknown> {
+export function errPayload(error: unknown): Record<string, unknown> {
   const msg = error instanceof Error ? error.message : String(error)
   let code = 'io_error'
   if (msg.includes('ENOENT')) code = 'not_found'
@@ -104,7 +109,7 @@ function errPayload(error: unknown): Record<string, unknown> {
 }
 
 /** 原子写：临时文件 + rename（§11.4） */
-async function writeFileAtomic(absPath: string, content: string): Promise<void> {
+export async function writeFileAtomic(absPath: string, content: string): Promise<void> {
   const dir = resolve(absPath, '..')
   await mkdir(dir, { recursive: true })
   const tmp = `${absPath}.${Date.now()}.tmp`
@@ -135,10 +140,10 @@ export function registerFileTools(): void {
     'file_write',
     '写入本地文件（限允许的根目录内，默认 Obsidian vault 与 userData/exports）。自动创建父目录；临时文件 + rename 原子落盘；mode=append 追加到末尾。',
     WriteSchema,
-    async (args) => {
+    async (args, ctx) => {
       const input = args as z.infer<typeof WriteSchema>
-      const abs = resolveConfined(input.path)
-      if (!abs) return notAllowedPayload(input.path)
+      const abs = resolveConfined(input.path, ctx?.workspaceRoot)
+      if (!abs) return notAllowedPayload(input.path, ctx?.workspaceRoot)
       try {
         let finalContent = input.content
         if (input.mode === 'append' && existsSync(abs)) {
@@ -156,10 +161,10 @@ export function registerFileTools(): void {
     'file_read',
     '读取本地文件内容（限允许的根目录内）。大文件截断返回并标注 truncated。',
     ReadSchema,
-    async (raw) => {
+    async (raw, ctx) => {
       const input = raw as z.infer<typeof ReadSchema>
-      const abs = resolveConfined(input.path)
-      if (!abs) return notAllowedPayload(input.path)
+      const abs = resolveConfined(input.path, ctx?.workspaceRoot)
+      if (!abs) return notAllowedPayload(input.path, ctx?.workspaceRoot)
       try {
         let text = await readFile(abs, 'utf-8')
         let truncated = false
@@ -178,13 +183,13 @@ export function registerFileTools(): void {
     'file_search',
     '在允许的根目录（默认 Obsidian vault）内按关键词搜索：文件名或内容任一命中即返回（OR 匹配），递归子目录。返回文件清单与命中行片段。',
     SearchSchema,
-    async (raw) => {
+    async (raw, ctx) => {
       const input = raw as z.infer<typeof SearchSchema>
       const needle = input.query.toLowerCase()
       const files: Array<{ title: string; path: string; matches: Array<{ line: number; snippet: string }> }> = []
       let scanned = 0
 
-      for (const root of getFileRoots()) {
+      for (const root of getFileRoots(ctx?.workspaceRoot)) {
         if (files.length >= input.maxResults) break
         if (!existsSync(root)) continue
         const walked: string[] = []

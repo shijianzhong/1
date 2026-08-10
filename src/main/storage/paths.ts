@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // —— 存储路径管理（§5.2.1 + 铁律4）——
@@ -11,7 +12,12 @@ const DRAFTS_DIR = 'drafts'
 const BG_DIR = 'bg'
 
 export function getUserDataDir(): string {
-  return app.getPath('userData')
+  // vitest / 纯 Node 环境（无 Electron app）回退到 /tmp
+  try {
+    return app.getPath('userData')
+  } catch {
+    return join(tmpdir(), 'one-test-userdata')
+  }
 }
 
 export function getDbPath(): string {

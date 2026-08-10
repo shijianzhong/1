@@ -13,6 +13,10 @@ import { registerOpenCliTools } from './tools/builtin/opencli'
 import { registerFileTools } from './tools/builtin/file'
 import { registerSkillScriptTools } from './tools/builtin/skillScript'
 import { registerShellTools } from './tools/builtin/shell'
+import { registerStrReplaceEditorTool } from './tools/builtin/strReplace'
+import { registerGrepTool } from './tools/builtin/grep'
+import { registerGlobTool } from './tools/builtin/glob'
+import { registerPlanTools } from './tools/builtin/plan'
 import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
 import { createTray, destroyTray } from './tray'
 import {
@@ -136,6 +140,10 @@ if (!gotLock) {
     registerWebTools() // 联网工具（web_search/web_read，Jina 免费免 key，零依赖随包即用）
     registerOpenCliTools() // OpenCLI 白名单工具（用户浏览器登录态读站，写操作拦截）
     registerFileTools() // 文件工具（file_write/read/search，限 Obsidian vault 等允许根目录）
+    registerStrReplaceEditorTool() // 行级编辑（view/str_replace/insert，approvalMode='always'）
+    registerGrepTool() // 正则代码搜索（workspaceRoot 内）
+    registerGlobTool() // 文件模式匹配（workspaceRoot 内）
+    registerPlanTools() // 规划工具（update_plan，内存态，sessionId 隔离）
     registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
     registerShellTools() // Shell 工具（shell_run，approvalMode='always' + DANGER_PATTERNS preCheck）
     startupMark('main:tools-registered')

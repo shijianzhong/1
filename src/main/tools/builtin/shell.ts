@@ -148,7 +148,7 @@ export function registerShellTools(): void {
 
       const safeEnv = sanitizeEnv(process.env)
       const effectiveTimeout = Math.min(timeoutSec ?? DEFAULT_TIMEOUT_MS / 1000, MAX_TIMEOUT_SEC) * 1000
-      const workDir = cwd ?? homedir()
+      const workDir = cwd ?? ctx?.workspaceRoot ?? homedir()
 
       logger.info(`[shell] run: ${command}（cwd=${workDir}, timeout=${effectiveTimeout}ms）`)
 

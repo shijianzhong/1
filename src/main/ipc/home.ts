@@ -28,6 +28,7 @@ import {
   addMessage,
   createSession,
   findMessageByCreateDraftId,
+  getSession,
   listMessages,
   updateMessageMeta,
 } from '../storage/sessions'
@@ -48,6 +49,7 @@ import {
   type CreateKind,
 } from '../orchestrator/home'
 import { SkillContextProvider } from '../skills/provider'
+import { getDb } from '../storage/db'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
@@ -193,16 +195,23 @@ function makeCompressFn(
 export function registerHomeHandlers(): void {
   hydrateCreateDraftsFromDisk()
   withHandler<{ runId: string }>('home:chat', async (_e, input) => {
-    const { message, sessionId, mentions: explicitMentions } = input as {
+    const { message, sessionId, projectPath, mentions: explicitMentions } = input as {
       message: string
       sessionId?: string
+      /** 项目根绝对路径（写入 sessions.cwd，文件工具/shell 用） */
+      projectPath?: string
       /** 芯片旁路：展示正文是 @名字，此处带稳定 kind+id */
       mentions?: Array<{ kind: 'agent' | 'capability' | 'skill'; id: string }>
     }
 
-    // 1. session
-    const newSession = sessionId ? undefined : createSession({ title: message.slice(0, 20) })
+    // 1. session（新建时带 cwd；已存在且传 projectPath 则更新）
+    const newSession = sessionId
+      ? undefined
+      : createSession({ title: message.slice(0, 20), cwd: projectPath })
     const sid = sessionId ?? newSession!.id
+    if (sessionId && projectPath) {
+      getDb().prepare('UPDATE sessions SET cwd = ?, updated_at = ? WHERE id = ?').run(projectPath, Date.now(), sessionId)
+    }
 
     // 2. persona + provider + key（cc switch：从 provider 取凭据 + modelId）
     const persona = getPersona()
@@ -367,6 +376,7 @@ export function registerHomeHandlers(): void {
       llmOpts: { apiKey, baseURL, authHeader, apiFormat },
       toolCtx: {
         sessionId: sid,
+        workspaceRoot: getSession(sid)?.cwd,
         signal,
         // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
         // 打上 sessionId：回合结束清 streamMsgs 后仍可按会话重挂，避免确认卡闪没
@@ -486,6 +496,7 @@ export function registerHomeHandlers(): void {
           llmOpts: { apiKey, baseURL, authHeader, apiFormat },
           toolCtx: {
             sessionId: sid,
+            workspaceRoot: getSession(sid)?.cwd,
             signal,
             // HITL 提问桥：事件经 orch_event 包装（与 runTeam 的流式事件同路），
             // respond 收口在 orchestrate:respond（同一 userInput 队列）

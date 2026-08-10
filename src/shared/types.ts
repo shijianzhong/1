@@ -722,6 +722,8 @@ export interface Session {
   userId: string // 默认 'local'，不做隔离（§5.2.2）
   title: string
   capabilityId?: string
+  /** 项目根绝对路径（agent 文件工具 + shell 默认 cwd；可为空=无项目上下文） */
+  cwd?: string
   createdAt: number
   updatedAt: number
 }
@@ -797,8 +799,8 @@ export interface AgentRunInput {
 export interface AgentRunCallbacks {
   onText?: (text: string) => void
   onThinking?: (text: string) => void
-  onToolCall?: (tool: string, args: unknown) => void
-  onToolResult?: (tool: string, result: unknown) => void
+  onToolCall?: (tool: string, args: unknown, toolUseId: string) => void
+  onToolResult?: (tool: string, result: unknown, toolUseId: string) => void
   onRetry?: (info: RetryInfo) => void
 }
 
