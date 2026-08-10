@@ -36,12 +36,28 @@ describe('update_plan', () => {
     expect(getPlan()).toHaveLength(1)
   })
 
-  it('explanation 透传', async () => {
-    const r = await executeTool('update_plan', {
-      plan: [{ step: 'a', status: 'completed' }],
-      explanation: '第一步完成',
-    }, 'p5', ctx)
-    const data = JSON.parse(r.content)
-    expect(data.explanation).toBe('第一步完成')
+  it('onPlanUpdate 回调被触发（Task 6 前端桥）', async () => {
+    const updates: Array<{ explanation?: string; plan: Array<{ step: string; status: string }> }> = []
+    await executeTool('update_plan', {
+      plan: [
+        { step: '读代码', status: 'completed' },
+        { step: '改代码', status: 'in_progress' },
+      ],
+      explanation: '先读后改',
+    }, 'p6', {
+      ...ctx,
+      sessionId: 'sess-plan',
+      onPlanUpdate: (p) => updates.push(p),
+    })
+    expect(updates).toHaveLength(1)
+    expect(updates[0].explanation).toBe('先读后改')
+    expect(updates[0].plan).toHaveLength(2)
+    expect(updates[0].plan[1].status).toBe('in_progress')
+  })
+
+  it('无 onPlanUpdate 时静默不抛（兼容旧调用方）', async () => {
+    await expect(executeTool('update_plan', {
+      plan: [{ step: 'a', status: 'pending' }],
+    }, 'p7', ctx)).resolves.toMatchObject({ isError: false })
   })
 })

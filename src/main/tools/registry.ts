@@ -47,6 +47,8 @@ export interface ToolContext {
   /** HITL 工具审批桥（approvalMode='always' → approval_request 事件 + 挂起等待）；
    *  未注入 = 当前运行环境不可审批，always 工具返回 approval_unavailable */
   onApprove?: (req: { toolName: string; args: unknown }) => Promise<{ approved: boolean; reason?: string }>
+  /** update_plan 计划更新回调（home/orchestrate 注入 → emitStream/emitEvent，渲染层展示计划进度） */
+  onPlanUpdate?: (plan: { explanation?: string; plan: Array<{ step: string; status: string }> }) => void
 }
 
 export interface ToolResult {

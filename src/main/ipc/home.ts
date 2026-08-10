@@ -433,6 +433,18 @@ export function registerHomeHandlers(): void {
             return { approved: false, reason: 'timeout or cancelled' }
           }
         },
+        // update_plan 计划更新桥（Task 6）：推给前端展示计划进度
+        onPlanUpdate: (p) => {
+          emitStream({
+            type: 'orch_event',
+            event: {
+              type: 'plan_update',
+              node_id: 'home',
+              explanation: p.explanation,
+              plan: p.plan,
+            },
+          })
+        },
       },
     })
 

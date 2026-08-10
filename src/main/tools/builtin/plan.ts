@@ -34,6 +34,8 @@ export function registerPlanTools(): void {
       const input = args as z.infer<typeof UpdatePlanSchema>
       const key = ctx?.sessionId ?? '__default__'
       planStore.set(key, input.plan)
+      // Task 6 前端桥：把计划更新推给渲染层（home/orchestrate 注入 onPlanUpdate）
+      ctx?.onPlanUpdate?.({ explanation: input.explanation, plan: input.plan })
       return {
         ok: true,
         plan: input.plan,

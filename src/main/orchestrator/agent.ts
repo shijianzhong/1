@@ -52,6 +52,8 @@ export interface AgentDeps {
     onPropose?: (draft: import('@shared/types').CreateDraft) => void
     onAskUser?: (req: { question: string; context?: string }) => Promise<string>
     onApprove?: (req: { toolName: string; args: unknown }) => Promise<{ approved: boolean; reason?: string }>
+    /** update_plan 计划更新回调（home/orchestrate 注入 → emitStream/emitEvent，渲染层展示计划进度） */
+    onPlanUpdate?: (plan: { explanation?: string; plan: Array<{ step: string; status: string }> }) => void
   }
 }
 
@@ -185,6 +187,7 @@ export class Agent {
               onPropose: this.deps.toolCtx?.onPropose,
               onAskUser: this.deps.toolCtx?.onAskUser,
               onApprove: this.deps.toolCtx?.onApprove,
+              onPlanUpdate: this.deps.toolCtx?.onPlanUpdate,
             },
           )
           callbacks.onToolResult?.(tu.name, result.content, tu.id)

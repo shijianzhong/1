@@ -155,6 +155,8 @@ export type StreamEvent =
   | { type: 'approval_request'; request_id: string; node_id: string; tool_name: string; args: unknown }
   // approval_resolved：approved=仅本次 / approved_session=本会话放行 / denied=拒绝；空 = 超时/取消。
   | { type: 'approval_resolved'; request_id: string; node_id: string; response: string }
+  // update_plan 计划更新（Task 6）：agent 拆解/推进任务时推渲染层展示
+  | { type: 'plan_update'; node_id: string; explanation?: string; plan: Array<{ step: string; status: string }> }
 
 export interface RunResult {
   runId: string

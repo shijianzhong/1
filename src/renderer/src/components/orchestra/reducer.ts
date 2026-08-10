@@ -148,6 +148,25 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
       // 发送，done 到达即运行终结，任何事件丢失都不应留下 streaming=true 的泄漏
       return closeStreaming(prev)
 
+    case 'plan_update': {
+      // update_plan 计划更新：渲染为 assistant 消息（Markdown 列表，不占正文气泡）
+      const lines = (ev.plan ?? []).map((s) => {
+        const mark = s.status === 'completed' ? '✅' : s.status === 'in_progress' ? '🔄' : '⬜'
+        return `${mark} ${s.step}`
+      })
+      const text = (ev.explanation ? `${ev.explanation}\n\n` : '') + lines.join('\n')
+      return [
+        ...closeStreaming(prev),
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          text,
+          speaker: ev.node_id,
+          streaming: false,
+        },
+      ]
+    }
+
     case 'tool_call': {
       // 工具调用：在末条流式气泡上标记 searching 态（扫描经线动画）
       const last = prev[prev.length - 1]
