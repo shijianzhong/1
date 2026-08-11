@@ -1,6 +1,6 @@
 {
   "name": "one",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "One desktop app built with Electron, React, and TypeScript.",
   "main": "./out/main/index.cjs",
   "author": "shijianzhong",

@@ -446,7 +446,7 @@ html[data-platform='darwin'] .titlebar__inner {
   outline: none;
 }
 
-.composer button {
+.composer > button {
   border: 0;
   border-radius: 14px;
   background: var(--color-brand-500);
@@ -458,16 +458,16 @@ html[data-platform='darwin'] .titlebar__inner {
   transition: background-color 150ms ease, transform 100ms ease, opacity 0.15s ease;
 }
 
-.composer button:hover:not(:disabled) {
+.composer > button:hover:not(:disabled) {
   background: var(--color-brand-600);
   transform: translateY(-1px);
 }
 
-.composer button:active:not(:disabled) {
+.composer > button:active:not(:disabled) {
   transform: translateY(0);
 }
 
-.composer button:disabled {
+.composer > button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -747,37 +747,37 @@ html[data-platform='darwin'] .titlebar__inner {
   max-width: min(420px, 80vw);
   max-height: 320px;
   overflow-y: auto;
-  border-radius: 16px;
-  padding: 6px;
+  border-radius: 12px;
+  padding: 8px;
   z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   gap: 2px;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-2);
 }
 
 .mention-composer__option {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--color-fg-1);
-  padding: 8px 10px;
+  padding: 7px 10px;
   font-size: 0.9rem;
   text-align: left;
   cursor: pointer;
-  /* 选中态过渡：避免高亮面突兀闪现 */
   transition: background-color 0.12s ease;
 }
 
-/* 选中态：用更实的品牌色面 + 品牌色描边，文字层级同步提升。
-   原先 12% 半透明叠在玻璃背景上发"飘"，文字（尤其 desc 的 fg-3）对比度被稀释 → 发虚。
-   修复：提高浓度到 18% 形成清晰选中面，name 提为 brand-600、desc 提为 fg-2。 */
+/* 选中态：20% 品牌色面 + 30% 描边，在实色背景上形成清晰选中块。 */
 .mention-composer__option.is-active {
-  background: color-mix(in oklch, var(--color-brand-500) 18%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-brand-500) 38%, transparent);
+  background: color-mix(in oklch, var(--color-brand-500) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-brand-500) 30%, transparent);
 }
 
 .mention-composer__option.is-active .mention-composer__name {
@@ -789,30 +789,6 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-fg-2);
 }
 
-.mention-composer__badge {
-  flex-shrink: 0;
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.mention-composer__badge--agent {
-  background: color-mix(in oklch, var(--color-brand-500) 16%, transparent);
-  color: var(--color-brand-600);
-}
-
-.mention-composer__badge--capability {
-  background: color-mix(in oklch, var(--color-accent) 16%, transparent);
-  color: var(--color-accent);
-}
-
-.mention-composer__badge--skill {
-  background: color-mix(in oklch, var(--color-success) 16%, transparent);
-  color: var(--color-success);
-}
-
 .mention-composer__group {
   display: flex;
   flex-direction: column;
@@ -820,8 +796,8 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .mention-composer__group + .mention-composer__group {
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -843,8 +819,10 @@ html[data-platform='darwin'] .titlebar__inner {
 .mention-composer__name {
   font-weight: 500;
   white-space: nowrap;
-  /* 未选中退为 fg-2：让选中项（brand-600 加粗）成为视觉焦点，主次不颠倒 */
-  color: var(--color-fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 未选中用 fg-1 主色：name 是每行主信息，选中时提为 brand-600 加粗 */
+  color: var(--color-fg-1);
 }
 
 .mention-composer__desc {

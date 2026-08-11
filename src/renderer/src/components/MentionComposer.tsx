@@ -387,8 +387,9 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
         {open && flat.length > 0 ? (
           <div
             ref={listRef}
-            className="mention-composer__dropdown glass-panel"
+            className="mention-composer__dropdown"
             onMouseDown={(e) => e.stopPropagation()}
+            onMouseLeave={() => setActiveIdx(-1)}
           >
             {groups.map((g) => (
               <div key={g.kind} className="mention-composer__group">
@@ -404,12 +405,7 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
                       onMouseEnter={() => setActiveIdx(idx)}
                       onClick={() => insertChip(tg)}
                     >
-                      <span
-                        className={`mention-composer__badge mention-composer__badge--${tg.kind}`}
-                      >
-                        {kindLabel(tg.kind)}
-                      </span>
-                      <span className="mention-composer__name">@{tg.name}</span>
+                      <span className="mention-composer__name">{tg.name}</span>
                       {tg.description ? (
                         <span className="mention-composer__desc">{tg.description}</span>
                       ) : null}
@@ -424,7 +420,7 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
           </div>
         ) : null}
         {open && flat.length === 0 ? (
-          <div className="mention-composer__dropdown glass-panel">
+          <div className="mention-composer__dropdown">
             <div className="mention-composer__empty">{t('home:mention.empty')}</div>
           </div>
         ) : null}
