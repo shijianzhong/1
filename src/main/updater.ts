@@ -2,6 +2,7 @@ import pkg from 'electron-updater'
 import { app, BrowserWindow } from 'electron'
 import { logger } from './logger'
 import { isBenignNoReleaseError } from './updater-errors'
+import { withHandler } from './ipc/handler'
 
 const { autoUpdater } = pkg
 
@@ -71,16 +72,6 @@ export async function checkForUpdates(): Promise<void> {
   }
 }
 
-/** 下载并退出安装 */
-export async function downloadAndInstall(): Promise<void> {
-  try {
-    await autoUpdater.downloadUpdate()
-    autoUpdater.quitAndInstall()
-  } catch (err) {
-    logger.error('[updater] 下载安装失败', err)
-  }
-}
-
 export function stopAutoUpdater(): void {
   if (timer) {
     clearInterval(timer)
@@ -90,4 +81,39 @@ export function stopAutoUpdater(): void {
     clearTimeout(initialTimer)
     initialTimer = null
   }
+}
+
+// —— IPC handler（设置页手动检查更新 + 下载安装）——
+
+export interface UpdateCheckResult {
+  available: boolean
+  version?: string
+}
+
+/** 注册 updater IPC handler（手动检查 + 下载安装） */
+export function registerUpdaterHandlers(): void {
+  withHandler<UpdateCheckResult>('updater:check', async () => {
+    if (!app.isPackaged) {
+      return { available: false }
+    }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      const updateInfo = result?.updateInfo
+      if (updateInfo && updateInfo.version !== app.getVersion()) {
+        return { available: true, version: updateInfo.version }
+      }
+      return { available: false }
+    } catch (err) {
+      if (isBenignNoReleaseError(err)) {
+        return { available: false }
+      }
+      throw err
+    }
+  })
+
+  withHandler<void>('updater:downloadAndInstall', async () => {
+    if (!app.isPackaged) return
+    await autoUpdater.downloadUpdate()
+    autoUpdater.quitAndInstall()
+  })
 }

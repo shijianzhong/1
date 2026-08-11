@@ -42,12 +42,57 @@ export function SettingsPage() {
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
   // 版本号自主进程 ping 读（app.getVersion()），不硬编码
   const [appVersion, setAppVersion] = useState('')
+  // 更新检查状态：idle | checking | available | downloading | downloaded | up-to-date | error
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'>('idle')
+  const [newVersion, setNewVersion] = useState('')
+  // "已是最新" 3s 后自动回 idle
+  useEffect(() => {
+    if (updateState !== 'up-to-date') return
+    const t = setTimeout(() => setUpdateState('idle'), 3000)
+    return () => clearTimeout(t)
+  }, [updateState])
   useEffect(() => {
     window.one.system.ping()
       .then(unwrap)
       .then((r) => setAppVersion(r.appVersion))
       .catch(() => {})
+    // 后台定时检查发现新版本 → 标记 available（仅在 idle 时响应，避免打断手动检查/下载）
+    const offAvailable = window.one.updater.onUpdateAvailable((info) => {
+      setNewVersion(info.version)
+      setUpdateState((prev) => prev === 'idle' ? 'available' : prev)
+    })
+    // 下载完成 → 标记 downloaded（退出时自动安装；downloading/idle 都可接受，已就绪优先）
+    const offDownloaded = window.one.updater.onUpdateDownloaded((info) => {
+      setNewVersion(info.version)
+      setUpdateState((prev) => prev === 'downloading' || prev === 'idle' ? 'downloaded' : prev)
+    })
+    return () => { offAvailable(); offDownloaded() }
   }, [])
+
+  const handleCheckUpdate = async () => {
+    setUpdateState('checking')
+    try {
+      const result = await window.one.updater.check().then(unwrap)
+      if (result.available) {
+        setNewVersion(result.version ?? '')
+        setUpdateState('available')
+      } else {
+        setUpdateState('up-to-date')
+      }
+    } catch {
+      setUpdateState('error')
+    }
+  }
+
+  const handleDownloadAndInstall = async () => {
+    setUpdateState('downloading')
+    try {
+      await window.one.updater.downloadAndInstall().then(unwrap)
+      // quitAndInstall 会重启应用，到不了这里
+    } catch {
+      setUpdateState('error')
+    }
+  }
 
   // —— 个人档案 + 主助手人设 ——
   const personaQ = usePersona()
@@ -430,9 +475,51 @@ export function SettingsPage() {
         <Row label={t('settings:about.version')}>
           <span style={{ color: 'var(--color-fg-2)', fontSize: '0.875rem' }}>{appVersion || '—'}</span>
         </Row>
-        <Button variant="ghost" size="sm" onClick={() => void window.one.system.ping().then(unwrap).then(() => {}).catch(() => {})}>
-          {t('settings:about.checkUpdate')}
-        </Button>
+        {updateState === 'idle' && (
+          <Button variant="ghost" size="sm" onClick={handleCheckUpdate}>
+            {t('settings:about.checkUpdate')}
+          </Button>
+        )}
+        {updateState === 'checking' && (
+          <Button variant="ghost" size="sm" disabled>
+            {t('settings:about.checking')}
+          </Button>
+        )}
+        {updateState === 'available' && (
+          <>
+            <span style={{ color: 'var(--color-fg-2)', fontSize: '0.875rem' }}>
+              {t('settings:about.updateAvailable', { version: newVersion })}
+            </span>
+            <Button variant="ghost" size="sm" onClick={handleDownloadAndInstall}>
+              {t('settings:about.downloadAndInstall')}
+            </Button>
+          </>
+        )}
+        {updateState === 'downloading' && (
+          <Button variant="ghost" size="sm" disabled>
+            {t('settings:about.downloading')}
+          </Button>
+        )}
+        {updateState === 'downloaded' && (
+          <span style={{ color: 'var(--color-fg-2)', fontSize: '0.875rem' }}>
+            {t('settings:about.updateDownloaded', { version: newVersion })}
+          </span>
+        )}
+        {updateState === 'up-to-date' && (
+          <span style={{ color: 'var(--color-success)', fontSize: '0.875rem' }}>
+            {t('settings:about.upToDate')}
+          </span>
+        )}
+        {updateState === 'error' && (
+          <>
+            <span style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>
+              {t('settings:about.updateError')}
+            </span>
+            <Button variant="ghost" size="sm" onClick={handleCheckUpdate}>
+              {t('settings:about.retry')}
+            </Button>
+          </>
+        )}
       </SectionCard>
 
       <Button variant="secondary" onClick={() => void saveTheme(DEFAULT_THEME)}>

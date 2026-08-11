@@ -169,6 +169,16 @@ export interface OneApi {
     /** 崩溃恢复：删除指定草稿 */
     removeDraft: (name: string) => Promise<IpcResult<void>>
   }
+  updater: {
+    /** 手动检查更新（设置页按钮）；dev 环境返回 available=false */
+    check: () => Promise<IpcResult<{ available: boolean; version?: string }>>
+    /** 下载并退出安装 */
+    downloadAndInstall: () => Promise<IpcResult<void>>
+    /** 后台检查发现新版本时触发（启动后 15s + 每 4h 定时检查） */
+    onUpdateAvailable: (cb: (info: { version: string }) => void) => () => void
+    /** 更新已下载完成，退出后自动安装 */
+    onUpdateDownloaded: (cb: (info: { version: string }) => void) => () => void
+  }
 }
 
 /** 启动早期缓存 crashRecovery，避免 React 订阅前事件丢失 */
@@ -312,6 +322,20 @@ const api: OneApi = {
     listDrafts: () => ipcRenderer.invoke('app:listDrafts'),
     writeDraft: (input) => ipcRenderer.invoke('app:writeDraft', input),
     removeDraft: (name) => ipcRenderer.invoke('app:removeDraft', name),
+  },
+  updater: {
+    check: () => ipcRenderer.invoke('updater:check'),
+    downloadAndInstall: () => ipcRenderer.invoke('updater:downloadAndInstall'),
+    onUpdateAvailable: (cb) => {
+      const handler = (_e: unknown, info: { version: string }) => cb(info)
+      ipcRenderer.on('updater:updateAvailable', handler)
+      return () => ipcRenderer.off('updater:updateAvailable', handler)
+    },
+    onUpdateDownloaded: (cb) => {
+      const handler = (_e: unknown, info: { version: string }) => cb(info)
+      ipcRenderer.on('updater:updateDownloaded', handler)
+      return () => ipcRenderer.off('updater:updateDownloaded', handler)
+    },
   },
 }
 
