@@ -34,7 +34,7 @@ import { PageToolbar } from '@renderer/components/ui/PageToolbar'
 import type {
   ApiFormat,
   Provider,
-  Skill,
+  SkillMeta,
 } from '@shared/types'
 
 // —— 管理后台列表（§3 + §5.5）——
@@ -104,7 +104,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
           }}
         >
           {items.map((item) => {
-            const s = item as Skill
+            const s = item as SkillMeta
             return (
               <article
                 key={s.id}
@@ -139,9 +139,11 @@ export function ListPage({ i18nKey }: ListPageProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() =>
-                        setDraft({ kind: 'skills', isNew: false, id: s.id, name: s.name, content: s.content })
-                      }
+                      onClick={async () => {
+                        const full = unwrap(await window.one.skills.get(s.id))
+                        if (!full) return
+                        setDraft({ kind: 'skills', isNew: false, id: full.id, name: full.name, content: full.content })
+                      }}
                     >
                       <Pencil size={14} />
                     </Button>

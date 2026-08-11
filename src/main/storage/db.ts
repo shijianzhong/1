@@ -5,6 +5,7 @@ import { getCorruptDbPath, getDbBackupPath, getDbPath } from './paths'
 import { logger } from '../logger'
 // 循环导入安全：reindexL3Fts 仅在 getDb() 函数体内调用（非模块顶层），此时 l3.ts 已完成初始化
 import { reindexL3Fts } from './memory/l3'
+import { countSkillFiles, countSkillsFtsRows, reindexSkillsFts } from './skills/fts'
 
 // —— SQLite 连接 + WAL + schema 迁移 + 启动校验 + 损坏恢复（§11.4 + §5.2.3）——
 
@@ -96,6 +97,20 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
     // v3：sessions 加 cwd 列（项目根概念，agent 文件工具 + shell 默认 cwd 用）
     version: 3,
     sql: 'ALTER TABLE sessions ADD COLUMN cwd TEXT',
+  },
+  {
+    // v4：skills 全文检索（主数据仍在 JSON，SQLite 只存 FTS 索引）
+    version: 4,
+    sql: `
+      CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
+        skill_id UNINDEXED,
+        name,
+        description,
+        content_tokenized,
+        content_raw UNINDEXED,
+        tokenize='unicode61'
+      );
+    `,
   },
 ]
 
@@ -217,6 +232,17 @@ export function getDb(): Database.Database {
     logger.warn('[db] L3 FTS 自检失败（非致命）', error)
   }
 
+  try {
+    const skillFiles = countSkillFiles()
+    const skillFts = countSkillsFtsRows()
+    if (skillFiles !== skillFts) {
+      reindexSkillsFts()
+      logger.info(`[db] Skill FTS 索引重建（files=${skillFiles} fts=${skillFts}）`)
+    }
+  } catch (error) {
+    logger.warn('[db] Skill FTS 自检失败（非致命）', error)
+  }
+
   startPeriodicBackup()
   return db
 }
@@ -267,4 +293,3 @@ export function closeDb(): void {
     dbInstance = null
   }
 }
-

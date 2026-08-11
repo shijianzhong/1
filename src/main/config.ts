@@ -76,7 +76,7 @@ export const SkillSchema = z.object({
   description: z.string().optional(),
   content: z.string(),
   discipline: z.string().optional(),
-  scriptPath: z.string().optional(),
+  hasScripts: z.boolean().optional(),
   registry: RegistryProvenanceSchema.optional(),
   createdAt: ts,
   updatedAt: ts,
@@ -125,7 +125,7 @@ export const ProviderInputSchema = ProviderSchema.omit({ createdAt: true, update
 export const AgentInputSchema = AgentSchema.omit({ createdAt: true, updatedAt: true }).extend({
   id: z.string().optional(),
 })
-export const SkillInputSchema = SkillSchema.omit({ createdAt: true, updatedAt: true }).extend({
+export const SkillInputSchema = SkillSchema.omit({ createdAt: true, updatedAt: true, hasScripts: true }).extend({
   id: z.string().optional(),
 })
 export const CapabilityInputSchema = CapabilitySchema.omit({ createdAt: true, updatedAt: true }).extend({

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { Agent, Capability, Skill } from '@shared/types'
+import type { Agent, Capability, SkillMeta } from '@shared/types'
 import {
   TeamJsonDetector,
   buildCreateInstruction,
   buildMemoryInstruction,
+  buildSkillInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
   buildTeamGraph,
@@ -35,8 +36,8 @@ function capability(id: string, name: string, description?: string): Capability 
   }
 }
 
-function skill(id: string, name: string, content: string, description?: string): Skill {
-  return { id, name, description, content, createdAt: 0, updatedAt: 0 }
+function skill(id: string, name: string, content: string, description?: string): SkillMeta {
+  return { id, name, description, contentLength: content.length, createdAt: 0, updatedAt: 0 }
 }
 
 describe('buildRoutingInstruction', () => {
@@ -394,6 +395,15 @@ describe('buildCreateInstruction', () => {
     expect(s).toContain('propose_persona')
     expect(s).toContain('个人档案')
     expect(s).not.toContain('职业/称呼')
+  })
+
+  it('技能策略：只给数量和检索规则，不列技能清单', () => {
+    const s = buildSkillInstruction(128)
+    expect(s).toContain('128 个技能')
+    expect(s).toContain('skill_search')
+    expect(s).toContain('load_skill')
+    expect(s).toContain('@提及')
+    expect(s).not.toContain('品牌文案规范')
   })
 
   it('无人设原文时不注入 <persona> 块', () => {

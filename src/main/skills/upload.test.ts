@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { extractDisciplineSection, parseSkillZip } from './upload'
+import { parseSkillZip } from './upload'
+import { extractDisciplineSection } from '../storage/skills/parser'
 
 // —— parseSkillZip discipline 提取（docs/REGISTRY_PLAN.md §1.3）——
 // frontmatter `discipline` 优先；缺省回退正文 `## Discipline` 段落；都没有则 undefined。

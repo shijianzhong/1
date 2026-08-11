@@ -434,7 +434,9 @@ export interface Agent {
   updatedAt: number
 }
 
-/** 技能（ContextProvider，§铁律22） */
+/** 技能（ContextProvider，§铁律22）
+ *  目录化存储（docs/SKILL_STORAGE_STANDARD_PLAN.md）：磁盘事实为 config/skills/<id>/SKILL.md。
+ *  hasScripts 从目录扫描得出（运行时投影），不持久化到 SKILL.md。 */
 export interface Skill {
   id: string
   name: string
@@ -443,13 +445,16 @@ export interface Skill {
   content: string
   /** 输出纪律段 */
   discipline?: string
-  /** 脚本路径（async 执行，§铁律23） */
-  scriptPath?: string
+  /** 含 scripts/ 子目录且非空（运行时扫描得出，非持久化字段） */
+  hasScripts?: boolean
   /** registry 溯源 */
   registry?: RegistryProvenance
   createdAt: number
   updatedAt: number
 }
+
+/** Skill 轻量元数据（不含 content，用于列表展示和 mention 解析） */
+export type SkillMeta = Omit<Skill, 'content'> & { contentLength: number }
 
 /** 能力（编排图，对应 WorkflowGraph 持久化） */
 export interface Capability {

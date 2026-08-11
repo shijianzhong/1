@@ -52,6 +52,7 @@
     "search_rate_limited": "搜索 API 被限流",
     "search_failed": "搜索后端请求失败",
     "search_no_results": "搜索无结果（可能触发反爬）",
+    "skill_not_found": "技能不存在或已被删除",
     "unknown_tool": "未知工具"
   },
   "mcp": {

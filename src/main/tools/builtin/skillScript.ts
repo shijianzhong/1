@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { extname, isAbsolute, resolve, sep } from 'node:path'
+import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import { registerTool } from '../registry'
-import { listSkills } from '../../storage/models'
-import { listSkillScripts, resolveScriptsDir } from '../../skills/provider'
+import { listSkillMetas } from '../../storage/models'
+import { getSkillRootDir, listSkillScripts } from '../../skills/provider'
 import { logger } from '../../logger'
 
 // —— skill_run_script（铁律23：脚本执行必须 async，同步 spawn 会冻死事件循环）——
@@ -109,15 +109,16 @@ export function registerSkillScriptTools(): void {
         args?: string[]
       }
 
-      const skill = listSkills().find((s) => s.id === skillRef || s.name === skillRef)
+      const skill = listSkillMetas().find((s) => s.id === skillRef || s.name === skillRef)
       if (!skill) {
         return { ok: false, error: 'skill_not_found', hint: `技能「${skillRef}」不存在，用已注入 <skill> 块里的 name` }
       }
-      if (!skill.scriptPath) {
+      if (!skill.hasScripts) {
         return { ok: false, error: 'no_scripts', hint: `技能「${skill.name}」不带脚本` }
       }
-      const scriptsDir = resolveScriptsDir(skill.scriptPath)
-      if (!scriptsDir) {
+      const rootDir = getSkillRootDir(skill.id)
+      const scriptsDir = join(rootDir, 'scripts')
+      if (!existsSync(scriptsDir)) {
         return { ok: false, error: 'no_scripts_dir', hint: `技能「${skill.name}」脚本目录异常` }
       }
 
@@ -133,7 +134,7 @@ export function registerSkillScriptTools(): void {
         return {
           ok: false,
           error: 'script_not_found',
-          hint: `可用脚本：${listSkillScripts(skill).join(', ') || '（无）'}`,
+          hint: `可用脚本：${listSkillScripts(rootDir).join(', ') || '（无）'}`,
         }
       }
 
@@ -150,7 +151,7 @@ export function registerSkillScriptTools(): void {
           interpreter,
           scriptAbs,
           scriptArgs ?? [],
-          resolve(scriptsDir, '..'),
+          rootDir,
           ctx.signal,
         )
       } catch (error) {

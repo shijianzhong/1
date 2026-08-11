@@ -33,7 +33,7 @@ import type {
   RegistryImportPlan,
   RegistryImportResult,
   RegistryIndexEntry,
-  Skill,
+  SkillMeta,
 } from '@shared/types'
 
 // —— Registry 浏览/导入页（docs/REGISTRY_PLAN.md §3.1/§3.2）——
@@ -97,7 +97,7 @@ export function RegistryPage() {
 
   /** provenance 比对：未安装 / 已安装 / 有更新（远端 version 缺失时不判更新） */
   const localStatus = (kind: RegistryAssetKind, slug: string, remoteVersion?: string) => {
-    const list: Array<Agent | Skill | Capability> =
+    const list: Array<Agent | SkillMeta | Capability> =
       kind === 'agent' ? agentsQ.data ?? [] : kind === 'skill' ? skillsQ.data ?? [] : capsQ.data ?? []
     const local = list.find((x) => x.registry?.registryId === slug)
     if (!local) return 'new' as const

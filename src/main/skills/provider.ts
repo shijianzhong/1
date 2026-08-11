@@ -1,7 +1,8 @@
-import { readdirSync } from 'node:fs'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
+import { join, relative, sep } from 'node:path'
 import type { Skill } from '@shared/types'
 import { logger } from '../logger'
+import { getSkillsPath } from '../storage/paths'
 
 // —— Skill = ContextProvider（铁律22/23，task 7.4）——
 // beforeRun：绑定的 SKILL.md inline 成 <skill> XML 块（限长 24000 字 + 脚本清单）
@@ -11,6 +12,9 @@ import { logger } from '../logger'
 // afterRun：运行结束审计日志；per-agent 可变状态存储尚无，留读/改状态扩展点。
 // 脚本执行必须 async（铁律23）：实现见 tools/builtin/skillScript.ts
 // （spawn + Promise 化，超时/AbortSignal/输出截断纪律复用 opencli_run 趟出的路）。
+//
+// 目录化改造（docs/SKILL_STORAGE_STANDARD_PLAN.md §5.2）：
+// 删除 scriptPath → resolveScriptsDir 链路，改用 skill id → rootDir → scripts/ 直连。
 
 const SKILL_CONTENT_LIMIT = 24000
 
@@ -42,23 +46,15 @@ export function buildDisciplineBlock(skill: Skill): string | null {
   return `【输出纪律】（技能「${skill.name}」）\n${discipline}`
 }
 
-/** 由 scriptPath 向上定位 scripts/ 目录（脚本可能嵌套子目录，scriptPath 记录的是首个脚本文件） */
-export function resolveScriptsDir(scriptPath: string): string | null {
-  let dir = dirname(scriptPath)
-  for (let i = 0; i < 4; i++) {
-    if (basename(dir) === 'scripts') return dir
-    const parent = dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  return null
+/** 由 skill id 获取根目录（config/skills/<id>） */
+export function getSkillRootDir(skillId: string): string {
+  return join(getSkillsPath(), skillId)
 }
 
 /** 列出技能 scripts/ 目录下全部脚本（相对 scripts/ 的路径，深度限 3）；无脚本/读失败返回 [] */
-export function listSkillScripts(skill: Skill): string[] {
-  if (!skill.scriptPath) return []
-  const scriptsDir = resolveScriptsDir(skill.scriptPath)
-  if (!scriptsDir) return []
+export function listSkillScripts(rootDir: string): string[] {
+  const scriptsDir = join(rootDir, 'scripts')
+  if (!existsSync(scriptsDir)) return []
   const out: string[] = []
   const walk = (dir: string, depth: number): void => {
     if (depth > 3) return
@@ -71,7 +67,7 @@ export function listSkillScripts(skill: Skill): string[] {
   try {
     walk(scriptsDir, 0)
   } catch (error) {
-    logger.warn(`[skill-provider] 读取技能 ${skill.name} 脚本目录失败`, error)
+    logger.warn(`[skill-provider] 读取脚本目录失败 rootDir=${rootDir}`, error)
     return []
   }
   return out.sort()
@@ -102,7 +98,7 @@ export class SkillContextProvider {
         logger.warn(`[skill-provider] ${input.agentName} 绑定的 skill ${sid} 不存在，跳过`)
         continue
       }
-      const scripts = listSkillScripts(skill)
+      const scripts = listSkillScripts(getSkillRootDir(skill.id))
       blocks.push(buildSkillXmlBlock(skill, scripts))
       const discipline = buildDisciplineBlock(skill)
       if (discipline) disciplineBlocks.push(discipline)

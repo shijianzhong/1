@@ -52,6 +52,7 @@
     "search_rate_limited": "Search API rate limited",
     "search_failed": "Search backend request failed",
     "search_no_results": "No search results (possible anti-bot)",
+    "skill_not_found": "Skill not found or has been removed",
     "unknown_tool": "Unknown tool"
   },
   "mcp": {

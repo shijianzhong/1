@@ -13,6 +13,7 @@ import type {
   RegistryConfig,
   RegistryExportConfirmItem,
   Skill,
+  SkillMeta,
 } from '@shared/types'
 
 // —— TanStack Query hooks（§5.6）——
@@ -80,6 +81,15 @@ export function useSkills() {
   })
 }
 
+/** 单条技能（含 content），编辑时懒加载 */
+export function useSkill(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['skill', id],
+    queryFn: () => thenUnwrap(window.one.skills.get(id!)),
+    enabled: !!id,
+  })
+}
+
 export function useSaveSkill() {
   const qc = useQueryClient()
   return useMutation({
@@ -97,10 +107,12 @@ export function useRemoveSkill() {
   })
 }
 
-/** 上传技能文件（.md / .skill / .zip）→ 返回解析后的 ParsedSkill */
+/** 上传技能包（.zip）→ 解析+保存+资源提取一步到位，返回完整 Skill */
 export function usePickSkillFile() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: () => thenUnwrap(window.one.skills.pickFile()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
   })
 }
 
@@ -152,7 +164,7 @@ export function useSavePersona() {
   })
 }
 
-export type { Agent, Capability, ModelConfig, Persona, Skill }
+export type { Agent, Capability, ModelConfig, Persona, Skill, SkillMeta }
 
 // —— 任务历史 ——
 export function useTasks() {

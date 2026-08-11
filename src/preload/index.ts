@@ -11,6 +11,7 @@ import type {
   Session,
   SessionMessage,
   Skill,
+  SkillMeta,
   SystemPingResponse,
   TaskRecord,
   ThemeConfig,
@@ -53,11 +54,11 @@ export interface OneApi {
     remove: (id: string) => Promise<IpcResult<void>>
   }
   skills: {
-    list: () => Promise<IpcResult<Skill[]>>
+    list: () => Promise<IpcResult<SkillMeta[]>>
     get: (id: string) => Promise<IpcResult<Skill | null>>
     save: (input: Partial<Skill> & { name: string; content: string }) => Promise<IpcResult<Skill>>
     remove: (id: string) => Promise<IpcResult<void>>
-    pickFile: () => Promise<IpcResult<{ name: string; description?: string; content: string; discipline?: string; scriptPath?: string } | null>>
+    pickFile: () => Promise<IpcResult<Skill | null>>
   }
   models: {
     list: () => Promise<IpcResult<ModelConfig[]>>

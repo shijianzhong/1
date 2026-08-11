@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
-import type { Skill } from '@shared/types'
+import type { SkillMeta } from '@shared/types'
 import { clearTools, executeTool, listToolDefs } from '../registry'
 import { registerSkillScriptTools } from './skillScript'
 
@@ -12,14 +12,21 @@ import { registerSkillScriptTools } from './skillScript'
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }))
 vi.mock('../../storage/models', () => ({
-  listSkills: vi.fn(() => []),
+  listSkillMetas: vi.fn(() => []),
+}))
+vi.mock('../../skills/provider', () => ({
+  getSkillRootDir: vi.fn(() => ''),
+  listSkillScripts: vi.fn(() => []),
 }))
 
 import { spawn } from 'node:child_process'
-import { listSkills } from '../../storage/models'
+import { listSkillMetas } from '../../storage/models'
+import { getSkillRootDir, listSkillScripts } from '../../skills/provider'
 
 const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>
-const listSkillsMock = listSkills as unknown as ReturnType<typeof vi.fn>
+const listSkillsMock = listSkillMetas as unknown as ReturnType<typeof vi.fn>
+const getSkillRootDirMock = getSkillRootDir as unknown as ReturnType<typeof vi.fn>
+const listSkillScriptsMock = listSkillScripts as unknown as ReturnType<typeof vi.fn>
 
 function fakeChild(plan: { stdout?: string; stderr?: string; code?: number; error?: Error }) {
   const child = new EventEmitter() as EventEmitter & {
@@ -43,7 +50,7 @@ function fakeChild(plan: { stdout?: string; stderr?: string; code?: number; erro
 }
 
 /** 造真实技能目录：skl_x/scripts/analyze.py */
-function makeSkillDir(): { skill: Skill } {
+function makeSkillDir(): { skill: SkillMeta; rootDir: string } {
   const root = mkdtempSync(path.join(tmpdir(), 'one-skill-script-'))
   const scriptsDir = path.join(root, 'scripts')
   mkdirSync(scriptsDir, { recursive: true })
@@ -52,11 +59,12 @@ function makeSkillDir(): { skill: Skill } {
     skill: {
       id: 'skl_x',
       name: '调研',
-      content: '# 内容',
-      scriptPath: path.join(scriptsDir, 'analyze.py'),
+      contentLength: 8,
+      hasScripts: true,
       createdAt: 0,
       updatedAt: 0,
     },
+    rootDir: root,
   }
 }
 
@@ -66,6 +74,8 @@ describe('tools/builtin/skillScript', () => {
     registerSkillScriptTools()
     spawnMock.mockReset()
     listSkillsMock.mockReset()
+    getSkillRootDirMock.mockReset()
+    listSkillScriptsMock.mockReset()
   })
 
   it('skill_run_script 注册进清单', () => {
@@ -82,8 +92,9 @@ describe('tools/builtin/skillScript', () => {
   })
 
   it('路径穿越 ../ 拒绝', async () => {
-    const { skill } = makeSkillDir()
+    const { skill, rootDir } = makeSkillDir()
     listSkillsMock.mockReturnValue([skill])
+    getSkillRootDirMock.mockReturnValue(rootDir)
     const r = await executeTool(
       'skill_run_script',
       { skill: '调研', script: '../escape.sh' },
@@ -97,8 +108,10 @@ describe('tools/builtin/skillScript', () => {
   })
 
   it('脚本不存在 → script_not_found，hint 列可用脚本', async () => {
-    const { skill } = makeSkillDir()
+    const { skill, rootDir } = makeSkillDir()
     listSkillsMock.mockReturnValue([skill])
+    getSkillRootDirMock.mockReturnValue(rootDir)
+    listSkillScriptsMock.mockReturnValue(['analyze.py'])
     const r = await executeTool('skill_run_script', { skill: '调研', script: 'ghost.py' }, 'tu_3', {})
     const data = JSON.parse(r.content)
     expect(data.ok).toBe(false)
@@ -107,8 +120,9 @@ describe('tools/builtin/skillScript', () => {
   })
 
   it('成功执行：python3 解释器 + cwd=技能根目录 + 透传参数', async () => {
-    const { skill } = makeSkillDir()
+    const { skill, rootDir } = makeSkillDir()
     listSkillsMock.mockReturnValue([skill])
+    getSkillRootDirMock.mockReturnValue(rootDir)
     spawnMock.mockReturnValue(fakeChild({ stdout: '{"rows":3}', code: 0 }))
     const r = await executeTool(
       'skill_run_script',
@@ -121,14 +135,15 @@ describe('tools/builtin/skillScript', () => {
     expect(data.output).toContain('rows')
     const [cmd, argv, opts] = spawnMock.mock.calls[0] as [string, string[], { cwd: string }]
     expect(cmd).toBe('python3')
-    expect(argv[0]).toBe(skill.scriptPath)
+    expect(argv[0]).toBe(path.join(rootDir, 'scripts', 'analyze.py'))
     expect(argv.slice(1)).toEqual(['--limit', '3'])
-    expect(opts.cwd).toBe(path.dirname(path.dirname(skill.scriptPath!)))
+    expect(opts.cwd).toBe(rootDir)
   })
 
   it('非零退出 → 结构化错误 + stderr 摘要', async () => {
-    const { skill } = makeSkillDir()
+    const { skill, rootDir } = makeSkillDir()
     listSkillsMock.mockReturnValue([skill])
+    getSkillRootDirMock.mockReturnValue(rootDir)
     spawnMock.mockReturnValue(fakeChild({ stderr: 'boom', code: 2 }))
     const r = await executeTool('skill_run_script', { skill: '调研', script: 'analyze.py' }, 'tu_5', {})
     const data = JSON.parse(r.content)
@@ -138,8 +153,9 @@ describe('tools/builtin/skillScript', () => {
   })
 
   it('解释器缺失（ENOENT）→ interpreter_not_found', async () => {
-    const { skill } = makeSkillDir()
+    const { skill, rootDir } = makeSkillDir()
     listSkillsMock.mockReturnValue([skill])
+    getSkillRootDirMock.mockReturnValue(rootDir)
     spawnMock.mockReturnValue(fakeChild({ error: new Error('spawn python3 ENOENT') }))
     const r = await executeTool('skill_run_script', { skill: '调研', script: 'analyze.py' }, 'tu_6', {})
     const data = JSON.parse(r.content)
@@ -152,15 +168,16 @@ describe('tools/builtin/skillScript', () => {
     const scriptsDir = path.join(root, 'scripts')
     mkdirSync(scriptsDir, { recursive: true })
     writeFileSync(path.join(scriptsDir, 'data.bin'), 'x')
-    const skill: Skill = {
+    const skill: SkillMeta = {
       id: 'skl_y',
       name: '二进制技能',
-      content: '',
-      scriptPath: path.join(scriptsDir, 'data.bin'),
+      contentLength: 0,
+      hasScripts: true,
       createdAt: 0,
       updatedAt: 0,
     }
     listSkillsMock.mockReturnValue([skill])
+    getSkillRootDirMock.mockReturnValue(root)
     const r = await executeTool('skill_run_script', { skill: 'skl_y', script: 'data.bin' }, 'tu_7', {})
     const data = JSON.parse(r.content)
     expect(data.ok).toBe(false)

@@ -12,12 +12,12 @@ import type {
 } from '@shared/types'
 import { IpcErrorThrow } from '@shared/types'
 import { logger } from '../logger'
-import { getSkillUploadTempDir } from '../skills/upload'
 import {
   getAgent,
   getCapability,
   getModel,
   getSkill,
+  getSkillDir,
   saveAgent,
   saveCapability,
   saveSkill,
@@ -173,8 +173,8 @@ export function planExport(
   return { items, warnings }
 }
 
-/** 递归收集 skill 解压临时目录下的 resources/references/assets/scripts 文件 */
-async function collectSkillZipEntries(tempDir: string): Promise<string[]> {
+/** 递归收集 skill 目录下的 scripts/resources/references/assets 文件 */
+async function collectSkillDirFiles(skillDir: string): Promise<string[]> {
   const out: string[] = []
   const walk = async (dir: string): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -185,26 +185,22 @@ async function collectSkillZipEntries(tempDir: string): Promise<string[]> {
     }
   }
   for (const top of ['scripts', 'resources', 'references', 'assets']) {
-    await walk(join(tempDir, top)) // 目录不存在时 walk 内 readdir catch 为空，属正常
+    await walk(join(skillDir, top)) // 目录不存在时 walk 内 readdir catch 为空，属正常
   }
   return out
 }
 
-/** 重组 skill.zip：SKILL.md（根）+ 按 scriptPath 反查的临时目录资源（设计基线 5） */
+/** 构建 skill.zip：SKILL.md（根）+ skill 目录内的 scripts/resources/assets（目录化直出） */
 async function buildSkillZip(skill: Skill, outPath: string): Promise<{ hasScripts: boolean }> {
   const zip = new AdmZip()
   zip.addFile('SKILL.md', Buffer.from(buildSkillMarkdown(skill), 'utf8'))
   let hasScripts = false
-  if (skill.scriptPath) {
-    const tempDir = getSkillUploadTempDir(skill.scriptPath)
-    if (tempDir) {
-      for (const file of await collectSkillZipEntries(tempDir)) {
-        const rel = file.slice(tempDir.length + 1).split(sep).join('/')
-        const zipDir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
-        zip.addLocalFile(file, zipDir)
-        if (rel.startsWith('scripts/')) hasScripts = true
-      }
-    }
+  const skillDir = getSkillDir(skill.id)
+  for (const file of await collectSkillDirFiles(skillDir)) {
+    const rel = file.slice(skillDir.length + 1).split(sep).join('/')
+    const zipDir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
+    zip.addLocalFile(file, zipDir)
+    if (rel.startsWith('scripts/')) hasScripts = true
   }
   zip.writeZip(outPath)
   return { hasScripts }

@@ -5,7 +5,6 @@ import type {
   CreateMeta,
   HomeStreamEvent,
   LlmMessage,
-  Persona,
 } from '@shared/types'
 import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
@@ -15,9 +14,10 @@ import {
   getSkill,
   getAgent,
   getCapability,
+  countSkills,
   listAgents,
   listCapabilities,
-  listSkills,
+  listSkillMetas,
   resolveProviderCredentials,
   saveAgent,
   saveCapability,
@@ -37,6 +37,7 @@ import {
   TeamJsonDetector,
   buildCreateInstruction,
   buildMemoryInstruction,
+  buildSkillInstruction,
   buildRoutingInstruction,
   buildCapabilityFocusBlock,
   buildTeamGraph,
@@ -260,7 +261,7 @@ export function registerHomeHandlers(): void {
     // 角色/能力直跳逻辑在下方 agent 构建后再分流；此处先把 mentions 解出来供 skill 注入用。
     const allAgents = listAgents()
     const allCapabilities = listCapabilities()
-    const allSkills = listSkills()
+    const allSkills = listSkillMetas()
     const mentions = resolveMentions(
       message,
       allAgents,
@@ -283,21 +284,17 @@ export function registerHomeHandlers(): void {
       ? mentions.agents
       : null
 
-    // —— Skill 注入（铁律22，task 7.4）：SkillContextProvider.beforeRun ——
-    // persona 绑定 skill + @skill 动态注入：<skill> XML 块（限长 24000 + 脚本清单）
-    // + discipline 输出纪律段拼入 instructions；缺失 skill 由 provider warn 跳过。
+    // —— @技能 仍走全文 inline；默认主 agent 技能能力改由 Skill RAG 指令激活 ——
+    // mention 解析只需 id/name（轻量 SkillMeta）；content 在注入时通过 getSkill 懒加载
     const skillProviders: SkillContextProvider[] = []
-    const personaSkillIds = persona?.skillIds ?? []
-    // @skill 与 persona 绑定 skill 去重（同 id 不重复注入）
-    const boundIds = new Set(personaSkillIds)
-    const mentionSkills = mentions.skills.filter((s) => !boundIds.has(s.id))
+    const mentionSkillIds = new Set(mentions.skills.map((s) => s.id))
     const homeSkillProvider = new SkillContextProvider(
-      (sid) => mentionSkills.find((s) => s.id === sid) ?? getSkill(sid),
+      (sid) => (mentionSkillIds.has(sid) ? getSkill(sid) : null),
     )
     skillProviders.push(homeSkillProvider)
     const { instructions: instructionsWithSkills } = homeSkillProvider.beforeRun({
       agentName: 'home',
-      skillIds: [...personaSkillIds, ...mentionSkills.map((s) => s.id)],
+      skillIds: [...mentionSkillIds],
       instructions: instructionsWithL0,
     })
 
@@ -311,10 +308,11 @@ export function registerHomeHandlers(): void {
       ? `${instructionsWithSkills}\n${routingInstruction}`
       : instructionsWithSkills
 
+    const skillInstruction = buildSkillInstruction(countSkills())
     // —— 创建指令段：引导主 Agent 识别创建/修改意图 → 多轮澄清 → propose_* 产出草稿。
     // 注入当前 persona 原文（<persona> 边界），防 LLM 把 L0/记忆/路由段误当人设固化。
     // —— 记忆策略指令段（铁律21 L3 激活）：告诉主 Agent 何时记/何时取，附已有记忆 key 防重复。
-    const instructions = `${instructionsWithRouting}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}`
+    const instructions = `${instructionsWithRouting}\n${skillInstruction}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}`
 
     // 取消控制器：贯穿主 Agent 流式 / 组队 runner / ask_user 挂起（home:cancel 生效）。
     // 并发防御：单窗口 + 渲染层 sending 守卫下不会并发，但若发生（重复 IPC 调用），

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Pencil, Upload, Wrench, FileCode2 } from 'lucide-react'
-import { errorMessage } from '@renderer/api/client'
+import { errorMessage, unwrap } from '@renderer/api/client'
 import {
   useSkills,
   useRemoveSkill,
@@ -21,14 +21,14 @@ import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 import { EmptyState } from '@renderer/components/ui/EmptyState'
 import { Field } from '@renderer/components/ui/Field'
 import { PageToolbar } from '@renderer/components/ui/PageToolbar'
-import type { Skill } from '@shared/types'
+import type { SkillMeta } from '@shared/types'
 
 // —— 技能管理页 ——
 // 支持两种创建方式：
 //   1. 新建：手动填写 name + content
-//   2. 上传：选择 .zip 技能包，自动解析 SKILL.md frontmatter 后落盘
+//   2. 上传：选择 .zip 技能包，解析 SKILL.md 后自动落盘（含脚本/资源提取）
 // 编排页面通过 skill id 引用已创建的技能。
-// 卡片描述限 2 行；抽屉用 flex 布局撑满高度，描述和内容输入框尽量高。
+// 目录化存储（docs/SKILL_STORAGE_STANDARD_PLAN.md）：skill 目录 config/skills/<id>/SKILL.md
 
 interface Draft {
   isNew: boolean
@@ -36,7 +36,6 @@ interface Draft {
   name: string
   description: string
   content: string
-  scriptPath?: string
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -56,18 +55,20 @@ export function SkillsPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const skills: Skill[] = data ?? []
+  const skills: SkillMeta[] = data ?? []
 
   const openNew = (): void => setDraft({ ...EMPTY_DRAFT })
-  const openEdit = (s: Skill): void =>
+  const openEdit = async (s: SkillMeta): Promise<void> => {
+    const full = unwrap(await window.one.skills.get(s.id))
+    if (!full) return
     setDraft({
       isNew: false,
-      id: s.id,
-      name: s.name,
-      description: s.description ?? '',
-      content: s.content,
-      scriptPath: s.scriptPath,
+      id: full.id,
+      name: full.name,
+      description: full.description ?? '',
+      content: full.content,
     })
+  }
 
   const onSave = async (): Promise<void> => {
     if (!draft?.name.trim()) return
@@ -76,7 +77,6 @@ export function SkillsPage() {
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
       content: draft.content,
-      scriptPath: draft.scriptPath,
     })
     setDraft(null)
   }
@@ -90,25 +90,12 @@ export function SkillsPage() {
     await removeSkill.mutateAsync(id)
   }
 
-  /** 上传技能文件 → 解析 → 自动保存 */
+  /** 上传技能包 → 解析+保存+资源提取一步到位 */
   const onUpload = async (): Promise<void> => {
     setUploading(true)
     setUploadError(null)
     try {
-      const parsed = await pickFile.mutateAsync()
-      if (!parsed) {
-        // 用户取消选择
-        setUploading(false)
-        return
-      }
-      // 自动落盘
-      await saveSkill.mutateAsync({
-        name: parsed.name,
-        description: parsed.description || undefined,
-        content: parsed.content,
-        discipline: parsed.discipline,
-        scriptPath: parsed.scriptPath,
-      })
+      await pickFile.mutateAsync()
     } catch (err) {
       const msg = errorMessage(err, t)
       setUploadError(t('common:skills.uploadFailed', { message: msg }))
@@ -203,7 +190,7 @@ export function SkillsPage() {
                   ) : null}
                 </div>
               </div>
-              {s.content ? (
+              {s.contentLength > 0 ? (
                 <p
                   style={{
                     margin: '10px 0 0',
@@ -215,20 +202,16 @@ export function SkillsPage() {
                     fontFamily: 'var(--font-mono)',
                   }}
                 >
-                  {s.content.slice(0, 80)}
-                  {s.content.length > 80 ? '…' : ''}
+                  {t('common:skills.sizeK', { count: Math.ceil(s.contentLength / 1000) })}
                 </p>
               ) : null}
               <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-                {s.scriptPath ? (
+                {s.hasScripts ? (
                   <Badge variant="brand" style={{ fontSize: '0.7rem' }}>
                     <FileCode2 size={10} style={{ marginRight: 4 }} />
                     {t('common:skills.hasScript')}
                   </Badge>
                 ) : null}
-                <Badge style={{ fontSize: '0.7rem' }}>
-                  {t('common:skills.sizeK', { count: Math.ceil(s.content.length / 1000) })}
-                </Badge>
               </div>
               <div
                 style={{
@@ -242,7 +225,7 @@ export function SkillsPage() {
                 }}
               >
                 <RegistryPublishButton kind="skill" localId={s.id} />
-                <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
+                <Button variant="ghost" size="icon" onClick={() => void openEdit(s)}>
                   <Pencil size={14} />
                 </Button>
                 <Button variant="ghost" size="icon" onClick={() => void onRemove(s.id)}>
@@ -287,11 +270,6 @@ export function SkillsPage() {
                     placeholder={t('common:skills.contentPh')}
                   />
                 </Field>
-                {draft.scriptPath ? (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--color-fg-3)', flexShrink: 0 }}>
-                    {t('common:skills.scriptPath', { path: draft.scriptPath })}
-                  </p>
-                ) : null}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
                   <Button variant="ghost" onClick={() => setDraft(null)}>
                     {t('common:actions.cancel')}

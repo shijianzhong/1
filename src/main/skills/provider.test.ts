@@ -4,7 +4,6 @@ import {
   SkillContextProvider,
   buildDisciplineBlock,
   buildSkillXmlBlock,
-  resolveScriptsDir,
 } from './provider'
 
 // —— SkillContextProvider 单测（铁律22，task 7.4）——
@@ -54,20 +53,6 @@ describe('buildDisciplineBlock', () => {
   it('无/空 discipline → null', () => {
     expect(buildDisciplineBlock(skill('s1', 'a', '内容'))).toBeNull()
     expect(buildDisciplineBlock(skill('s1', 'a', '内容', { discipline: '  ' }))).toBeNull()
-  })
-})
-
-describe('resolveScriptsDir', () => {
-  it('扁平结构直接命中 scripts 目录', () => {
-    expect(resolveScriptsDir('/x/skl_upload_a/scripts/foo.py')).toBe('/x/skl_upload_a/scripts')
-  })
-
-  it('嵌套脚本向上定位 scripts 祖先', () => {
-    expect(resolveScriptsDir('/x/skl_upload_a/scripts/lib/util.py')).toBe('/x/skl_upload_a/scripts')
-  })
-
-  it('无 scripts 祖先 → null', () => {
-    expect(resolveScriptsDir('/x/other/foo.py')).toBeNull()
   })
 })
 

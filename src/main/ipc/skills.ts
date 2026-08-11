@@ -1,25 +1,20 @@
 import { dialog } from 'electron'
-import type { Skill } from '@shared/types'
+import type { Skill, SkillMeta } from '@shared/types'
 import { withHandler } from './handler'
-import { getSkill, listSkills, removeSkill, saveSkill } from '../storage/models'
-import { uploadSkillFile } from '../skills/upload'
+import { getSkill, getSkillDir, invalidateSkillsCache, listSkillMetas, removeSkill, saveSkill } from '../storage/models'
+import { extractSkillResourcesToDir, uploadSkillFile } from '../skills/upload'
 
 // —— 技能 IPC（§八之二 B）——
+// 目录化改造（docs/SKILL_STORAGE_STANDARD_PLAN.md §6.8）：
+// pickFile 合并解析+保存+资源提取，一步到位返回完整 Skill。
 export function registerSkillsHandlers(): void {
-  withHandler<Skill[]>('skills:list', () => listSkills())
+  withHandler<SkillMeta[]>('skills:list', () => listSkillMetas())
   withHandler<Skill | null>('skills:get', (_e, id) => getSkill(id as string))
   withHandler<Skill>('skills:save', (_e, input) => saveSkill(input))
   withHandler<void>('skills:remove', (_e, id) => removeSkill(id as string))
 
-  // 上传技能包：弹原生文件选择框 → 解析 ZIP → 返回 ParsedSkill
-  // 调用方拿到结果后再调 skills:save 落盘
-  withHandler<{
-    name: string
-    description?: string
-    content: string
-    discipline?: string
-    scriptPath?: string
-  } | null>('skills:pickFile', async () => {
+  // 上传技能包：弹原生文件选择框 → 解析 ZIP → saveSkill 落盘 → 提取资源 → 返回完整 Skill
+  withHandler<Skill | null>('skills:pickFile', async () => {
     const result = await dialog.showOpenDialog({
       title: '选择技能包',
       properties: ['openFile'],
@@ -32,13 +27,18 @@ export function registerSkillsHandlers(): void {
     if (result.canceled || result.filePaths.length === 0) return null
     const filePath = result.filePaths[0]
 
-    const { parsed, scriptPath } = await uploadSkillFile(filePath)
-    return {
+    const parsed = await uploadSkillFile(filePath)
+    const saved = saveSkill({
       name: parsed.name,
       description: parsed.description,
       content: parsed.content,
       discipline: parsed.discipline,
-      scriptPath,
-    }
+    })
+    // 提取 scripts/resources 到 skill 目录（目录化标准格式，直接落最终位置）
+    await extractSkillResourcesToDir(filePath, getSkillDir(saved.id), parsed)
+    // extract 直接改目录不走 save/remove，须显式失效缓存，
+    // 防 listSkillMetas 读到 extract 前的中间态（hasScripts=false）驻留
+    invalidateSkillsCache()
+    return getSkill(saved.id) ?? saved
   })
 }

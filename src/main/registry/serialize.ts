@@ -7,7 +7,10 @@ import type {
   Skill,
   WorkflowGraph,
 } from '@shared/types'
-import { extractDisciplineSection } from '../skills/upload'
+import { buildSkillMd, yamlSafe } from '../storage/skills/parser'
+
+// re-export for backward compat（测试和外部模块仍从 serialize 导入）
+export { yamlSafe }
 
 // —— Registry 导出序列化（docs/REGISTRY_PLAN.md §3.3，与 §1 manifest 口径互逆）——
 // 纯函数模块：不依赖 electron/存储，可单测。本模块只做「本地实体 → manifest 文本」，
@@ -69,31 +72,8 @@ export function serializeAgentManifest(
   return { manifest, droppedSkillIds }
 }
 
-/**
- * YAML 特殊字符值加双引号包裹（`:`/`#`/换行/引号/括号会破坏 frontmatter 解析；
- * 与 upload.ts parseFrontmatter 的去引号 + 双引号反转义配套，保证导出→导入回环保真）。
- */
-export function yamlSafe(s: string): string {
-  return /[:#\n"'[\]{}]/.test(s)
-    ? `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-    : s
-}
-
-/**
- * Skill → SKILL.md 文本：frontmatter(name/description) + content 原文。
- * discipline 已在 content 的 `## Discipline` 段时原样保留；仅在 discipline 字段存在而
- * content 缺段时补段（防用户在管理页只编辑了 discipline 字段导致导出丢失）。
- */
-export function buildSkillMarkdown(skill: Skill): string {
-  const fm: string[] = ['---', `name: ${yamlSafe(skill.name)}`]
-  if (skill.description) fm.push(`description: ${yamlSafe(skill.description)}`)
-  fm.push('---')
-  let body = skill.content.trimEnd()
-  if (skill.discipline && !extractDisciplineSection(body)) {
-    body += `\n\n## Discipline\n\n${skill.discipline.trim()}`
-  }
-  return fm.join('\n') + '\n\n' + body + '\n'
-}
+/** Skill → SKILL.md 文本（委托 parser.ts buildSkillMd） */
+export { buildSkillMd as buildSkillMarkdown }
 
 /** Skill → manifest：hasScripts 由 zip 实际内容置位（调用方打包后传入） */
 export function serializeSkillManifest(

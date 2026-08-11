@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Agent, Capability, Skill } from '@shared/types'
+import type { Agent, Capability, SkillMeta } from '@shared/types'
 import { formatMentionDisplay, type MentionKind } from '@shared/mentions'
 
 // —— @提及芯片输入框（首页主助手 @角色/@能力/@技能，§三之三 M）——
@@ -38,7 +38,7 @@ export interface MentionComposerHandle {
 interface Props {
   agents: Agent[]
   capabilities: Capability[]
-  skills: Skill[]
+  skills: SkillMeta[]
   disabled?: boolean
   placeholder?: string
   onSend: (text: string) => void
@@ -78,7 +78,7 @@ interface MentionGroup {
 export function buildMentionGroups(
   agents: Agent[],
   capabilities: Capability[],
-  skills: Skill[],
+  skills: SkillMeta[],
   query: string,
   recentIds: string[],
 ): MentionGroup[] {

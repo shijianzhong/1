@@ -9,8 +9,6 @@ import {
   PersonaSchema,
   ProviderInputSchema,
   ProviderSchema,
-  SkillInputSchema,
-  SkillSchema,
 } from '../config'
 import {
   getAgentsPath,
@@ -18,27 +16,34 @@ import {
   getModelsPath,
   getPersonaPath,
   getProvidersPath,
-  getSkillsPath,
 } from './paths'
 import {
   JsonCollection,
   JsonSingleton,
   generateId,
 } from './json-store'
-import { rm } from 'node:fs/promises'
 import { getKey } from '../secrets/vault'
-import { getSkillUploadTempDir } from '../skills/upload'
 import type {
   Agent,
-  ApiFormat,
   Capability,
   ModelConfig,
   Persona,
   Provider,
-  ProviderModels,
-  Skill,
 } from '@shared/types'
 import { resolveModelIdByUsage } from '@shared/types'
+
+// —— skills：目录化存储（docs/SKILL_STORAGE_STANDARD_PLAN.md）——
+// 实现已迁移至 storage/skills/store.ts，此处 re-export 保持调用方 import 路径不变。
+export {
+  listSkills,
+  listSkillMetas,
+  countSkills,
+  getSkill,
+  saveSkill,
+  removeSkill,
+  getSkillDir,
+  invalidateSkillsCache,
+} from './skills/store'
 
 // —— models：单文件存储（userData/config/models.json）——
 const modelsStore = new JsonSingleton<ModelConfig[]>(
@@ -187,49 +192,6 @@ export function removeAgent(id: string): void {
   agentsStore.remove(id)
 }
 
-// —— skills：多文件（userData/config/skills/{id}.json）——
-const skillsStore = new JsonCollection<Skill>(getSkillsPath(), (raw) =>
-  SkillSchema.parse(raw),
-)
-
-export function listSkills(): Skill[] {
-  return skillsStore.list().sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-export function getSkill(id: string): Skill | null {
-  return skillsStore.get(id)
-}
-
-export function saveSkill(input: unknown, opts?: { now?: number }): Skill {
-  const parsed = SkillInputSchema.parse(input)
-  const now = opts?.now ?? Date.now() // 见 saveAgent 注释
-  const existing = parsed.id ? getSkill(parsed.id) : null
-  const next: Skill = {
-    id: existing?.id ?? generateId('skl_'),
-    name: parsed.name,
-    description: parsed.description,
-    content: parsed.content,
-    // 编辑表单不携带 discipline 时保留既有值（防编辑保存误清 propose_skill/导入写入的纪律段）
-    discipline: parsed.discipline ?? existing?.discipline,
-    scriptPath: parsed.scriptPath,
-    registry: parsed.registry ?? existing?.registry,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  }
-  skillsStore.save(next)
-  return next
-}
-
-export function removeSkill(id: string): void {
-  // 顺带清理上传/导入留下的解压临时目录（skl_upload_ 前缀，防磁盘积累孤立文件）
-  const scriptPath = getSkill(id)?.scriptPath
-  if (scriptPath) {
-    const tempDir = getSkillUploadTempDir(scriptPath)
-    if (tempDir) void rm(tempDir, { recursive: true, force: true }).catch(() => {})
-  }
-  skillsStore.remove(id)
-}
-
 // —— persona：单文件（首页主助手人设，独立于角色）——
 const personaStore = new JsonSingleton<Persona | null>(getPersonaPath(), null, (raw) => {
   if (raw === null) return null
@@ -373,4 +335,3 @@ export function resolveProviderCredentials(
     enableThinking: provider.enableThinking ?? false,
   }
 }
-

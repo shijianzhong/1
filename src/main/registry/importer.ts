@@ -8,15 +8,17 @@ import type {
   RegistryImportPlanItem,
   RegistryImportResult,
   RegistrySkillManifest,
-  Skill,
+  SkillMeta,
 } from '@shared/types'
 import { rm } from 'node:fs/promises'
 import { logger } from '../logger'
-import { getSkillUploadTempDir, parseSkillZip, uploadSkillFile } from '../skills/upload'
+import { extractSkillResourcesToDir, parseSkillZip, uploadSkillFile } from '../skills/upload'
 import {
+  getSkillDir,
+  invalidateSkillsCache,
   listAgents,
   listCapabilities,
-  listSkills,
+  listSkillMetas,
   saveAgent,
   saveCapability,
   saveSkill,
@@ -29,8 +31,8 @@ import { downloadSkillZip, getRegistryManifest } from './service'
 // applyImport：同一解析逻辑落盘（zip 走 5 分钟缓存复用，不重复下载）。
 // 身份映射铁律：registry slug ↔ 本地 id 经 provenance 桥接；导入重映射、不回填 slug。
 
-function findSkillBySlug(slug: string): Skill | undefined {
-  return listSkills().find((s) => s.registry?.registryId === slug)
+function findSkillBySlug(slug: string): SkillMeta | undefined {
+  return listSkillMetas().find((s) => s.registry?.registryId === slug)
 }
 
 function findAgentBySlug(slug: string): Agent | undefined {
@@ -103,10 +105,12 @@ async function applySkillImport(
     return { localId: existing.id, name: existing.name, modified: true }
   }
   const zipPath = await downloadSkillZip(slug)
-  // 更新场景：先记录旧解压目录，saveSkill 成功后清理，防磁盘积累孤立文件
-  const oldTempDir = existing?.scriptPath ? getSkillUploadTempDir(existing.scriptPath) : null
-  const { parsed, scriptPath } = await uploadSkillFile(zipPath)
+  const parsed = await uploadSkillFile(zipPath)
   const now = Date.now()
+  // 更新场景：先清理旧目录（含旧 scripts/resources），saveSkill 会重建 SKILL.md
+  if (existing) {
+    await rm(getSkillDir(existing.id), { recursive: true, force: true }).catch(() => {})
+  }
   const saved = saveSkill(
     {
       id: existing?.id,
@@ -114,15 +118,15 @@ async function applySkillImport(
       description: parsed.description ?? manifest.description,
       content: parsed.content,
       discipline: parsed.discipline,
-      scriptPath,
       registry: provenanceOf(manifest, now),
     },
     { now },
   )
-  const newTempDir = scriptPath ? getSkillUploadTempDir(scriptPath) : null
-  if (oldTempDir && oldTempDir !== newTempDir) {
-    await rm(oldTempDir, { recursive: true, force: true }).catch(() => {})
-  }
+  // 提取 scripts/resources 到 skill 目录（目录化标准格式，直接落最终位置）
+  await extractSkillResourcesToDir(zipPath, getSkillDir(saved.id), parsed)
+  // extract 直接改目录不走 save/remove，须显式失效缓存，
+  // 防 listSkillMetas 读到 extract 前的中间态（hasScripts=false）驻留
+  invalidateSkillsCache()
   return { localId: saved.id, name: saved.name }
 }
 

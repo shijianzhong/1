@@ -6,7 +6,7 @@ import type {
   HomeStreamEvent,
   OrchMessage,
   Persona,
-  Skill,
+  SkillMeta,
   StreamEvent,
   WorkflowGraph,
 } from '@shared/types'
@@ -371,6 +371,19 @@ export function buildMemoryInstruction(existingKeys: string[] = []): string {
   ].join('\n')
 }
 
+/** Skill RAG 激活指令：只给数量与策略，不列技能清单，避免 prompt 膨胀。 */
+export function buildSkillInstruction(skillCount: number): string {
+  return [
+    '',
+    `【可用技能】你当前可按需检索 ${skillCount} 个技能（不列清单）。策略：`,
+    '1. 遇到写作、设计、数据处理、自动化、研究方法等明显需要专门技能说明的任务时，先调用 skill_search，用任务关键词检索相关技能。',
+    '2. 命中后使用 load_skill 按 id 读取完整说明，再按该技能要求执行；不要只看名字就臆测技能内容。',
+    '3. 闲聊、通用问答、简单解释、无需专门流程的任务不要调用。',
+    '4. 用户显式 @提及的技能已直接注入当前上下文，无需再 load。',
+    '5. 组队节点和编辑器节点可能也看见这些工具，但它们通常已有显式绑定技能，除非现有绑定不足以完成任务，否则不要额外检索。',
+  ].join('\n')
+}
+
 /** @提及解析结果 */
 export interface MentionResolution {
   /** 命中的角色（@角色名）→ 走组队编排 */
@@ -378,7 +391,7 @@ export interface MentionResolution {
   /** 命中的能力（@能力名）→ 走组队/能力编排 */
   capabilities: Capability[]
   /** 命中的技能（@技能名）→ 注入主 Agent 上下文，不跑编排（铁律22） */
-  skills: Skill[]
+  skills: SkillMeta[]
   /** 剥掉 @提及后的纯文本问题 */
   cleanText: string
 }
@@ -399,12 +412,12 @@ export function resolveMentions(
   text: string,
   agents: Agent[],
   capabilities: Capability[],
-  skills: Skill[] = [],
+  skills: SkillMeta[] = [],
   explicit: ExplicitMention[] = [],
 ): MentionResolution {
   const hitAgents = new Map<string, Agent>()
   const hitCaps = new Map<string, Capability>()
-  const hitSkills = new Map<string, Skill>()
+  const hitSkills = new Map<string, SkillMeta>()
   const agentsById = new Map(agents.map((a) => [a.id, a]))
   const capsById = new Map(capabilities.map((c) => [c.id, c]))
   const skillsById = new Map(skills.map((s) => [s.id, s]))
