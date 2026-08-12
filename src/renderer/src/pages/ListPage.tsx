@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Pencil } from 'lucide-react'
+import { tagsToInput, parseTagsInput } from '@renderer/lib/tags'
 import {
   useProviders,
   useRemoveProvider,
@@ -54,7 +55,6 @@ export function ListPage({ i18nKey }: ListPageProps) {
   const skillsQ = useSkills()
   const providersQ = useProviders()
 
-  const saveSkill = useSaveSkill()
   const saveProvider = useSaveProvider()
   const removeSkill = useRemoveSkill()
   const removeProvider = useRemoveProvider()
@@ -79,7 +79,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
               setDraft(
                 i18nKey === 'models'
                   ? { kind: 'provider', isNew: true, name: '', remark: '', website: '', baseUrl: '', apiFormat: 'anthropic', authHeader: '', key: '', primary: '', reasoning: '', fast: '', default: '', enableThinking: false, isDefault: false }
-                  : { kind: 'skills', isNew: true, name: '', content: '' },
+                  : { kind: 'skills', isNew: true, name: '', description: '', tags: '', content: '' },
               )
             }
           >
@@ -123,6 +123,15 @@ export function ListPage({ i18nKey }: ListPageProps) {
                       {s.description}
                     </p>
                   ) : null}
+                  {(s.tags ?? []).length > 0 ? (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                      {(s.tags ?? []).slice(0, 3).map((tag) => (
+                        <Badge key={tag} variant="default" style={{ fontSize: '0.7rem' }}>
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 <div
                   style={{
@@ -142,7 +151,15 @@ export function ListPage({ i18nKey }: ListPageProps) {
                       onClick={async () => {
                         const full = unwrap(await window.one.skills.get(s.id))
                         if (!full) return
-                        setDraft({ kind: 'skills', isNew: false, id: full.id, name: full.name, content: full.content })
+                        setDraft({
+                          kind: 'skills',
+                          isNew: false,
+                          id: full.id,
+                          name: full.name,
+                          description: full.description ?? '',
+                          tags: tagsToInput(full.tags),
+                          content: full.content,
+                        })
                       }}
                     >
                       <Pencil size={14} />
@@ -249,7 +266,7 @@ export function ListPage({ i18nKey }: ListPageProps) {
       {/* 编辑/新建抽屉 */}
       <Drawer open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
         <DrawerContent>
-          {draft ? <DraftForm draft={draft} setDraft={setDraft} i18nKey={i18nKey} /> : null}
+          {draft ? <DraftForm draft={draft} setDraft={setDraft} /> : null}
         </DrawerContent>
       </Drawer>
     </div>
@@ -261,6 +278,8 @@ interface Draft {
   isNew: boolean
   id?: string
   name?: string
+  description?: string
+  tags?: string
   content?: string
   // provider
   remark?: string
@@ -280,11 +299,9 @@ interface Draft {
 function DraftForm({
   draft,
   setDraft,
-  i18nKey,
 }: {
   draft: Draft
   setDraft: (d: Draft) => void
-  i18nKey: 'skills' | 'models'
 }) {
   const { t } = useTranslation(['common'])
   const saveSkill = useSaveSkill()
@@ -293,7 +310,13 @@ function DraftForm({
   const save = async (): Promise<void> => {
     if (!draft.name?.trim()) return
     if (draft.kind === 'skills') {
-      await saveSkill.mutateAsync({ id: draft.id, name: draft.name!, content: draft.content ?? '' })
+      await saveSkill.mutateAsync({
+        id: draft.id,
+        name: draft.name!,
+        description: draft.description?.trim() || undefined,
+        tags: parseTagsInput(draft.tags),
+        content: draft.content ?? '',
+      })
     } else if (draft.kind === 'provider') {
       const provider = await saveProvider.mutateAsync({
         id: draft.id,
@@ -332,13 +355,29 @@ function DraftForm({
         </Field>
 
         {draft.kind === 'skills' ? (
-          <Field label={t('common:columns.content')}>
-            <textarea
-              value={draft.content ?? ''}
-              onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-              style={{ ...textareaStyle, fontFamily: 'var(--font-mono)', minHeight: 160 }}
-            />
-          </Field>
+          <>
+            <Field label={t('common:columns.description')}>
+              <textarea
+                value={draft.description ?? ''}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                style={{ ...textareaStyle, minHeight: 96 }}
+              />
+            </Field>
+            <Field label={t('common:columns.tags')}>
+              <Input
+                value={draft.tags ?? ''}
+                onChange={(e) => setDraft({ ...draft, tags: e.target.value })}
+                placeholder={t('common:columns.tagsPh')}
+              />
+            </Field>
+            <Field label={t('common:columns.content')}>
+              <textarea
+                value={draft.content ?? ''}
+                onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                style={{ ...textareaStyle, fontFamily: 'var(--font-mono)', minHeight: 160 }}
+              />
+            </Field>
+          </>
         ) : null}
 
         {draft.kind === 'provider' ? (

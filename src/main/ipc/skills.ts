@@ -32,6 +32,7 @@ export function registerSkillsHandlers(): void {
     const saved = saveSkill({
       name: parsed.name,
       description: parsed.description,
+      tags: parsed.tags,
       content: parsed.content,
       discipline: parsed.discipline,
     })

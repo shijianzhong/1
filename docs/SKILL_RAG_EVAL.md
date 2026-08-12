@@ -1,171 +1,75 @@
-# One — Skill RAG 召回验证
+# Skill RAG 召回验证
 
-> 评测时间：2026-08-11
->
-> 评测对象：当前本地已安装 skills（真实用户数据）
->
-> 技能样本目录：`/Users/shijianzhong/Library/Application Support/one/config/skills`
->
-> 复跑脚本：`node ./scripts/skill-rag-eval.mjs`
+- 日期：2026-08-12
+- 样本来源：`/Users/shijianzhong/Library/Application Support/one/config/skills`
+- skill 数量：65
+- 评测 query 数量：22
+- 当前口径：**离线检索层评测**（对应主 agent 的 `skill_search` 能力），不含真实 LLM 是否主动调用工具的端到端行为。
 
----
-
-## 一、评测范围
-
-本轮评测基于当前本地已安装的 5 个真实 skill：
-
-| name | 描述摘要 |
-|---|---|
-| `wechat-tech-content` | 技术类微信公众号内容生产闭环，覆盖选题调研 → 对标拆解 → 初稿写作 → 配图落盘 |
-| `tech-research` | 技术内容选题调研 |
-| `content-teardown` | 对标拆解 |
-| `wechat-writing` | 微信公众号写作 |
-| `content-review` | 内容审稿 / 质量门禁 |
-
-评测 query 共 12 条，覆盖四类任务：
-
-1. 闭环总控类
-2. 子阶段明确任务类
-3. 同域相近技能区分类
-4. 模糊口语化表达类
-
----
-
-## 二、当前实现口径
-
-本次评测对应的是当前 `skill_search` 的实际策略：
-
-1. `name` 精确 / 前缀匹配，权重 3
-2. FTS5 BM25，权重 2
-3. `name/description/content_tokenized` 的 LIKE 兜底，权重 1
-
-说明：
-
-- 评测脚本 `scripts/skill-rag-eval.mjs` 复刻的是当前仓库内 `src/main/storage/skills/fts.ts` 的检索逻辑
-- 由于主数据来自真实本地 skill JSON，因此这轮结果可以作为第一版实证基线
-
----
-
-## 三、指标结果
+## 指标
 
 | 指标 | 结果 |
 |---|---|
-| Primary Top1 | 10/12（83.3%） |
-| Primary Top3 | 10/12（83.3%） |
-| Primary Top5 | 12/12（100.0%） |
-| Relaxed Top1 | 11/12（91.7%） |
-| Relaxed Top3 | 11/12（91.7%） |
-| Relaxed Top5 | 12/12（100.0%） |
+| Primary Top1 | 17/22 (77.3%) |
+| Primary Top3 | 19/22 (86.4%) |
+| Primary Top5 | 20/22 (90.9%) |
+| Relaxed Top1 | 19/22 (86.4%) |
+| Relaxed Top3 | 20/22 (90.9%) |
+| Relaxed Top5 | 21/22 (95.5%) |
 
-口径说明：
+## 明细
 
-- **Primary**：严格按“主目标 skill”计分
-- **Relaxed**：对少数天然歧义 query，允许“闭环总 skill”与“子阶段 skill”都算合理答案
+| 场景 | query | 期望主目标 | Top1 | Top3 | Primary Top1 | Relaxed Top3 |
+|---|---|---|---|---|---|---|
+| 公众号闭环 | 帮我做技术公众号内容生产闭环 | `wechat-tech-content` | `wechat-tech-content` | wechat-tech-content / content-review / content-teardown | ✅ | ✅ |
+| 选题调研 | 帮我做全网技术选题调研，给 3 个高价值方向 | `tech-research` | `tech-research` | tech-research / wechat-tech-content / content-teardown | ✅ | ✅ |
+| 对标拆解 | 拆解 3 个同类技术号的标题公式和结构套路 | `content-teardown` | `content-teardown` | content-teardown / wechat-tech-content / tech-research | ✅ | ✅ |
+| 公众号写作 | 按技术号风格模板写一篇微信公众号深度文 | `wechat-writing` | `wechat-tech-content` | wechat-tech-content / wechat-writing / content-teardown | ❌ | ✅ |
+| 内容审稿 | 对这篇文章做审稿打分，不通过就返工 | `content-review` | `content-review` | content-review / wechat-tech-content / content-teardown | ✅ | ✅ |
+| 公众号排版 | 把 Markdown 转成公众号 HTML | `md2wechat` | `wechat-tech-content` | wechat-tech-content / md2wechat / baoyu-post-to-wechat | ❌ | ✅ |
+| 发布公众号 | 把这篇文章发布到微信公众号草稿箱 | `baoyu-post-to-wechat` | `baoyu-post-to-wechat` | baoyu-post-to-wechat / wechat-tech-content / md2wechat | ✅ | ✅ |
+| 品牌手册 | 帮我做一个高端品牌手册和视觉规范板 | `brandkit` | `brandkit` | brandkit / lark-openapi-explorer / dashen-x-battle-plan | ✅ | ✅ |
+| 前端重设计 | 重做现有网站，让质感更高级但不破坏功能 | `redesign-existing-projects` | `redesign-existing-projects` | redesign-existing-projects / lark-openapi-explorer / lark-skill-maker | ✅ | ✅ |
+| 设计审美增强 | 把这个前端界面打磨得更有设计感 | `impeccable` | `impeccable` | impeccable / webapp-quality-gate / wechat-tech-content | ✅ | ✅ |
+| 飞书文档 | 帮我创建飞书文档并插入图片 | `lark-doc` | `lark-doc` | lark-doc / lark-whiteboard / lark-task | ✅ | ✅ |
+| 飞书联系人 | 查一下同事的 open_id 和联系方式 | `lark-contact` | `lark-contact` | lark-contact / agent-reach / lark-mail | ✅ | ✅ |
+| 日程待办摘要 | 生成一份今天的日程和待办摘要 | `lark-workflow-standup-report` | `lark-workflow-standup-report` | lark-workflow-standup-report / lark-calendar / lark-vc | ✅ | ✅ |
+| 创建日程 | 帮我在飞书日历里创建一个明天下午的会议 | `lark-calendar` | `lark-calendar` | lark-calendar / lark-workflow-standup-report / lark-workflow-meeting-summary | ✅ | ✅ |
+| 电子表格 | 创建一个飞书电子表格并写入表头和数据 | `lark-sheets` | `lark-sheets` | lark-sheets / lark-doc / lark-drive | ✅ | ✅ |
+| 会议纪要汇总 | 整理本周会议纪要并生成结构化周报 | `lark-workflow-meeting-summary` | `lark-workflow-meeting-summary` | lark-workflow-meeting-summary / lark-vc / lark-minutes | ✅ | ✅ |
+| X 作战计划 | 帮我做一个 X 账号内容作战计划 PDF | `dashen-x-battle-plan` | `dashen-x-battle-plan` | dashen-x-battle-plan / wechat-tech-content / vue-init | ✅ | ✅ |
+| Vue 脚手架 | 做一个 Vue 3 脚手架项目 | `vue-init` | `vue-init` | vue-init / tech-research / wechat-tech-content | ✅ | ✅ |
+| Web 测试 | 帮我测试本地 web 应用页面交互 | `webapp-testing` | `webapp-quality-gate` | webapp-quality-gate / dashen-x-battle-plan / wechat-tech-content | ❌ | ✅ |
+| GitHub 知识库 | 帮我建立一个 GitHub 仓库知识库并支持搜索 | `github-kb` | `github-kb` | github-kb / tech-research / agent-reach | ✅ | ✅ |
+| 创建 Skill | 帮我创建一个新的 agent skill | `skill-creator` | `agent-reach` | agent-reach / lark-task / vue-init | ❌ | ❌ |
+| 找 Skill | 帮我找一个能完成这个任务的 skill | `find-skills` | `lark-task` | lark-task / agent-reach / lark-workflow-standup-report | ❌ | ❌ |
 
----
+## 错例与观察
 
-## 四、明细
+- **公众号写作**：query=`按技术号风格模板写一篇微信公众号深度文`
+  - 期望主目标：`wechat-writing`
+  - 可接受目标：`wechat-writing` / `wechat-tech-content`
+  - 实际 Top3：`wechat-tech-content` / `wechat-writing` / `content-teardown`
+- **公众号排版**：query=`把 Markdown 转成公众号 HTML`
+  - 期望主目标：`md2wechat`
+  - 可接受目标：`md2wechat` / `baoyu-post-to-wechat`
+  - 实际 Top3：`wechat-tech-content` / `md2wechat` / `baoyu-post-to-wechat`
+- **Web 测试**：query=`帮我测试本地 web 应用页面交互`
+  - 期望主目标：`webapp-testing`
+  - 可接受目标：`webapp-testing` / `webapp-quality-gate`
+  - 实际 Top3：`webapp-quality-gate` / `dashen-x-battle-plan` / `wechat-tech-content`
+- **创建 Skill**：query=`帮我创建一个新的 agent skill`
+  - 期望主目标：`skill-creator`
+  - 可接受目标：`skill-creator`
+  - 实际 Top3：`agent-reach` / `lark-task` / `vue-init`
+- **找 Skill**：query=`帮我找一个能完成这个任务的 skill`
+  - 期望主目标：`find-skills`
+  - 可接受目标：`find-skills`
+  - 实际 Top3：`lark-task` / `agent-reach` / `lark-workflow-standup-report`
 
-| 场景 | query | 期望主目标 | 实际 Top1 | Top3 | 结论 |
-|---|---|---|---|---|---|
-| 闭环总控 | 帮我做技术公众号内容生产闭环 | `wechat-tech-content` | `wechat-tech-content` | `wechat-tech-content` / `content-review` / `content-teardown` | 命中 |
-| 选题调研-全网 | 帮我做全网技术选题调研 | `tech-research` | `tech-research` | `tech-research` / `wechat-tech-content` / `content-teardown` | 命中 |
-| 选题调研-推荐 | 选 3 个高价值技术选题 | `tech-research` | `tech-research` | `tech-research` / `wechat-tech-content` / `content-teardown` | 命中 |
-| 对标拆解 | 做公众号对标拆解 | `content-teardown` | `content-review` | `content-review` / `wechat-tech-content` / `wechat-writing` | 未命中 |
-| 结构逆向 | 拆解同类技术号标题公式和 6 段式结构 | `content-teardown` | `content-teardown` | `content-teardown` / `wechat-tech-content` / `wechat-writing` | 命中 |
-| 公众号写作 | 按风格模板写一篇技术公众号深度文 | `wechat-writing` | `wechat-writing` | `wechat-writing` / `wechat-tech-content` / `content-teardown` | 命中 |
-| 写作配图落盘 | 产出公众号初稿并配图落盘 | `wechat-writing` | `wechat-writing` | `wechat-writing` / `wechat-tech-content` / `content-review` | 命中 |
-| 内容审稿 | 对这篇内容做审稿打分 | `content-review` | `content-review` | `content-review` / `wechat-tech-content` / `wechat-writing` | 命中 |
-| 质量门禁 | 不通过就返工的内容审稿 | `content-review` | `content-review` | `content-review` / `wechat-tech-content` / `wechat-writing` | 命中 |
-| 码农号生产 | 给码农知道的事这类技术号生产内容 | `wechat-tech-content` | `wechat-tech-content` | `wechat-tech-content` / `content-teardown` / `content-review` | 命中 |
-| 完整一条龙 | 从选题到写作一条龙做技术公众号 | `wechat-tech-content` | `wechat-tech-content` | `wechat-tech-content` / `content-teardown` / `wechat-writing` | 命中 |
-| 技术公众号写作 | 技术公众号写作 | `wechat-writing` | `wechat-tech-content` | `wechat-tech-content` / `content-teardown` / `content-review` | 未命中 |
+## 初步结论
 
----
-
-## 五、错例分析
-
-### 1. `做公众号对标拆解`
-
-- 期望：`content-teardown`
-- 实际 Top1：`content-review`
-
-初步判断：
-
-- `content-review` 的描述中带有“对标对比”
-- query 同时包含“公众号”和“对标”，而 `content-teardown` 当前描述更强调“技术号 / 标题公式 / 6段式结构”，没有显式覆盖“公众号”这个词
-- `wechat-tech-content` 又带有较强的“公众号”上下文，因此把 `content-teardown` 往后挤
-
-结论：
-
-- 这是 **子阶段 skill 的场景词不够全**，不是“完全搜不到”的问题
-
-### 2. `技术公众号写作`
-
-- 期望：`wechat-writing`
-- 实际 Top1：`wechat-tech-content`
-
-初步判断：
-
-- `wechat-writing` 强调“微信公众号写作”，但缺少“技术公众号”这层域信息
-- `wechat-tech-content` 同时覆盖“技术 + 微信公众号 + 内容生产”，在宽 query 下天然更占优势
-
-结论：
-
-- 这是 **闭环总 skill 与子阶段 skill 的语义边界竞争**
-- 在 strict 口径下算 miss，但从 relaxed 视角看并不离谱
-
----
-
-## 六、结论
-
-### 6.1 当前方案是否可用
-
-**可用。**
-
-在这批真实 skill 上：
-
-- Primary Top1 = 83.3%
-- Top5 = 100%
-
-这说明当前 `name + description + FTS + LIKE` 的基础方案已经具备落地价值，主问题不是“召回失败”，而是：
-
-1. 同域高度相似 skill 的排序边界
-2. 闭环总 skill 与子阶段 skill 的竞争
-
-### 6.2 当前最值得做的优化
-
-优先级从高到低建议如下：
-
-1. **补 description / tags 的场景词**
-   - 尤其是子阶段 skill，要补上“技术公众号”“公众号对标拆解”“技术内容写作”这类用户真实会说的话
-2. **为 skill 增加可选 tags 字段**
-   - 例如：`domain=tech-content`、`stage=research|teardown|writing|review`
-   - 检索时把 tags 一并入 FTS 或作为额外权重
-3. **后续再考虑调权重**
-   - 当前权重不是首要瓶颈
-   - 没补词之前，单纯调权重容易把一个错例修好、另一个错例打坏
-
-### 6.3 暂时不建议做的事
-
-- 暂时**不建议**因为这两条错例就重写检索逻辑
-- 也**不建议**过早上复杂 rerank
-
-当前阶段更划算的是：
-
-- 先补技能元信息
-- 再用同一脚本复跑
-- 看 Top1 是否从 83% 稳定拉到 90%+
-
----
-
-## 七、后续建议
-
-下一轮建议分两步：
-
-1. 给这 5 个 skill 补更贴近真实用户表达的 description / tags
-2. 继续装入几类**跨域** skill，再跑一次同样的评测
-
-原因是这轮样本几乎都在同一条“技术公众号内容生产闭环”内，当前结果更能说明“同域技能能否拉开”，还不能充分说明“跨域技能是否会误召回”。
-
-如果下一轮跨域样本依然稳定，那这套 Skill RAG 就基本站住了。
+- 当前检索层已经基本可用；在本轮 22 个 query 中，除 5 个已知错例外，其余样本均达到预期范围。
+- `description + tags` 对目录化 skill 池是有效信号，已经把 `Primary Top1` 从 `59.1%` 拉升到 `77.3%`。
+- 本轮 skill 池已经从早期少量闭环 skill 扩展到 60+，旧评测口径不再成立，后续应继续按当前目录化 skill 池复测。
+- 下一步重点不再是补基础设施，而是按需要微调 `skill_search` 排序策略，并在合适时机补真实主 agent 跑批验证。

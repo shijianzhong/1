@@ -29,6 +29,10 @@ function descriptionOf(input: { description?: string; content: string }): string
   return desc || fallbackDescription(input.content)
 }
 
+function normalizeTags(tags?: string[]): string[] {
+  return (tags ?? []).map((tag) => collapseWhitespace(tag)).filter(Boolean)
+}
+
 /** 统计 skill 目录数（仅含 SKILL.md 的子目录） */
 export function countSkillFiles(): number {
   const dir = getSkillsPath()
@@ -48,20 +52,24 @@ export function upsertSkillFts(input: {
   id: string
   name: string
   description?: string
+  tags?: string[]
   content: string
 }): void {
   const db = getDb()
   const desc = descriptionOf(input)
+  const tags = normalizeTags(input.tags)
+  const tagsText = tags.join(' ')
   db.transaction(() => {
     db.prepare('DELETE FROM skills_fts WHERE skill_id = ?').run(input.id)
     db.prepare(
-      'INSERT INTO skills_fts (skill_id, name, description, content_tokenized, content_raw) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO skills_fts (skill_id, name, description, tags, content_tokenized, content_raw) VALUES (?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       input.name,
       desc,
-      tokenizeForFts(`${input.name} ${desc} ${input.content}`),
-      input.content,
+      tagsText,
+      tokenizeForFts(`${input.name} ${tagsText} ${desc} ${input.content}`),
+      `${tagsText}\n\n${input.content}`.trim(),
     )
   })()
 }
@@ -76,6 +84,7 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
   const db = getDb()
   const score = new Map<string, number>()
   const hit = new Map<string, SkillSearchHit>()
+  const pattern = `%${q}%`
   const bump = (row: SkillSearchHit, weight: number): void => {
     hit.set(row.id, row)
     score.set(row.id, (score.get(row.id) ?? 0) + weight)
@@ -88,6 +97,14 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
      LIMIT ?`,
   ).all(q, `${q}%`, limit) as SkillSearchHit[]
   for (const row of nameRows) bump(row, 3)
+
+  const tagRows = db.prepare(
+    `SELECT skill_id as id, name, description as desc
+     FROM skills_fts
+     WHERE tags = ? OR tags LIKE ?
+     LIMIT ?`,
+  ).all(q, pattern, limit) as SkillSearchHit[]
+  for (const row of tagRows) bump(row, 2.5)
 
   const match = (() => {
     const seg = tokenizeForFts(q)
@@ -113,13 +130,12 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
     }
   }
 
-  const pattern = `%${q}%`
   const likeRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE name LIKE ? OR description LIKE ? OR content_raw LIKE ?
+     WHERE name LIKE ? OR description LIKE ? OR tags LIKE ? OR content_raw LIKE ?
      LIMIT ?`,
-  ).all(pattern, pattern, pattern, limit) as SkillSearchHit[]
+  ).all(pattern, pattern, pattern, pattern, limit) as SkillSearchHit[]
   for (const row of likeRows) bump(row, 1)
 
   return [...score.entries()]
@@ -132,7 +148,7 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
 /** 重建 FTS 索引：扫描 config/skills/ 下的 SKILL.md 目录 */
 export function reindexSkillsFts(): void {
   const dir = getSkillsPath()
-  const rows: { id: string; name: string; description?: string; content: string }[] = []
+  const rows: { id: string; name: string; description?: string; tags?: string[]; content: string }[] = []
   if (existsSync(dir)) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory() || entry.name.startsWith('skl_upload_')) continue
@@ -146,6 +162,7 @@ export function reindexSkillsFts(): void {
           id: entry.name,
           name: parsed.name,
           description: parsed.description,
+          tags: parsed.tags,
           content: parsed.content,
         })
       } catch {
@@ -155,13 +172,22 @@ export function reindexSkillsFts(): void {
   }
   const db = getDb()
   const ins = db.prepare(
-    'INSERT INTO skills_fts (skill_id, name, description, content_tokenized, content_raw) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO skills_fts (skill_id, name, description, tags, content_tokenized, content_raw) VALUES (?, ?, ?, ?, ?, ?)',
   )
   db.transaction(() => {
     db.prepare('DELETE FROM skills_fts').run()
     for (const row of rows) {
       const desc = descriptionOf(row)
-      ins.run(row.id, row.name, desc, tokenizeForFts(`${row.name} ${desc} ${row.content}`), row.content)
+      const tags = normalizeTags(row.tags)
+      const tagsText = tags.join(' ')
+      ins.run(
+        row.id,
+        row.name,
+        desc,
+        tagsText,
+        tokenizeForFts(`${row.name} ${tagsText} ${desc} ${row.content}`),
+        `${tagsText}\n\n${row.content}`.trim(),
+      )
     }
   })()
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Pencil, Upload, Wrench, FileCode2 } from 'lucide-react'
 import { errorMessage, unwrap } from '@renderer/api/client'
+import { tagsToInput, parseTagsInput } from '@renderer/lib/tags'
 import {
   useSkills,
   useRemoveSkill,
@@ -35,6 +36,7 @@ interface Draft {
   id?: string
   name: string
   description: string
+  tags: string
   content: string
 }
 
@@ -42,6 +44,7 @@ const EMPTY_DRAFT: Draft = {
   isNew: true,
   name: '',
   description: '',
+  tags: '',
   content: '',
 }
 
@@ -66,6 +69,7 @@ export function SkillsPage() {
       id: full.id,
       name: full.name,
       description: full.description ?? '',
+      tags: tagsToInput(full.tags),
       content: full.content,
     })
   }
@@ -76,6 +80,7 @@ export function SkillsPage() {
       id: draft.id,
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
+      tags: parseTagsInput(draft.tags),
       content: draft.content,
     })
     setDraft(null)
@@ -212,6 +217,11 @@ export function SkillsPage() {
                     {t('common:skills.hasScript')}
                   </Badge>
                 ) : null}
+                {(s.tags ?? []).slice(0, 3).map((tag) => (
+                  <Badge key={tag} variant="default" style={{ fontSize: '0.7rem' }}>
+                    {tag}
+                  </Badge>
+                ))}
               </div>
               <div
                 style={{
@@ -260,6 +270,13 @@ export function SkillsPage() {
                     style={descTextareaStyle}
                     placeholder={t('common:skills.descriptionPh')}
                     rows={5}
+                  />
+                </Field>
+                <Field label={t('common:columns.tags')}>
+                  <Input
+                    value={draft.tags}
+                    onChange={(e) => setDraft({ ...draft, tags: e.target.value })}
+                    placeholder={t('common:columns.tagsPh')}
                   />
                 </Field>
                 <Field label={t('common:columns.content')} style={{ flex: '1', minHeight: 0, display: 'flex', flexDirection: 'column' }}>

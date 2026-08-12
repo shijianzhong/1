@@ -17,6 +17,7 @@ const MAX_FILE_COUNT = 200
 export interface ParsedSkill {
   name: string
   description?: string
+  tags?: string[]
   content: string
   /** 输出纪律段（frontmatter `discipline` 优先，回退 `## Discipline` 段落） */
   discipline?: string
@@ -108,6 +109,11 @@ export async function parseSkillZip(
   return {
     name,
     description: fm?.description?.trim() || undefined,
+    tags: Array.isArray(fm?.tags)
+      ? fm.tags.map((tag) => String(tag).trim()).filter(Boolean)
+      : typeof fm?.tags === 'string'
+        ? fm.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+        : undefined,
     content: body,
     discipline,
     resources: resources.length > 0 ? resources : undefined,

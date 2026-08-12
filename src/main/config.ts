@@ -74,6 +74,7 @@ export const SkillSchema = z.object({
   id,
   name: z.string().min(1),
   description: z.string().optional(),
+  tags: z.array(z.string().min(1)).optional(),
   content: z.string(),
   discipline: z.string().optional(),
   hasScripts: z.boolean().optional(),

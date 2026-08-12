@@ -8,6 +8,7 @@ import type { RegistryProvenance } from '@shared/types'
 export interface ParsedSkillMd {
   name: string
   description?: string
+  tags?: string[]
   content: string
   /** 输出纪律段（frontmatter `discipline` 优先，回退 `## Discipline` 段落） */
   discipline?: string
@@ -22,6 +23,7 @@ export interface ParsedSkillMd {
 interface Frontmatter {
   name?: string
   description?: string
+  tags?: string[] | string
   [key: string]: unknown
 }
 
@@ -42,7 +44,7 @@ export function parseFrontmatter(text: string): { fm: Frontmatter | null; body: 
     const colonIdx = trimmed.indexOf(':')
     if (colonIdx === -1) continue
     const key = trimmed.slice(0, colonIdx).trim()
-    let value = trimmed.slice(colonIdx + 1).trim()
+    let value: unknown = trimmed.slice(colonIdx + 1).trim()
     if (!key) continue
 
     // 块标量：| 字面（保留换行）/ > 折叠（空格连接）——取后续缩进行
@@ -54,16 +56,24 @@ export function parseFrontmatter(text: string): { fm: Frontmatter | null; body: 
         i++
       }
       value = folded ? block.join(' ') : block.join('\n')
+    } else if (!value) {
+      const list: string[] = []
+      while (i < lines.length && (lines[i].startsWith('  - ') || lines[i].startsWith('\t- '))) {
+        list.push(lines[i].replace(/^\s*-\s*/, '').trim())
+        i++
+      }
+      value = list.length > 0 ? list : ''
     } else {
+      const str = String(value)
       // 去引号（双引号配套反转义 \" \\——与导出侧 yamlSafe 回环保真）
-      if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1).replace(/\\(["\\])/g, '$1')
-      } else if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
-        value = value.slice(1, -1)
+      if (str.length >= 2 && str.startsWith('"') && str.endsWith('"')) {
+        value = str.slice(1, -1).replace(/\\(["\\])/g, '$1')
+      } else if (str.length >= 2 && str.startsWith("'") && str.endsWith("'")) {
+        value = str.slice(1, -1)
       } else {
         // 行内注释（空格 + # 起始才算，值内 # 保留）
-        const hashIdx = value.indexOf(' #')
-        if (hashIdx !== -1) value = value.slice(0, hashIdx).trim()
+        const hashIdx = str.indexOf(' #')
+        value = hashIdx !== -1 ? str.slice(0, hashIdx).trim() : str
       }
     }
     fm[key as keyof Frontmatter] = value
@@ -95,11 +105,6 @@ export function extractDisciplineSection(body: string): string | undefined {
   return text || undefined
 }
 
-function fallbackDescription(body: string): string | undefined {
-  const text = body.replace(/\s+/g, ' ').trim()
-  return text ? text.slice(0, 120) : undefined
-}
-
 /** 解析 SKILL.md 文本为结构化对象（frontmatter + 正文） */
 export function parseSkillMd(text: string): ParsedSkillMd | null {
   const { fm, body } = parseFrontmatter(text)
@@ -108,6 +113,11 @@ export function parseSkillMd(text: string): ParsedSkillMd | null {
 
   const fmDiscipline = typeof fm?.discipline === 'string' ? fm.discipline.trim() : ''
   const discipline = fmDiscipline || extractDisciplineSection(body) || undefined
+  const tags = Array.isArray(fm?.tags)
+    ? fm.tags.map((tag) => String(tag).trim()).filter(Boolean)
+    : typeof fm?.tags === 'string'
+      ? fm.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+      : undefined
 
   // registry provenance from frontmatter
   const registryId = typeof fm?.registry_id === 'string' ? fm.registry_id.trim() : ''
@@ -128,6 +138,7 @@ export function parseSkillMd(text: string): ParsedSkillMd | null {
   return {
     name,
     description: fm?.description?.trim() || undefined,
+    tags: tags && tags.length > 0 ? tags : undefined,
     content: body,
     discipline,
     registry,
@@ -152,12 +163,17 @@ export function yamlSafe(s: string): string {
 export function buildSkillMd(skill: {
   name: string
   description?: string
+  tags?: string[]
   content: string
   discipline?: string
   registry?: RegistryProvenance
 }): string {
   const fm: string[] = ['---', `name: ${yamlSafe(skill.name)}`]
   if (skill.description) fm.push(`description: ${yamlSafe(skill.description)}`)
+  if (skill.tags && skill.tags.length > 0) {
+    fm.push('tags:')
+    for (const tag of skill.tags) fm.push(`  - ${yamlSafe(tag)}`)
+  }
   if (skill.registry) {
     fm.push(`registry_id: ${skill.registry.registryId}`)
     fm.push(`registry_version: ${skill.registry.version}`)

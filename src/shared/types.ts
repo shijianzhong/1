@@ -441,6 +441,8 @@ export interface Skill {
   id: string
   name: string
   description?: string
+  /** 检索标签（frontmatter tags） */
+  tags?: string[]
   /** SKILL.md 内容（inline 成 <skill> XML 块，限长 24000 字） */
   content: string
   /** 输出纪律段 */

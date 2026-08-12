@@ -99,13 +99,30 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
     sql: 'ALTER TABLE sessions ADD COLUMN cwd TEXT',
   },
   {
-    // v4：skills 全文检索（主数据仍在 JSON，SQLite 只存 FTS 索引）
+    // v4：skills 全文检索（主数据在目录化 SKILL.md，SQLite 只存 FTS 索引）
     version: 4,
     sql: `
       CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
         skill_id UNINDEXED,
         name,
         description,
+        tags,
+        content_tokenized,
+        content_raw UNINDEXED,
+        tokenize='unicode61'
+      );
+    `,
+  },
+  {
+    // v5：skills_fts 增加 tags 列。FTS5 不能 ALTER，直接重建后由启动自检回填。
+    version: 5,
+    sql: `
+      DROP TABLE IF EXISTS skills_fts;
+      CREATE VIRTUAL TABLE skills_fts USING fts5(
+        skill_id UNINDEXED,
+        name,
+        description,
+        tags,
         content_tokenized,
         content_raw UNINDEXED,
         tokenize='unicode61'

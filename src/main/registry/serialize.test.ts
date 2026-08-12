@@ -160,6 +160,11 @@ describe('buildSkillMarkdown', () => {
     expect(md).toContain('name: "Code: Reviewer"')
     expect(md).toContain('description: "含 # 注释与 \\"引号\\""')
   })
+
+  it('tags 写入 frontmatter 列表', () => {
+    const md = buildSkillMarkdown(makeSkill({ tags: ['微信公众号排版', 'markdown to wechat'] }))
+    expect(md).toContain('tags:\n  - 微信公众号排版\n  - markdown to wechat')
+  })
 })
 
 describe('yamlSafe', () => {

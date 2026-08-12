@@ -20,6 +20,7 @@ function freshDb(): Database.Database {
       skill_id UNINDEXED,
       name,
       description,
+      tags,
       content_tokenized,
       content_raw UNINDEXED,
       tokenize='unicode61'
@@ -63,6 +64,24 @@ describe('storage/skills/fts', () => {
     })
     const hits = searchSkills('行业调研', 5)
     expect(hits[0]?.desc).toContain('行业调研')
+  })
+
+  it('tags 命中时提升排序', () => {
+    upsertSkillFts({
+      id: 's1',
+      name: '品牌视觉板',
+      description: '生成品牌视觉系统',
+      tags: ['品牌手册', '视觉规范', 'brand guideline'],
+      content: '用于品牌规范与品牌世界观图板生成',
+    })
+    upsertSkillFts({
+      id: 's2',
+      name: '通用设计',
+      description: '一般设计咨询',
+      content: '帮助做页面美化',
+    })
+    const hits = searchSkills('品牌手册', 5)
+    expect(hits[0]?.id).toBe('s1')
   })
 
   it('删除后不再可检索', () => {

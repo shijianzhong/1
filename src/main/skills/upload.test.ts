@@ -79,6 +79,12 @@ describe('parseSkillZip frontmatter 引号（与 serialize.yamlSafe 回环，REG
     expect(parsed.description).toBe('含 # 注释与 "引号"')
   })
 
+  it('解析 tags 列表 frontmatter', async () => {
+    const md = '---\nname: demo\ntags:\n  - 微信公众号排版\n  - markdown to wechat\n---\n# Demo'
+    const parsed = await parseSkillZip(await makeZip(md))
+    expect(parsed.tags).toEqual(['微信公众号排版', 'markdown to wechat'])
+  })
+
   it('无引号值含 " #" 仍按行内注释截断（既有行为不变）', async () => {
     const md = '---\nname: demo # 这是注释\n---\n# Demo'
     const parsed = await parseSkillZip(await makeZip(md))

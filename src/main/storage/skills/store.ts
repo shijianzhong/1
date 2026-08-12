@@ -59,6 +59,7 @@ function scanSkillDir(dir: string): Skill | null {
     id,
     name: parsed.name,
     description: parsed.description,
+    tags: parsed.tags,
     content: parsed.content,
     discipline: parsed.discipline,
     hasScripts: hasScriptsInDir(dir),
@@ -132,6 +133,7 @@ export function saveSkill(input: unknown, opts?: { now?: number }): Skill {
     id,
     name: parsed.name,
     description: parsed.description,
+    tags: parsed.tags ?? existing?.tags,
     content: parsed.content,
     // 编辑表单不携带 discipline 时保留既有值（防编辑保存误清 propose_skill/导入写入的纪律段）
     discipline: parsed.discipline ?? existing?.discipline,
