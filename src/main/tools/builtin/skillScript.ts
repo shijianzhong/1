@@ -111,36 +111,37 @@ export function registerSkillScriptTools(): void {
 
       const skill = listSkillMetas().find((s) => s.id === skillRef || s.name === skillRef)
       if (!skill) {
-        return { ok: false, error: 'skill_not_found', hint: `技能「${skillRef}」不存在，用已注入 <skill> 块里的 name` }
+        return { ok: false, error: 'skill_not_found', messageKey: 'errors.tools.skill_not_found', hint: `技能「${skillRef}」不存在，用已注入 <skill> 块里的 name` }
       }
       if (!skill.hasScripts) {
-        return { ok: false, error: 'no_scripts', hint: `技能「${skill.name}」不带脚本` }
+        return { ok: false, error: 'no_scripts', messageKey: 'errors.tools.skill_no_scripts', hint: `技能「${skill.name}」不带脚本` }
       }
       const rootDir = getSkillRootDir(skill.id)
       const scriptsDir = join(rootDir, 'scripts')
       if (!existsSync(scriptsDir)) {
-        return { ok: false, error: 'no_scripts_dir', hint: `技能「${skill.name}」脚本目录异常` }
+        return { ok: false, error: 'no_scripts_dir', messageKey: 'errors.tools.skill_no_scripts_dir', hint: `技能「${skill.name}」脚本目录异常` }
       }
 
       // 路径安全：拒绝绝对路径与 .. 穿越，解析后必须落在 scripts/ 内
       if (isAbsolute(script) || script.split(/[\\/]/).includes('..')) {
-        return { ok: false, error: 'invalid_script_path', hint: 'script 必须是 scripts/ 目录内的相对路径' }
+        return { ok: false, error: 'invalid_script_path', messageKey: 'errors.tools.skill_invalid_path' }
       }
       const scriptAbs = resolve(scriptsDir, script)
       if (scriptAbs !== scriptsDir && !scriptAbs.startsWith(scriptsDir + sep)) {
-        return { ok: false, error: 'invalid_script_path', hint: 'script 必须是 scripts/ 目录内的相对路径' }
+        return { ok: false, error: 'invalid_script_path', messageKey: 'errors.tools.skill_invalid_path' }
       }
       if (!existsSync(scriptAbs)) {
         return {
           ok: false,
           error: 'script_not_found',
+          messageKey: 'errors.tools.skill_script_not_found',
           hint: `可用脚本：${listSkillScripts(rootDir).join(', ') || '（无）'}`,
         }
       }
 
       const interpreter = interpreterFor(scriptAbs)
       if (!interpreter) {
-        return { ok: false, error: 'unsupported_script_type', hint: '支持 .py / .sh / .js 脚本' }
+        return { ok: false, error: 'unsupported_script_type', messageKey: 'errors.tools.skill_unsupported_type' }
       }
 
       logger.info(`[skill-script] ${skill.name}: ${script} ${(scriptArgs ?? []).join(' ')}`)
@@ -157,13 +158,13 @@ export function registerSkillScriptTools(): void {
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
         if (msg === 'timeout') {
-          return { ok: false, error: 'timeout', hint: `脚本运行超过 ${TIMEOUT_MS / 1000}s 已终止，缩小输入或优化脚本后重试` }
+          return { ok: false, error: 'timeout', messageKey: 'errors.tools.skill_script_timeout', hint: `脚本运行超过 ${TIMEOUT_MS / 1000}s 已终止，缩小输入或优化脚本后重试` }
         }
         if (msg === 'stdout_limit_exceeded') {
-          return { ok: false, error: 'stdout_limit_exceeded', hint: `输出超过 ${Math.round(STDOUT_MAX_CHARS / 1024)}KB 上限已终止，让脚本精简输出后重试` }
+          return { ok: false, error: 'stdout_limit_exceeded', messageKey: 'errors.tools.skill_stdout_limit', hint: `输出超过 ${Math.round(STDOUT_MAX_CHARS / 1024)}KB 上限已终止，让脚本精简输出后重试` }
         }
         if (msg.includes('ENOENT')) {
-          return { ok: false, error: 'interpreter_not_found', hint: `系统缺少解释器（${interpreter.cmd}），请用户安装后重试` }
+          return { ok: false, error: 'interpreter_not_found', messageKey: 'errors.tools.skill_interpreter_not_found', hint: `系统缺少解释器（${interpreter.cmd}），请用户安装后重试` }
         }
         throw error // 交 registry 重试/错误 JSON（铁律11）
       }

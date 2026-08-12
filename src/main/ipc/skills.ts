@@ -3,6 +3,7 @@ import type { Skill, SkillMeta } from '@shared/types'
 import { withHandler } from './handler'
 import { getSkill, getSkillDir, invalidateSkillsCache, listSkillMetas, removeSkill, saveSkill } from '../storage/models'
 import { extractSkillResourcesToDir, uploadSkillFile } from '../skills/upload'
+import { logger } from '../logger'
 
 // —— 技能 IPC（§八之二 B）——
 // 目录化改造（docs/SKILL_STORAGE_STANDARD_PLAN.md §6.8）：
@@ -35,7 +36,14 @@ export function registerSkillsHandlers(): void {
       discipline: parsed.discipline,
     })
     // 提取 scripts/resources 到 skill 目录（目录化标准格式，直接落最终位置）
-    await extractSkillResourcesToDir(filePath, getSkillDir(saved.id), parsed)
+    // 失败时回滚：删除已落盘的 SKILL.md，防残缺 skill 残留
+    try {
+      await extractSkillResourcesToDir(filePath, getSkillDir(saved.id), parsed)
+    } catch (error) {
+      logger.warn(`[skills:pickFile] 资源提取失败，回滚 skill ${saved.id}`, error)
+      removeSkill(saved.id)
+      throw error
+    }
     // extract 直接改目录不走 save/remove，须显式失效缓存，
     // 防 listSkillMetas 读到 extract 前的中间态（hasScripts=false）驻留
     invalidateSkillsCache()

@@ -53,6 +53,14 @@
     "search_failed": "Search backend request failed",
     "search_no_results": "No search results (possible anti-bot)",
     "skill_not_found": "Skill not found or has been removed",
+    "skill_no_scripts": "This skill has no scripts",
+    "skill_no_scripts_dir": "Skill scripts directory is missing",
+    "skill_invalid_path": "Script path must be a relative path inside scripts/",
+    "skill_script_not_found": "Script not found",
+    "skill_unsupported_type": "Unsupported script type, only .py / .sh / .js",
+    "skill_script_timeout": "Script execution timed out, terminated",
+    "skill_stdout_limit": "Script output limit exceeded, terminated",
+    "skill_interpreter_not_found": "System missing script interpreter",
     "unknown_tool": "Unknown tool"
   },
   "mcp": {

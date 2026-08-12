@@ -26,11 +26,6 @@ export interface ParsedSkill {
   scripts?: string[]
 }
 
-function fallbackDescription(body: string): string | undefined {
-  const text = body.replace(/\s+/g, ' ').trim()
-  return text ? text.slice(0, 120) : undefined
-}
-
 /** 从文件名生成默认 skill 名 */
 function nameFromFilename(filePath: string): string {
   const base = basename(filePath, extname(filePath))
@@ -112,7 +107,7 @@ export async function parseSkillZip(
 
   return {
     name,
-    description: fm?.description?.trim() || fallbackDescription(body),
+    description: fm?.description?.trim() || undefined,
     content: body,
     discipline,
     resources: resources.length > 0 ? resources : undefined,

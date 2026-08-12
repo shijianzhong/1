@@ -53,6 +53,14 @@
     "search_failed": "搜索后端请求失败",
     "search_no_results": "搜索无结果（可能触发反爬）",
     "skill_not_found": "技能不存在或已被删除",
+    "skill_no_scripts": "该技能不含脚本",
+    "skill_no_scripts_dir": "技能脚本目录异常",
+    "skill_invalid_path": "脚本路径必须是 scripts/ 目录内的相对路径",
+    "skill_script_not_found": "脚本不存在",
+    "skill_unsupported_type": "不支持的脚本类型，仅支持 .py / .sh / .js",
+    "skill_script_timeout": "脚本执行超时，已终止",
+    "skill_stdout_limit": "脚本输出超限，已终止",
+    "skill_interpreter_not_found": "系统缺少脚本解释器",
     "unknown_tool": "未知工具"
   },
   "mcp": {

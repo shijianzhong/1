@@ -51,7 +51,7 @@ function scanSkillDir(dir: string): Skill | null {
     const s = statSync(skillMdPath)
     stat = { mtimeMs: s.mtimeMs, birthtimeMs: s.birthtimeMs }
   } catch {
-    stat = { mtimeMs: Date.now(), birthtimeMs: Date.now() }
+    stat = { mtimeMs: 0, birthtimeMs: 0 }
   }
 
   const id = basename(dir)
