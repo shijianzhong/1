@@ -13,8 +13,9 @@ import { formatMentionDisplay, type MentionKind } from '@shared/mentions'
 
 // —— @提及芯片输入框（首页主助手 @角色/@能力/@技能，§三之三 M）——
 // contenteditable 承载文本 + 芯片（contenteditable=false span，data-kind/data-id 存稳定引用）。
-// @ 触发分组下拉：角色 / 能力 / 技能三组，组标题分隔 + 徽标色，搜索实时过滤，
-// ↑↓ 跨组导航，Enter/Tab 选中，Esc 关闭，近期用过优先排前（localStorage 持久）。
+// @ 触发分组下拉：角色 / 能力 / 技能三组，手风琴折叠（点击标题展开/收起），
+// 搜索实时过滤（有 query 时自动展开所有匹配组），↑↓ 跨组导航（仅展开组），
+// Enter/Tab 选中，Esc 关闭，近期用过优先排前（localStorage 持久）。
 // 序列化：getText → `@名字`（对话好看）；getMentions → {kind,id} 旁路给主进程稳定解析。
 
 export interface MentionTarget {
@@ -46,7 +47,8 @@ interface Props {
 
 const RECENT_KEY = 'one.home.recentMentions'
 const MAX_RECENT = 5
-const MAX_PER_GROUP = 6
+/** 展开组内最大渲染条目数（防极端数量卡渲染；折叠组不渲染） */
+const MAX_ITEMS_PER_GROUP = 50
 
 /** 读近期提及 id 列表（localStorage，新→旧） */
 function readRecent(): string[] {
@@ -120,9 +122,11 @@ export function buildMentionGroups(
   return groups.filter((g) => g.items.length > 0)
 }
 
-/** 拍平分组为线性列表（键盘 ↑↓ 跨组导航用），含每组截断 */
-function flatten(groups: MentionGroup[]): MentionTarget[] {
-  return groups.flatMap((g) => g.items.slice(0, MAX_PER_GROUP))
+/** 拍平**展开**分组为线性列表（键盘 ↑↓ 跨组导航用）；折叠组的条目不参与导航 */
+function flatten(groups: MentionGroup[], expanded: Set<string>): MentionTarget[] {
+  return groups
+    .filter((g) => expanded.has(g.kind))
+    .flatMap((g) => g.items.slice(0, MAX_ITEMS_PER_GROUP))
 }
 
 export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
@@ -136,13 +140,39 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
     const [query, setQuery] = useState('')
     const [activeIdx, setActiveIdx] = useState(0)
     const [recentIds, setRecentIds] = useState<string[]>(readRecent)
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
     const mentionAnchorRef = useRef<{ node: Text; offset: number } | null>(null)
 
     const groups = useMemo(
       () => buildMentionGroups(agents, capabilities, skills, query, recentIds),
       [agents, capabilities, skills, query, recentIds],
     )
-    const flat = useMemo(() => flatten(groups), [groups])
+
+    // 搜索时自动展开所有匹配组；无搜索时默认展开第一个有内容的组
+    useEffect(() => {
+      if (!open) return
+      const q = query.trim()
+      if (q) {
+        // 有搜索词：展开所有有匹配的组
+        setExpandedGroups(new Set(groups.map((g) => g.kind)))
+      } else {
+        // 无搜索词：只展开第一个组
+        const firstKind = groups[0]?.kind
+        setExpandedGroups(firstKind ? new Set([firstKind]) : new Set())
+      }
+    }, [query, open, groups])
+    const flat = useMemo(() => flatten(groups, expandedGroups), [groups, expandedGroups])
+
+    // 点击组标题：切换展开/折叠
+    const toggleGroup = useCallback((kind: string) => {
+      setExpandedGroups((prev) => {
+        const next = new Set(prev)
+        if (next.has(kind)) next.delete(kind)
+        else next.add(kind)
+        return next
+      })
+      setActiveIdx(0)
+    }, [])
 
     // 序列化展示文本：芯片 → @名字（对话记录/落库好看）
     const getText = useCallback((): string => {
@@ -321,6 +351,14 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
             return
           }
         }
+        // 下拉打开但无展开项（全折叠 / 无搜索结果）：Enter/Tab/Escape 关闭下拉，不发送
+        if (open && flat.length === 0) {
+          if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
+            e.preventDefault()
+            setOpen(false)
+            return
+          }
+        }
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault()
           const text = getText()
@@ -384,42 +422,68 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
           role="textbox"
           aria-multiline="true"
         />
-        {open && flat.length > 0 ? (
+        {open && groups.length > 0 ? (
           <div
             ref={listRef}
             className="mention-composer__dropdown"
             onMouseDown={(e) => e.stopPropagation()}
             onMouseLeave={() => setActiveIdx(-1)}
           >
-            {groups.map((g) => (
-              <div key={g.kind} className="mention-composer__group">
-                <div className="mention-composer__group-title">{kindLabel(g.kind)}</div>
-                {g.items.slice(0, MAX_PER_GROUP).map((tg) => {
-                  linearIdx += 1
-                  const idx = linearIdx
-                  return (
-                    <button
-                      key={`${tg.kind}:${tg.id}`}
-                      type="button"
-                      className={`mention-composer__option ${idx === activeIdx ? 'is-active' : ''}`}
-                      onMouseEnter={() => setActiveIdx(idx)}
-                      onClick={() => insertChip(tg)}
+            {groups.map((g) => {
+              const isExpanded = expandedGroups.has(g.kind)
+              return (
+                <div key={g.kind} className="mention-composer__group">
+                  <button
+                    type="button"
+                    className={`mention-composer__group-title ${isExpanded ? 'is-expanded' : ''}`}
+                    onClick={() => toggleGroup(g.kind)}
+                  >
+                    <span className="mention-composer__group-label">{kindLabel(g.kind)}</span>
+                    <span className="mention-composer__group-count">{g.items.length}</span>
+                    <svg
+                      className="mention-composer__chevron"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="none"
                     >
-                      <span className="mention-composer__name">{tg.name}</span>
-                      {tg.description ? (
-                        <span className="mention-composer__desc">{tg.description}</span>
-                      ) : null}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
-            {query && flat.length === 0 ? (
+                      <path
+                        d="M3 4.5L6 7.5L9 4.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  {isExpanded &&
+                    g.items.slice(0, MAX_ITEMS_PER_GROUP).map((tg) => {
+                      linearIdx += 1
+                      const idx = linearIdx
+                      return (
+                        <button
+                          key={`${tg.kind}:${tg.id}`}
+                          type="button"
+                          className={`mention-composer__option ${idx === activeIdx ? 'is-active' : ''}`}
+                          onMouseEnter={() => setActiveIdx(idx)}
+                          onClick={() => insertChip(tg)}
+                        >
+                          <span className="mention-composer__name">{tg.name}</span>
+                          {tg.description ? (
+                            <span className="mention-composer__desc">{tg.description}</span>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                </div>
+              )
+            })}
+            {query && groups.length === 0 ? (
               <div className="mention-composer__empty">{t('home:mention.empty')}</div>
             ) : null}
           </div>
         ) : null}
-        {open && flat.length === 0 ? (
+        {open && groups.length === 0 ? (
           <div className="mention-composer__dropdown">
             <div className="mention-composer__empty">{t('home:mention.empty')}</div>
           </div>
