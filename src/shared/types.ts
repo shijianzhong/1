@@ -823,6 +823,8 @@ export interface AgentRunCallbacks {
   onToolCall?: (tool: string, args: unknown, toolUseId: string) => void
   onToolResult?: (tool: string, result: unknown, toolUseId: string) => void
   onRetry?: (info: RetryInfo) => void
+  /** message_stop：LLM 回合结束，携带 token 用量（后端不传则 undefined） */
+  onMessageStop?: (usage?: TokenUsage) => void
 }
 
 /** Agent 终止条件（§D） */

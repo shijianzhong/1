@@ -4,7 +4,9 @@ import type {
   CreateDraft,
   CreateMeta,
   HomeStreamEvent,
+  LlmContentBlock,
   LlmMessage,
+  TokenUsage,
 } from '@shared/types'
 import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
@@ -231,10 +233,21 @@ export function registerHomeHandlers(): void {
     const history = listMessages(sid)
     addMessage({ sessionId: sid, role: 'user', content: message })
 
-    const historyMessages: LlmMessage[] = history.map((m) => ({
-      role: m.role === 'tool' ? ('user' as const) : m.role,
-      content: m.content,
-    }))
+    // 历史重建：若消息含 meta.structured=true，content 是 JSON-stringified LlmContentBlock[]
+    // （tool_use / tool_result 块），需还原为结构化 content 供 LLM 看到完整工具调用上下文
+    const historyMessages: LlmMessage[] = history.map((m) => {
+      const meta = m.meta as { structured?: boolean; intermediate?: boolean } | undefined
+      if (meta?.structured) {
+        return {
+          role: (m.role === 'tool' ? 'user' : m.role) as LlmMessage['role'],
+          content: JSON.parse(m.content) as LlmContentBlock[],
+        }
+      }
+      return {
+        role: (m.role === 'tool' ? 'user' : m.role) as LlmMessage['role'],
+        content: m.content,
+      }
+    })
     const allMessages: LlmMessage[] = [
       ...historyMessages,
       { role: 'user', content: message },
@@ -597,8 +610,17 @@ export function registerHomeHandlers(): void {
         if (!graph) throw new IpcErrorThrow('errors:home.graph_build_failed', '组队图构建失败')
         const question = mentions.cleanText || message
         logger.info(`[trace:cap] home.directAgent → runTeam agents=${directAgent.map((a) => a.id).join(',')}`)
+        const teamTurnStart = Date.now()
         const result = await runTeam(graph, question, sid, buildDeps, emitStream, signal)
-        addMessage({ sessionId: sid, role: 'assistant', content: result.output })
+        const teamTurnEnd = Date.now()
+        addMessage({
+          sessionId: sid,
+          role: 'assistant',
+          content: result.output,
+          meta: {
+            timing: { startedAt: teamTurnStart, completedAt: teamTurnEnd },
+          },
+        })
         emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
         logger.info(`[trace:cap] home.directAgent.end session=${sid} outputLen=${result.output.length}`)
         return { runId: sid }
@@ -609,6 +631,17 @@ export function registerHomeHandlers(): void {
       const detector = new TeamJsonDetector()
       let finalText = ''
       let finalThinking = ''
+      const turnStart = Date.now()
+      let turnUsage: TokenUsage | undefined
+      // 工具调用记录：onToolCall/onToolResult 积累，回合结束存入 meta.toolCalls
+      const toolCallLog: Array<{
+        id: string
+        tool: string
+        argsSummary: string
+        resultSummary?: string
+        status: 'pending' | 'done' | 'error'
+        timestamp: number
+      }> = []
 
       const streamCallbacks = {
         onText: (text: string) => {
@@ -629,8 +662,44 @@ export function registerHomeHandlers(): void {
             delayMs: info.delayMs,
             reason: info.reason,
           }),
-        onToolResult: (tool: string, result: unknown) => {
+        onToolCall: (tool: string, args: unknown, toolUseId: string) => {
+          logger.info(`[trace:cap] home.tool_call tool=${tool} args=${JSON.stringify(args).slice(0, 200)}`)
+          toolCallLog.push({
+            id: toolUseId,
+            tool,
+            argsSummary: JSON.stringify(args).slice(0, 200),
+            status: 'pending',
+            timestamp: Date.now(),
+          })
+          emitStream({
+            type: 'orch_event',
+            event: { type: 'tool_call', node_id: 'home', tool, args },
+          })
+        },
+        onToolResult: (tool: string, result: unknown, toolUseId: string) => {
+          const resultStr = typeof result === 'string' ? result : JSON.stringify(result)
+          logger.info(`[trace:cap] home.tool_result tool=${tool} resultLen=${resultStr.length} result=${resultStr.slice(0, 200)}`)
+          // 更新对应的 toolCallLog 条目
+          const entry = toolCallLog.find((tc) => tc.id === toolUseId && tc.status === 'pending')
+          if (entry) {
+            const isError = typeof result === 'object' && result !== null && 'ok' in result && (result as { ok: boolean }).ok === false
+            entry.status = isError ? 'error' : 'done'
+            entry.resultSummary = resultStr.slice(0, 200)
+          }
+          emitStream({
+            type: 'orch_event',
+            event: { type: 'tool_result', node_id: 'home', result },
+          })
           if (tool.startsWith('propose_')) emitProposeFailure(tool, String(result))
+        },
+        onMessageStop: (usage?: TokenUsage) => {
+          if (usage) {
+            turnUsage = {
+              inputTokens: (turnUsage?.inputTokens ?? 0) + (usage.inputTokens ?? 0),
+              outputTokens: (turnUsage?.outputTokens ?? 0) + (usage.outputTokens ?? 0),
+              totalTokens: (turnUsage?.totalTokens ?? 0) + (usage.totalTokens ?? 0),
+            }
+          }
         },
       }
 
@@ -647,6 +716,22 @@ export function registerHomeHandlers(): void {
         `[trace:cap] home.mainAgent.end session=${sid} hitIterLimit=${result.hitIterationLimit} ` +
           `finalTextLen=${finalText.length} textTail=${JSON.stringify(finalText.slice(-80))}`,
       )
+
+      // —— 保存中间消息到 DB（供下一轮历史重建）——
+      // Agent.run 的 messages 数组包含完整工具调用上下文（tool_use 块 + tool_result 块），
+      // 但之前只存了最终文本，导致 LLM 下轮看不到上轮的工具调用模式，无法借鉴。
+      // 这里把 input 之后的所有中间消息（除最终 assistant 回复外）以 structured JSON 存入 DB。
+      const turnMessages = result.messages.slice(l1Messages.length)
+      // 最后一条是最终 assistant 回复（单独存 finalText），跳过
+      for (const msg of turnMessages.slice(0, -1)) {
+        const isStructured = typeof msg.content !== 'string'
+        addMessage({
+          sessionId: sid,
+          role: msg.role === 'user' ? 'tool' : 'assistant',
+          content: isStructured ? JSON.stringify(msg.content) : (msg.content as string),
+          meta: isStructured ? { structured: true, intermediate: true } : { intermediate: true },
+        })
+      }
 
       // —— 创建幻觉补跑：自称已入库 / 否认持久化，但从未调 propose_* → 按 kind 定向挂工具再跑 ——
       // 挡「嘴上创建成功、确认卡从未出现」；澄清追问不触发（见 needsCreateRecovery）。
@@ -698,6 +783,17 @@ export function registerHomeHandlers(): void {
           { maxIterations: 4 },
         )
         if (recovery.finalThinking) finalThinking = recovery.finalThinking
+        // 保存 recovery 路径的中间消息（跳过输入消息 + 系统纠正消息，跳过最终回复）
+        const recoveryNewMessages = recovery.messages.slice(result.messages.length + 1)
+        for (const msg of recoveryNewMessages.slice(0, -1)) {
+          const isStructured = typeof msg.content !== 'string'
+          addMessage({
+            sessionId: sid,
+            role: msg.role === 'user' ? 'tool' : 'assistant',
+            content: isStructured ? JSON.stringify(msg.content) : (msg.content as string),
+            meta: isStructured ? { structured: true, intermediate: true } : { intermediate: true },
+          })
+        }
         if (proposeCount > 0) {
           createRecovered = true
           // 补跑已弹出卡：历史不要留「已入库/没有持久化」谎言；正文由前端 notice/卡表达
@@ -729,6 +825,8 @@ export function registerHomeHandlers(): void {
 
       // 流结束：判定直答 vs 组队
       const decision = detector.decide()
+      const turnEnd = Date.now()
+      const timingMeta = { startedAt: turnStart, completedAt: turnEnd }
       logger.info(
         `[trace:cap] home.router.decide session=${sid} kind=${decision.kind}` +
           (decision.kind === 'team' ? ` json=${JSON.stringify(decision.json)}` : ''),
@@ -755,7 +853,10 @@ export function registerHomeHandlers(): void {
             meta: {
               thinking: finalThinking || undefined,
               team: decision.json,
+              timing: timingMeta,
+              ...(turnUsage ? { tokenUsage: turnUsage } : {}),
               ...(createMeta ? { create: createMeta } : {}),
+              ...(toolCallLog.length > 0 ? { toolCalls: toolCallLog } : {}),
             },
           })
         } else {
@@ -770,7 +871,10 @@ export function registerHomeHandlers(): void {
             content: finalText,
             meta: {
               ...(finalThinking ? { thinking: finalThinking } : {}),
+              timing: timingMeta,
+              ...(turnUsage ? { tokenUsage: turnUsage } : {}),
               ...(createMeta ? { create: createMeta } : {}),
+              ...(toolCallLog.length > 0 ? { toolCalls: toolCallLog } : {}),
             },
           })
         }
@@ -787,7 +891,10 @@ export function registerHomeHandlers(): void {
           content: finalText,
           meta: {
             ...(finalThinking ? { thinking: finalThinking } : {}),
+            timing: timingMeta,
+            ...(turnUsage ? { tokenUsage: turnUsage } : {}),
             ...(createMeta ? { create: createMeta } : {}),
+            ...(toolCallLog.length > 0 ? { toolCalls: toolCallLog } : {}),
           },
         })
       }
@@ -799,10 +906,11 @@ export function registerHomeHandlers(): void {
 
       // 10. 结束事件：触顶收尾用 max_iterations，便于前端/日志区分假 end_turn
       const stopReason = result.hitIterationLimit ? 'max_iterations' : 'end_turn'
-      logger.info(`[trace:cap] home.message_stop session=${sid} reason=${stopReason} aborted=${signal.aborted}`)
+      logger.info(`[trace:cap] home.message_stop session=${sid} reason=${stopReason} aborted=${signal.aborted} usage=${turnUsage ? JSON.stringify(turnUsage) : 'none'}`)
       emitStream({
         type: 'message_stop',
         stop_reason: stopReason,
+        ...(turnUsage ? { usage: turnUsage } : {}),
       })
     } catch (e) {
       // 错误推到 AI 气泡位置（而非聊天区上方），含可重试提示

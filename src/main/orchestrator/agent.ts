@@ -264,6 +264,7 @@ export class Agent {
   private emitDelta(delta: LlmDelta, cb: AgentRunCallbacks): void {
     if (delta.type === 'text') cb.onText?.(delta.text)
     else if (delta.type === 'thinking') cb.onThinking?.(delta.text)
+    else if (delta.type === 'message_stop') cb.onMessageStop?.(delta.usage)
   }
 }
 

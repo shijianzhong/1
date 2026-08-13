@@ -87,16 +87,34 @@ export interface NodeStateInfo {
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
 export function toChatMessages(msgs: SessionMessage[]): ChatMessage[] {
-  return msgs.map((m) => {
-    const thinking = (m.meta as { thinking?: string } | undefined)?.thinking
-    return {
-      id: m.id,
-      role: m.role === 'tool' ? 'user' : (m.role as 'user' | 'assistant'),
-      text: m.content,
-      // 历史消息的 thinking 默认折叠（用户可展开查看）
-      thinking: thinking || undefined,
-      thinkingCollapsed: thinking ? true : undefined,
-      createdAt: m.createdAt,
-    }
-  })
+  return msgs
+    .filter((m) => {
+      // 跳过中间消息（tool_use/tool_result 等，仅供 LLM 历史重建，不在聊天界面展示）
+      const meta = m.meta as { intermediate?: boolean } | undefined
+      return !meta?.intermediate
+    })
+    .map((m) => {
+      const meta = m.meta as
+        | {
+            thinking?: string
+            timing?: { startedAt?: number; completedAt?: number }
+            tokenUsage?: TokenUsage
+            toolCalls?: ToolCallInfo[]
+          }
+        | undefined
+      return {
+        id: m.id,
+        role: m.role === 'tool' ? 'user' : (m.role as 'user' | 'assistant'),
+        text: m.content,
+        // 历史消息的 thinking 默认折叠（用户可展开查看）
+        thinking: meta?.thinking || undefined,
+        thinkingCollapsed: meta?.thinking ? true : undefined,
+        // 从 meta 恢复 timing（耗时显示）和 tokenUsage
+        createdAt: meta?.timing?.startedAt ?? m.createdAt,
+        completedAt: meta?.timing?.completedAt,
+        tokenUsage: meta?.tokenUsage,
+        // 从 meta 恢复 toolCalls（Tool Chips 持久化）
+        toolCalls: meta?.toolCalls,
+      }
+    })
 }

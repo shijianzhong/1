@@ -83,8 +83,11 @@ export class LLMClient implements LLMProtocol {
     const tagParser = new ThinkingTagParser()
     // content_block index → tool_use id 映射（start 登记真 id，delta/stop 查表对齐）
     const toolIds = new Map<number, string>()
+    // message_start 携带 input_tokens，message_delta 携带 output_tokens；
+    // 用 ref 在两个事件间传递，message_stop delta 才能输出完整 usage。
+    const inputTokensRef = { value: undefined as number | undefined }
     for await (const event of stream) {
-      handleStreamEvent(event, onDelta, tagParser, toolIds)
+      handleStreamEvent(event, onDelta, tagParser, toolIds, inputTokensRef)
     }
 
     const finalMessage = await stream.finalMessage()
@@ -198,9 +201,15 @@ export function handleStreamEvent(
   onDelta: ((d: LlmDelta) => void) | undefined,
   tagParser: ThinkingTagParser,
   toolIds: Map<number, string>,
+  inputTokensRef: { value: number | undefined } = { value: undefined },
 ): void {
   if (!onDelta) return
   switch (event.type) {
+    case 'message_start': {
+      // message_start 携带 input_tokens（output_tokens 此时为 0）
+      inputTokensRef.value = event.message.usage?.input_tokens
+      break
+    }
     case 'content_block_start': {
       const b = event.content_block
       if (b.type === 'tool_use') {
@@ -248,8 +257,9 @@ export function handleStreamEvent(
         stop_reason: event.delta.stop_reason ?? null,
         usage: event.usage
           ? {
+              inputTokens: inputTokensRef.value,
               outputTokens: event.usage.output_tokens,
-              totalTokens: event.usage.output_tokens,
+              totalTokens: (inputTokensRef.value ?? 0) + event.usage.output_tokens,
             }
           : undefined,
       })
