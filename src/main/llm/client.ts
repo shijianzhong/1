@@ -246,6 +246,12 @@ export function handleStreamEvent(
       onDelta({
         type: 'message_stop',
         stop_reason: event.delta.stop_reason ?? null,
+        usage: event.usage
+          ? {
+              outputTokens: event.usage.output_tokens,
+              totalTokens: event.usage.output_tokens,
+            }
+          : undefined,
       })
       break
     default:

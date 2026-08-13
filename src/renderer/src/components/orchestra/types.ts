@@ -1,4 +1,4 @@
-import type { CreateDraft, SessionMessage } from '@shared/types'
+import type { CreateDraft, SessionMessage, TokenUsage } from '@shared/types'
 import type { CardStatus } from '@renderer/components/CreateConfirmCard'
 import type { ProposalErrorInfo } from '@renderer/components/CreateProposalErrorCard'
 import type { CreateNoticeInfo } from '@renderer/components/CreateNoticeBar'
@@ -12,6 +12,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   streaming?: boolean
+  /** 消息 token 用量（message_stop delta 携带） */
+  tokenUsage?: TokenUsage
   error?: boolean
   retrying?: string
   thinking?: string

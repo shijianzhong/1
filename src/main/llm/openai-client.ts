@@ -106,6 +106,7 @@ export class OpenAILLMClient implements LLMProtocol {
     // tool_calls 按 index 聚合：{ index → { id, name, args } }
     const toolCallMap = new Map<number, { id: string; name: string; args: string }>()
     let stopReason: string | null = null
+    let streamUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -129,6 +130,10 @@ export class OpenAILLMClient implements LLMProtocol {
 
           try {
             const chunk: OpenAIStreamChunk = JSON.parse(data)
+            // usage-only chunk（最后一帧，choices 为空但含 usage）
+            if (chunk.usage) {
+              streamUsage = chunk.usage
+            }
             const choice = chunk.choices?.[0]
             if (!choice) continue
 
@@ -204,7 +209,17 @@ export class OpenAILLMClient implements LLMProtocol {
       })
     }
 
-    req.onDelta?.({ type: 'message_stop', stop_reason: stopReason })
+    req.onDelta?.({
+      type: 'message_stop',
+      stop_reason: stopReason,
+      usage: streamUsage
+        ? {
+            inputTokens: streamUsage.prompt_tokens,
+            outputTokens: streamUsage.completion_tokens,
+            totalTokens: streamUsage.total_tokens,
+          }
+        : undefined,
+    })
 
     const toolNames = contentBlocks
       .filter((b): b is { type: 'tool_use'; id: string; name: string; input: unknown } => b.type === 'tool_use')

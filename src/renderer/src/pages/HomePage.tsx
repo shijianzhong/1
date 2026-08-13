@@ -250,11 +250,11 @@ export function HomePage() {
         // output 按 speaker 分泡流式渲染；node_error/failed 错误气泡；request_info HITL 提问卡。
         setStreamMsgs((prev) => applyOrchEvent(prev, delta.event))
       } else if (delta.type === 'message_stop') {
-        // 回复完成：停止所有流式态 + 末条自动折叠 thinking
+        // 回复完成：停止所有流式态 + 末条自动折叠 thinking + 记录 token 用量
         setStreamMsgs((prev) =>
           closeStreaming(prev).map((m, i, arr) =>
             i === arr.length - 1
-              ? { ...m, retrying: undefined, thinkingCollapsed: true }
+              ? { ...m, retrying: undefined, thinkingCollapsed: true, tokenUsage: delta.usage }
               : m.retrying
                 ? { ...m, retrying: undefined }
                 : m,

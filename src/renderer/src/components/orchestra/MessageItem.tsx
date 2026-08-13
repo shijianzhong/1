@@ -126,7 +126,7 @@ export function MessageItem({
               />
             ) : null}
             {!isActive && !m.error && m.text.trim() ? (
-              <MessageMeta text={m.text} createdAt={m.createdAt} completedAt={m.completedAt} />
+              <MessageMeta text={m.text} createdAt={m.createdAt} completedAt={m.completedAt} tokenUsage={m.tokenUsage} />
             ) : null}
           </>
         ) : (

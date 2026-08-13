@@ -246,9 +246,16 @@ export type LlmDelta =
   | { type: 'tool_use_start'; id: string; name: string }
   | { type: 'tool_use_delta'; id: string; partial_json: string }
   | { type: 'tool_use_stop'; id: string }
-  | { type: 'message_stop'; stop_reason: string | null }
+  | { type: 'message_stop'; stop_reason: string | null; usage?: TokenUsage }
   | { type: 'error'; error: string }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
+
+/** LLM token 用量（message_stop 携带，后端不传则 undefined） */
+export interface TokenUsage {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+}
 
 /** 首页流式事件（home:stream）——LlmDelta 超集 + 编排事件 + 会话 id + 创建提案 */
 export type HomeStreamEvent =
