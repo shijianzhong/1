@@ -8,6 +8,7 @@ import { ThinkingOrb, type OrbState } from '@renderer/components/ThinkingOrb'
 import { ThinkingBlock } from './ThinkingBlock'
 import { AskUserCard } from './AskUserCard'
 import { ApprovalCard } from './ApprovalCard'
+import { ToolActivityChips } from './ToolActivityChips'
 import type { ChatMessage } from './types'
 
 // react-markdown + remark/rehype + katex 合计约 1.2MB，不放进冷启动首包：
@@ -109,6 +110,7 @@ export function MessageItem({
                 <span className="message__orb-label">{t(ORB_LABEL_KEY[orbState])}</span>
               </div>
             ) : null}
+            {m.toolCalls?.length ? <ToolActivityChips toolCalls={m.toolCalls} /> : null}
             <Suspense fallback={<span style={{ whiteSpace: 'pre-wrap' }}>{m.text}</span>}>
               <Markdown>{m.text}</Markdown>
             </Suspense>

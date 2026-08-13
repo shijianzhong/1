@@ -1,9 +1,20 @@
 import type { StreamEvent } from '@shared/types'
-import type { ChatMessage } from './types'
+import type { ChatMessage, ToolCallInfo } from './types'
 
 // —— 编排流事件 → 消息列表 reducer（纯函数，HomePage/EditorPage 共用）——
 // 从 HomePage 原 orch_event 分支原样抽取 + HITL request_info/request_resolved 扩展。
 // node_started/node_done/handoff 不产生气泡（画布高亮/日志用）。
+
+/** 入参/返回值摘要：JSON 序列化后截断 200 字符 */
+function summarize(value: unknown): string {
+  try {
+    const json = typeof value === 'string' ? value : JSON.stringify(value)
+    if (!json) return ''
+    return json.length > 200 ? json.slice(0, 200) + '…' : json
+  } catch {
+    return String(value).slice(0, 200)
+  }
+}
 
 /** 编排流事件应用到消息列表，返回新列表 */
 export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessage[] {
@@ -168,19 +179,34 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     }
 
     case 'tool_call': {
-      // 工具调用：在末条流式气泡上标记 searching 态（扫描经线动画）
+      // 工具调用：在末条流式气泡上标记 searching 态 + 追加 ToolCallInfo
       const last = prev[prev.length - 1]
       if (last?.role === 'assistant' && last.streaming) {
-        return [...prev.slice(0, -1), { ...last, orbState: 'searching' as const }]
+        const toolCall: ToolCallInfo = {
+          id: crypto.randomUUID(),
+          tool: ev.tool,
+          argsSummary: summarize(ev.args),
+          status: 'pending',
+          timestamp: Date.now(),
+        }
+        return [
+          ...prev.slice(0, -1),
+          { ...last, orbState: 'searching' as const, toolCalls: [...(last.toolCalls ?? []), toolCall] },
+        ]
       }
       return prev
     }
 
     case 'tool_result': {
-      // 工具返回：恢复 working 态（工具调用完成后继续处理）
+      // 工具返回：恢复 working 态 + 更新最后一个 pending 的 toolCall 为 done
       const last = prev[prev.length - 1]
       if (last?.role === 'assistant' && last.streaming) {
-        return [...prev.slice(0, -1), { ...last, orbState: 'working' as const }]
+        const toolCalls = last.toolCalls?.map((tc, i, arr) =>
+          i === arr.length - 1 && tc.status === 'pending'
+            ? { ...tc, status: 'done' as const, resultSummary: summarize(ev.result) }
+            : tc,
+        )
+        return [...prev.slice(0, -1), { ...last, orbState: 'working' as const, toolCalls }]
       }
       return prev
     }

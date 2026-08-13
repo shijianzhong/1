@@ -37,6 +37,22 @@
   /* —— 字体（§三）—— */
   --font-sans: "PingFang SC", "Inter", "Noto Sans SC", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
+  /* —— 排版（字号层级 + 行高）—— */
+  --text-xs: 0.6875rem;   /* 11px，最小字号下限 */
+  --text-sm: 0.75rem;     /* 12px */
+  --text-base: 0.875rem;  /* 14px */
+  --text-lg: 1rem;        /* 16px */
+  --text-xl: 1.125rem;    /* 18px */
+  --line-height-body: 1.65;
+  --line-height-code: 1.5;
+  --line-height-tight: 1.4;
+  /* —— AI 组件 token 适配层（Beautiful UI 接入）—— */
+  --ai-surface: var(--color-bg-1);
+  --ai-inset: var(--color-bg-2);
+  --ai-border-subtle: var(--color-border);
+  --ai-text-muted: var(--color-fg-2);
+  --ai-radius-card: var(--radius-lg);
+  --ai-radius-control: var(--radius-md);
   /* —— 间距（§四，rem 制，density 经 calc 消费）—— */
   --spacing-1: calc(0.25rem * var(--density-scale));
   --spacing-2: calc(0.5rem * var(--density-scale));
@@ -150,6 +166,20 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-full: var(--radius-full);
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --line-height-body: var(--line-height-body);
+  --line-height-code: var(--line-height-code);
+  --line-height-tight: var(--line-height-tight);
+  --ai-surface: var(--ai-surface);
+  --ai-inset: var(--ai-inset);
+  --ai-border-subtle: var(--ai-border-subtle);
+  --ai-text-muted: var(--ai-text-muted);
+  --ai-radius-card: var(--ai-radius-card);
+  --ai-radius-control: var(--ai-radius-control);
   --ease-out: var(--ease-out);
   --ease-in-out: var(--ease-in-out);
   --dur-1: var(--dur-1);

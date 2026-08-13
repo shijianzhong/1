@@ -32,6 +32,8 @@ export interface ChatMessage {
   approval?: ApprovalPrompt
   /** ThinkingOrb 动画状态（流式期间显示何种思考球动画） */
   orbState?: OrbState
+  /** 工具调用记录（tool_call/tool_result 事件积累，按时间排序） */
+  toolCalls?: ToolCallInfo[]
 }
 
 /** ask_user 提问卡数据（request_info → pending；request_resolved → answered/expired） */
@@ -54,6 +56,16 @@ export interface ApprovalPrompt {
   status: 'pending' | 'approved' | 'denied' | 'expired'
   /** 用户点了「本会话允许」（后续同工具不再弹窗） */
   sessionWide?: boolean
+}
+
+/** 工具调用信息（tool_call/tool_result 事件的结构化记录） */
+export interface ToolCallInfo {
+  id: string
+  tool: string
+  argsSummary: string       // 入参摘要，截断 200 字符
+  resultSummary?: string    // 返回值摘要，截断 200 字符
+  status: 'pending' | 'done' | 'error'
+  timestamp: number
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */

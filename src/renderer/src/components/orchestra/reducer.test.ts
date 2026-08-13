@@ -226,18 +226,37 @@ describe('orchestra/reducer applyOrchEvent', () => {
     expect(msgs[0].approval).toMatchObject({ status: 'denied' })
   })
 
-  it('tool_call → 末条流式气泡标记 searching 态', () => {
+  it('tool_call → 末条流式气泡标记 searching 态 + 追加 ToolCallInfo', () => {
     const prev = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '搜索中' })
-    const msgs = applyOrchEvent(prev, { type: 'tool_call', node_id: 'a1', tool: 'web_search', args: {} })
+    const msgs = applyOrchEvent(prev, { type: 'tool_call', node_id: 'a1', tool: 'web_search', args: { q: 'hello' } })
     expect(msgs[0].orbState).toBe('searching')
+    expect(msgs[0].toolCalls).toHaveLength(1)
+    expect(msgs[0].toolCalls![0]).toMatchObject({
+      tool: 'web_search',
+      status: 'pending',
+      argsSummary: '{"q":"hello"}',
+    })
   })
 
-  it('tool_result → 恢复 working 态', () => {
+  it('tool_result → 恢复 working 态 + 更新 toolCall 为 done', () => {
     let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '处理' })
     msgs = applyOrchEvent(msgs, { type: 'tool_call', node_id: 'a1', tool: 'web_search', args: {} })
     expect(msgs[0].orbState).toBe('searching')
-    msgs = applyOrchEvent(msgs, { type: 'tool_result', node_id: 'a1', result: undefined })
+    msgs = applyOrchEvent(msgs, { type: 'tool_result', node_id: 'a1', result: { count: 3 } })
     expect(msgs[0].orbState).toBe('working')
+    expect(msgs[0].toolCalls![0]).toMatchObject({ status: 'done' })
+    expect(msgs[0].toolCalls![0].resultSummary).toContain('count')
+  })
+
+  it('多次 tool_call/tool_result 交替 → toolCalls 按序记录', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '多步' })
+    msgs = applyOrchEvent(msgs, { type: 'tool_call', node_id: 'a1', tool: 'search', args: { q: 'a' } })
+    msgs = applyOrchEvent(msgs, { type: 'tool_result', node_id: 'a1', result: 'r1' })
+    msgs = applyOrchEvent(msgs, { type: 'tool_call', node_id: 'a1', tool: 'read_file', args: { path: '/x' } })
+    msgs = applyOrchEvent(msgs, { type: 'tool_result', node_id: 'a1', result: 'r2' })
+    expect(msgs[0].toolCalls).toHaveLength(2)
+    expect(msgs[0].toolCalls![0]).toMatchObject({ tool: 'search', status: 'done' })
+    expect(msgs[0].toolCalls![1]).toMatchObject({ tool: 'read_file', status: 'done' })
   })
 
   it('thinking 事件：追加到同 speaker 末条气泡的 thinking 字段', () => {

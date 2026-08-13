@@ -347,6 +347,10 @@ html[data-platform='darwin'] .titlebar__inner {
   animation: message-enter 0.2s ease-out both;
 }
 
+.message + .message {
+  margin-top: 24px;
+}
+
 @keyframes message-enter {
   from {
     opacity: 0;
@@ -386,9 +390,170 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .message__bubble--assistant {
-  width: min(85%, 680px);
-  background: var(--color-bg-1);
-  border: 1px solid var(--color-border);
+  width: min(90%, 720px);
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  line-height: var(--line-height-body);
+}
+
+/* AI 回复内段落间距 */
+.message__bubble--assistant p {
+  margin-bottom: 12px;
+}
+.message__bubble--assistant p:last-child {
+  margin-bottom: 0;
+}
+.message__bubble--assistant p + pre {
+  margin-top: 16px;
+}
+
+/* ── ToolActivityChips：工具调用活动芯片 ── */
+.tool-chips {
+  margin-bottom: 12px;
+}
+
+.tool-chips__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--ai-inset, var(--color-bg-2));
+  color: var(--color-fg-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+  user-select: none;
+}
+
+.tool-chips__header:hover {
+  background: color-mix(in srgb, var(--ai-inset, var(--color-bg-2)) 80%, var(--color-fg-3));
+  color: var(--color-fg-1);
+}
+
+.tool-chips__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tool-chips__label {
+  letter-spacing: 0;
+}
+
+.tool-chips__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ai-border-subtle, var(--color-border));
+}
+
+.tool-chip__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-xs);
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  overflow: hidden;
+}
+
+.tool-chip__row:hover {
+  color: var(--color-fg-1);
+}
+
+.tool-chip__status {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tool-chip__status--done {
+  color: var(--color-success);
+}
+
+.tool-chip__status--error {
+  color: var(--color-danger);
+}
+
+.tool-chip__status--pending {
+  color: var(--color-fg-2);
+}
+
+.tool-chip__name {
+  font-weight: 500;
+  color: var(--color-fg-1);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.tool-chip__args {
+  color: var(--color-fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  opacity: 0.7;
+}
+
+.tool-chip__detail {
+  margin: 2px 0 4px 18px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ai-inset, var(--color-bg-2));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-chip__detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-chip__detail-label {
+  font-size: var(--text-xs);
+  color: var(--color-fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tool-chip__detail-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.tool-chips__spinner {
+  animation: tool-chips-spin 0.8s linear infinite;
+}
+
+@keyframes tool-chips-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-chips__spinner {
+    animation: none;
+  }
 }
 
 /* ── ThinkingOrb 阶段 1：气泡内 64px 思考头 + 状态文字 ── */
@@ -408,8 +573,8 @@ html[data-platform='darwin'] .titlebar__inner {
 
 /* 编排发言者标签（groupchat/组队时区分 agent，executor_id == agent name） */
 .message__speaker {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: 500;
   color: var(--color-brand-600);
   margin-bottom: 4px;
 }
@@ -417,6 +582,7 @@ html[data-platform='darwin'] .titlebar__inner {
 .message__bubble--user {
   background: var(--color-brand-500);
   color: var(--color-on-brand);
+  line-height: var(--line-height-body);
 }
 
 .composer {
@@ -832,7 +998,7 @@ html[data-platform='darwin'] .titlebar__inner {
 
 /* 条目数徽标 */
 .mention-composer__group-count {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-fg-3);
   background: var(--color-bg-2);
@@ -987,7 +1153,7 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .side-list__item-time {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: var(--color-fg-3);
 }
 
@@ -1020,49 +1186,109 @@ html[data-platform='darwin'] .titlebar__inner {
   background: color-mix(in oklch, var(--color-danger) 12%, transparent);
 }
 
-/* —— 思考过程折叠块（视觉弱化）—— */
+/* —— 思考过程 trace 容器 —— */
 .thinking-block {
-  margin-bottom: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--color-border);
-  opacity: 0.55;
-  transition: opacity 200ms ease;
+  margin-bottom: 12px;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--color-brand-500) 30%, transparent);
+  opacity: 0.6;
+  transition: opacity 200ms ease, border-color 200ms ease;
+}
+
+.thinking-block--streaming {
+  opacity: 0.85;
+  border-left-color: color-mix(in srgb, var(--color-brand-500) 50%, transparent);
 }
 
 .thinking-block:hover {
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .thinking-block__toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   border: 0;
   background: transparent;
   color: var(--color-fg-3);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   cursor: pointer;
-  padding: 1px 0;
+  padding: 2px 0;
   user-select: none;
+  transition: color 150ms ease;
+}
+
+.thinking-block__toggle:hover {
+  color: var(--color-fg-2);
+}
+
+.thinking-block__chevron {
+  flex-shrink: 0;
+  transition: transform 200ms var(--ease-out, ease-out);
+  opacity: 0.6;
+}
+
+.thinking-block__chevron--open {
+  transform: rotate(90deg);
+}
+
+.thinking-block__icon {
+  flex-shrink: 0;
+  color: var(--color-brand-500);
+  opacity: 0.7;
 }
 
 .thinking-block__label {
   letter-spacing: 0.02em;
+  font-weight: 500;
 }
 
-.thinking-block__arrow {
-  font-size: 0.6rem;
-  opacity: 0.5;
+.thinking-block__pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-brand-500);
+  animation: thinking-block-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes thinking-block-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.thinking-block__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-fg-3);
+  opacity: 0.7;
+  font-weight: 400;
 }
 
 .thinking-block__content {
-  margin-top: 4px;
-  font-size: 0.72rem;
-  color: var(--color-fg-3);
-  line-height: 1.45;
-  white-space: pre-wrap;
-  max-height: 240px;
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-2);
+  line-height: var(--line-height-tight);
+  max-height: 280px;
   overflow-y: auto;
+}
+
+.thinking-block__text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-block__chevron {
+    transition: none;
+  }
+  .thinking-block__pulse {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 /* ── ReactFlow 自定义节点 ── */
@@ -1111,7 +1337,7 @@ html[data-platform='darwin'] .titlebar__inner {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--color-fg-2);
 }
 
@@ -1189,7 +1415,7 @@ html[data-platform='darwin'] .titlebar__inner {
   position: absolute;
   top: -8px;
   left: 12px;
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   padding: 1px 6px;
   border-radius: 6px;
   background: var(--color-brand-500);
@@ -1249,8 +1475,8 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .rf-palette-group__title {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: 500;
   color: var(--color-fg-3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1505,7 +1731,7 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .run-history__time {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--color-fg-3);
 }
 
@@ -1646,7 +1872,7 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .ask-user-card__answer-label {
   display: block;
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: var(--color-brand-500);
   margin-bottom: 2px;
 }
@@ -1663,37 +1889,83 @@ html[data-platform='darwin'] .titlebar__inner {
   display: grid;
   gap: 8px;
   min-width: 240px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--ai-border-subtle, var(--color-border));
+  background: var(--ai-surface, var(--color-bg-1));
+  transition: border-color 200ms ease, opacity 200ms ease;
+}
+
+.approval-card--approved {
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+}
+
+.approval-card--denied {
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+
+.approval-card--expired {
+  opacity: 0.7;
 }
 
 .approval-card__header {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 500;
   color: var(--color-brand-500);
 }
 
 .approval-card__warning {
   margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  line-height: var(--line-height-body);
   color: var(--color-fg-2);
 }
 
+/* 可折叠入参头 */
+.approval-card__args-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: var(--ai-inset, var(--color-bg-2));
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-2);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+  font-family: var(--font-mono);
+  user-select: none;
+}
+
+.approval-card__args-toggle:hover {
+  color: var(--color-fg-1);
+  background: color-mix(in srgb, var(--ai-inset, var(--color-bg-2)) 80%, var(--color-fg-3));
+}
+
+.approval-card__args-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .approval-card__args {
-  background: var(--color-bg-2);
-  border-radius: 8px;
+  background: var(--ai-inset, var(--color-bg-2));
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   overflow-x: auto;
 }
 
 .approval-card__args code {
-  font-size: 0.75rem;
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  line-height: var(--line-height-code);
   color: var(--color-fg-1);
   white-space: pre-wrap;
   word-break: break-all;
+  font-family: var(--font-mono);
 }
 
 .approval-card__actions {
@@ -1708,8 +1980,8 @@ html[data-platform='darwin'] .titlebar__inner {
   align-items: center;
   gap: 4px;
   padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 0.8rem;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
 }
@@ -1717,18 +1989,6 @@ html[data-platform='darwin'] .titlebar__inner {
 .approval-card__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.approval-card__btn--deny {
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-2);
-  color: var(--color-fg-2);
-}
-
-.approval-card__btn--deny:hover:not(:disabled) {
-  background: var(--color-danger);
-  color: var(--color-on-brand);
-  border-color: var(--color-danger);
 }
 
 .approval-card__btn--approve {
@@ -1752,17 +2012,35 @@ html[data-platform='darwin'] .titlebar__inner {
   border-color: var(--color-brand-500);
 }
 
+.approval-card__btn--deny {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+  color: var(--color-fg-2);
+}
+
+.approval-card__btn--deny:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: var(--color-on-brand);
+  border-color: var(--color-danger);
+}
+
 .approval-card__resolved {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   padding: 6px 0;
+  animation: approval-card-fade-in 300ms var(--ease-out, ease-out) both;
+}
+
+@keyframes approval-card-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .approval-card__resolved--approved {
-  color: var(--color-brand-500);
+  color: var(--color-success);
 }
 
 .approval-card__resolved--denied {
@@ -1776,7 +2054,7 @@ html[data-platform='darwin'] .titlebar__inner {
 
 .approval-card__error {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--color-danger);
 }
 

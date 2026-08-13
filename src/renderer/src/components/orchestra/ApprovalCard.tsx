@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { ShieldCheck, ShieldX, Terminal, Clock, Infinity as InfinityIcon } from 'lucide-react'
+import { ShieldCheck, ShieldX, Terminal, Clock, Infinity as InfinityIcon, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { unwrap } from '@renderer/api/client'
 import type { ApprovalPrompt } from './types'
 
 // —— HITL 工具审批卡（approvalMode='always' → approval_request 事件渲染）——
-// pending：展示工具名 + 完整入参；用户可选「允许 / 本会话允许 / 拒绝」；
-// approved / denied / expired：定格只读。应答走 orchestrate:respond（同一应答队列）。
+// pending：展示工具名 + 可折叠入参；用户可选「允许 / 本会话允许 / 拒绝」；
+// approved / denied / expired：定格只读 + 淡入动画。应答走 orchestrate:respond（同一应答队列）。
 // approved_session → 主进程写入会话放行表，后续同 session 同工具不再弹窗。
 
 type ApprovalResponse = 'approved' | 'approved_session' | 'denied'
@@ -19,6 +19,7 @@ export function ApprovalCard({
   const { t } = useTranslation(['common'])
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [argsExpanded, setArgsExpanded] = useState(false)
 
   const respond = async (response: ApprovalResponse): Promise<void> => {
     if (submitting || prompt.status !== 'pending') return
@@ -46,26 +47,50 @@ export function ApprovalCard({
     }
   })()
 
+  // 入参摘要（折叠时显示）
+  const argsSummary = (() => {
+    try {
+      const json = JSON.stringify(prompt.args)
+      if (!json || json === '{}') return t('common:tool.args')
+      return json.length > 60 ? json.slice(0, 60) + '…' : json
+    } catch {
+      return ''
+    }
+  })()
+
   return (
-    <div className="approval-card">
+    <div className={`approval-card approval-card--${prompt.status}`}>
       <div className="approval-card__header">
         <Terminal size={14} />
         <span>{t('common:approval.title', { tool: prompt.toolName })}</span>
       </div>
       <p className="approval-card__warning">{t('common:approval.warning')}</p>
-      <div className="approval-card__args">
-        <code>{argsDisplay}</code>
-      </div>
+
+      {/* 可折叠入参 */}
+      <button
+        type="button"
+        className="approval-card__args-toggle"
+        onClick={() => setArgsExpanded((v) => !v)}
+        aria-expanded={argsExpanded}
+      >
+        {argsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        <span className="approval-card__args-summary">{argsSummary}</span>
+      </button>
+      {argsExpanded ? (
+        <div className="approval-card__args">
+          <code>{argsDisplay}</code>
+        </div>
+      ) : null}
 
       {prompt.status === 'pending' ? (
         <div className="approval-card__actions">
           <button
             type="button"
-            className="approval-card__btn approval-card__btn--deny"
+            className="approval-card__btn approval-card__btn--approve"
             disabled={submitting}
-            onClick={() => void respond('denied')}
+            onClick={() => void respond('approved')}
           >
-            <ShieldX size={14} /> {t('common:approval.deny')}
+            <ShieldCheck size={14} /> {t('common:approval.approve')}
           </button>
           <button
             type="button"
@@ -77,11 +102,11 @@ export function ApprovalCard({
           </button>
           <button
             type="button"
-            className="approval-card__btn approval-card__btn--approve"
+            className="approval-card__btn approval-card__btn--deny"
             disabled={submitting}
-            onClick={() => void respond('approved')}
+            onClick={() => void respond('denied')}
           >
-            <ShieldCheck size={14} /> {t('common:approval.approve')}
+            <ShieldX size={14} /> {t('common:approval.deny')}
           </button>
         </div>
       ) : prompt.status === 'approved' ? (
