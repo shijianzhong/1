@@ -16,6 +16,14 @@
   "userPlaceholder": "好的，基于文档项目开始开发",
   "composerPlaceholder": "问你所想，想你所问",
   "selectProject": "选择项目目录",
+  "attachment": {
+    "image": "图片",
+    "file": "文件",
+    "folder": "文件夹",
+    "add": "添加附件",
+    "close": "关闭",
+    "remove": "移除附件"
+  },
   "mention": {
     "agent": "角色",
     "capability": "能力",

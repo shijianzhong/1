@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron'
 import type {
   AgentConfig,
+  Attachment,
   CreateDraft,
   CreateMeta,
   HomeStreamEvent,
@@ -198,13 +199,15 @@ function makeCompressFn(
 export function registerHomeHandlers(): void {
   hydrateCreateDraftsFromDisk()
   withHandler<{ runId: string }>('home:chat', async (_e, input) => {
-    const { message, sessionId, projectPath, mentions: explicitMentions } = input as {
+    const { message, sessionId, projectPath, mentions: explicitMentions, attachments } = input as {
       message: string
       sessionId?: string
       /** 项目根绝对路径（写入 sessions.cwd，文件工具/shell 用） */
       projectPath?: string
       /** 芯片旁路：展示正文是 @名字，此处带稳定 kind+id */
       mentions?: Array<{ kind: 'agent' | 'capability' | 'skill'; id: string }>
+      /** 用户附件（图片/文件/文件夹） */
+      attachments?: Attachment[]
     }
 
     // 1. session（新建时带 cwd；已存在且传 projectPath 则更新）
@@ -230,8 +233,36 @@ export function registerHomeHandlers(): void {
     const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader, apiFormat)
 
     // 3. 历史 + 当前消息
+    // 附件处理：图片→image content block；文件/文件夹→文本拼入正文
+    let userText = message
+    const imageBlocks: LlmContentBlock[] = []
+    if (attachments && attachments.length > 0) {
+      for (const att of attachments) {
+        if (att.type === 'image' && att.base64Data && att.mediaType) {
+          imageBlocks.push({ type: 'image', mediaType: att.mediaType, data: att.base64Data })
+        } else if (att.type === 'file' && att.textContent) {
+          userText += `\n\n[文件: ${att.name}]\n${att.textContent}`
+        } else if (att.type === 'folder' && att.treeSummary) {
+          userText += `\n\n[文件夹: ${att.name}]\n${att.treeSummary}`
+        }
+      }
+    }
+    // LLM 用户消息：有图片时用结构化 content block，否则纯文本
+    const userContent: string | LlmContentBlock[] = imageBlocks.length > 0
+      ? [{ type: 'text', text: userText }, ...imageBlocks]
+      : userText
+
     const history = listMessages(sid)
-    addMessage({ sessionId: sid, role: 'user', content: message })
+    // DB 存原始消息文本（图片不落库，太大）；附件元信息存 meta 供前端展示
+    const attachmentMeta = attachments && attachments.length > 0
+      ? attachments.map((a) => ({ type: a.type, name: a.name, size: a.size }))
+      : undefined
+    addMessage({
+      sessionId: sid,
+      role: 'user',
+      content: userText,
+      ...(attachmentMeta ? { meta: { attachments: attachmentMeta } } : {}),
+    })
 
     // 历史重建：若消息含 meta.structured=true，content 是 JSON-stringified LlmContentBlock[]
     // （tool_use / tool_result 块），需还原为结构化 content 供 LLM 看到完整工具调用上下文
@@ -250,7 +281,7 @@ export function registerHomeHandlers(): void {
     })
     const allMessages: LlmMessage[] = [
       ...historyMessages,
-      { role: 'user', content: message },
+      { role: 'user', content: userContent },
     ]
 
     // 4. L1 滚动压缩（超阈值压缩前文，最近窗口保留原文）

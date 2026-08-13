@@ -16,9 +16,15 @@ import type { LLMClientOptions, LLMProtocol } from './client'
 // 由 retry.ts 的 getClient() 按 apiFormat 路由。
 
 // —— OpenAI API 类型（仅用到的子集）——
+interface OpenAIContentPart {
+  type: 'text' | 'image_url'
+  text?: string
+  image_url?: { url: string }
+}
+
 interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content?: string | null
+  content?: string | OpenAIContentPart[] | null
   tool_calls?: Array<{
     id: string
     type: 'function'
@@ -281,6 +287,7 @@ export class OpenAILLMClient implements LLMProtocol {
     const result: OpenAIMessage[] = []
     const assistantToolCalls: OpenAIMessage['tool_calls'] = []
     let textParts: string[] = []
+    const imageParts: OpenAIContentPart[] = []
 
     for (const block of msg.content) {
       switch (block.type) {
@@ -308,6 +315,12 @@ export class OpenAILLMClient implements LLMProtocol {
         case 'thinking':
           // OpenAI 协议无 thinking block，跳过（推理内容不回传）
           break
+        case 'image':
+          imageParts.push({
+            type: 'image_url',
+            image_url: { url: `data:${block.mediaType};base64,${block.data}` },
+          })
+          break
       }
     }
 
@@ -321,8 +334,16 @@ export class OpenAILLMClient implements LLMProtocol {
         assistantMsg.tool_calls = assistantToolCalls
       }
       result.unshift(assistantMsg)
-    } else if (textParts.length) {
-      result.unshift({ role: msg.role, content: textParts.join('') })
+    } else if (textParts.length || imageParts.length) {
+      // 有图片时用 content array 格式（OpenAI multimodal）
+      if (imageParts.length) {
+        const parts: OpenAIContentPart[] = []
+        if (textParts.length) parts.push({ type: 'text', text: textParts.join('') })
+        parts.push(...imageParts)
+        result.unshift({ role: msg.role, content: parts })
+      } else {
+        result.unshift({ role: msg.role, content: textParts.join('') })
+      }
     }
 
     return result

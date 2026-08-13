@@ -156,6 +156,15 @@ function toAnthropicBlock(
         thinking: block.thinking,
         signature: block.signature,
       } as Anthropic.Beta.Messages.BetaContentBlockParam
+    case 'image':
+      return {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: block.mediaType,
+          data: block.data,
+        },
+      } as Anthropic.Beta.Messages.BetaContentBlockParam
   }
 }
 

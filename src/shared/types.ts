@@ -233,6 +233,25 @@ export type LlmContentBlock =
       is_error?: boolean
     }
   | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'image'; mediaType: string; data: string }
+
+/** 用户附件（聊天输入框 + 号选择） */
+export interface Attachment {
+  id: string
+  type: 'image' | 'file' | 'folder'
+  name: string
+  path: string
+  size: number
+  /** 图片 base64（data URL，前端预览用） */
+  dataUrl?: string
+  /** 文本文件内容（file 类型，限制 100KB） */
+  textContent?: string
+  /** 文件夹目录树摘要（folder 类型） */
+  treeSummary?: string
+  /** 图片 base64 数据（不含 data: 前缀，发 LLM 用） */
+  base64Data?: string
+  mediaType?: string
+}
 
 export interface LlmMessage {
   role: LlmRole

@@ -1,7 +1,7 @@
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, extname, join } from 'node:path'
+import { basename, dirname, extname, join, relative } from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage } from 'electron'
 import {
   DEFAULT_THEME,
@@ -175,6 +175,74 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
   })
+
+  // —— 附件选择 + 读取（聊天输入框 + 号）——
+  withHandler<import('@shared/types').Attachment | null>(
+    'app:selectAttachment',
+    async (_e, typeRaw) => {
+      const type = typeRaw as 'image' | 'file' | 'folder'
+      if (type === 'image') {
+        const result = await dialog.showOpenDialog({
+          properties: ['openFile'],
+          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+        })
+        if (result.canceled || result.filePaths.length === 0) return null
+        const filePath = result.filePaths[0]
+        const ext = extname(filePath).slice(1).toLowerCase()
+        const mediaType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
+        const buf = await readFile(filePath)
+        const base64Data = buf.toString('base64')
+        const s = await stat(filePath)
+        return {
+          id: randomUUID(),
+          type: 'image',
+          name: basename(filePath),
+          path: filePath,
+          size: s.size,
+          dataUrl: `data:${mediaType};base64,${base64Data}`,
+          base64Data,
+          mediaType,
+        }
+      }
+      if (type === 'file') {
+        const result = await dialog.showOpenDialog({ properties: ['openFile'] })
+        if (result.canceled || result.filePaths.length === 0) return null
+        const filePath = result.filePaths[0]
+        const s = await stat(filePath)
+        const att: import('@shared/types').Attachment = {
+          id: randomUUID(),
+          type: 'file',
+          name: basename(filePath),
+          path: filePath,
+          size: s.size,
+        }
+        // 文本文件（<=100KB）读取内容
+        if (s.size <= 100 * 1024) {
+          const ext = extname(filePath).slice(1).toLowerCase()
+          const textExts = ['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'py', 'sh', 'yaml', 'yml', 'xml', 'html', 'css', 'scss', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'sql', 'toml', 'ini', 'env', 'gitignore', 'dockerfile']
+          if (textExts.includes(ext) || s.size < 1024) {
+            att.textContent = (await readFile(filePath, 'utf-8')).slice(0, 100 * 1024)
+          }
+        }
+        return att
+      }
+      // folder
+      const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+      if (result.canceled || result.filePaths.length === 0) return null
+      const dirPath = result.filePaths[0]
+      const s = await stat(dirPath)
+      const att: import('@shared/types').Attachment = {
+        id: randomUUID(),
+        type: 'folder',
+        name: basename(dirPath),
+        path: dirPath,
+        size: s.size,
+      }
+      // 生成目录树摘要（最多 3 层，每层最多 50 项）
+      att.treeSummary = await buildTreeSummary(dirPath, dirPath, 0, 3)
+      return att
+    },
+  )
   withHandler<{ imageId: string }>('theme:importBackground', async (_e, filePathRaw) => {
     const filePath = filePathRaw as string
     return importBackground(filePath)
@@ -203,4 +271,24 @@ export function registerIpcHandlers(): void {
   registerMcpHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
   registerUpdaterHandlers()
+}
+
+/** 递归生成目录树摘要（用于 folder 附件） */
+async function buildTreeSummary(root: string, dir: string, depth: number, maxDepth: number): Promise<string> {
+  if (depth >= maxDepth) return ''
+  const entries = await readdir(dir, { withFileTypes: true })
+  const lines: string[] = []
+  const indent = '  '.repeat(depth)
+  for (const entry of entries.slice(0, 50)) {
+    const fullPath = join(dir, entry.name)
+    const rel = relative(root, fullPath)
+    if (entry.isDirectory()) {
+      lines.push(`${indent}📁 ${rel}/`)
+      const sub = await buildTreeSummary(root, fullPath, depth + 1, maxDepth)
+      if (sub) lines.push(sub)
+    } else {
+      lines.push(`${indent}📄 ${rel}`)
+    }
+  }
+  return lines.join('\n')
 }

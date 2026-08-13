@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { unwrap, errorMessage } from '@renderer/api/client'
 import { MentionComposer, type MentionComposerHandle } from '@renderer/components/MentionComposer'
+import { PlusMenu } from '@renderer/components/PlusMenu'
+import { AttachmentBar } from '@renderer/components/AttachmentBar'
 import { useAgents, useCapabilities, useSkills } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 import {
@@ -12,7 +14,7 @@ import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
 import { SelectionToolbar } from '@renderer/components/SelectionToolbar'
-import type { CreateDraft } from '@shared/types'
+import type { CreateDraft, Attachment } from '@shared/types'
 import { mentionTokensToDisplay, type MentionKind } from '@shared/mentions'
 import {
   Brain,
@@ -80,6 +82,7 @@ export function HomePage() {
   const [streamMsgs, setStreamMsgs] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const streamRef = useRef<(() => void) | null>(null)
   const composerRef = useRef<MentionComposerHandle>(null)
   // 项目根：会话 cwd（persisted） > 本地暂存（新会话选好后随首条消息写入）
@@ -333,6 +336,9 @@ export function HomePage() {
     void window.one.app.removeDraft('home-composer.json').catch(() => undefined)
     setError(null)
     setSending(true)
+    // 快照当前附件（异步期间不再变），发完清空
+    const pendingAttachments = attachments.length > 0 ? attachments : undefined
+    setAttachments([])
     // 追加 user 消息 + 立即创建空的 AI 流式气泡（含 orbState=working）
     // 避免 API 响应延迟期间屏幕上只有 user 消息、无 AI 图标 → 感觉卡住
     setStreamMsgs((prev) => [
@@ -351,6 +357,7 @@ export function HomePage() {
           sessionId: sessionId ?? undefined,
           projectPath: projectPath ?? undefined,
           mentions: chipMentions.length > 0 ? chipMentions : undefined,
+          attachments: pendingAttachments,
         })
         .then(unwrap)
       // 把本轮流式产出拉成持久化历史；未确认创建卡绝不能跟 streamMsgs 一起清掉——
@@ -453,7 +460,6 @@ export function HomePage() {
           }}
         />
       </div>
-
       <div className="chat-top-bar">
         <button
           type="button"
@@ -469,7 +475,12 @@ export function HomePage() {
           </span>
         </button>
       </div>
+      <AttachmentBar
+        attachments={attachments}
+        onRemove={(id) => setAttachments((prev) => prev.filter((a) => a.id !== id))}
+      />
       <div className="composer">
+        <PlusMenu onAttach={(att) => setAttachments((prev) => [...prev, att])} />
         <MentionComposer
           ref={composerRef}
           agents={agentsQ.data ?? []}

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Agent,
+  Attachment,
   Capability,
   IpcResult,
   LLMConfig,
@@ -106,6 +107,8 @@ export interface OneApi {
       projectPath?: string
       /** 芯片稳定引用（正文为 @名字；主进程按 id 解析） */
       mentions?: Array<{ kind: 'agent' | 'capability' | 'skill'; id: string }>
+      /** 用户附件（图片/文件/文件夹） */
+      attachments?: Attachment[]
     }) => Promise<IpcResult<{ runId: string }>>
     onStream: (cb: (delta: import('@shared/types').HomeStreamEvent) => void) => () => void
     cancel: () => Promise<IpcResult<void>>
@@ -161,6 +164,8 @@ export interface OneApi {
     show: () => Promise<IpcResult<void>>
     /** 选择项目目录（openDirectory） */
     pickDirectory: () => Promise<IpcResult<string | null>>
+    /** 选择附件（image/file/folder），返回带内容的 Attachment */
+    selectAttachment: (type: 'image' | 'file' | 'folder') => Promise<IpcResult<Attachment | null>>
     /** 崩溃恢复：订阅主进程推送的草稿列表（preload 缓存，晚订阅不丢） */
     onCrashRecovery: (cb: (payload: { drafts: Array<{ name: string; content: string }> }) => void) => () => void
     /** 崩溃恢复：拉取当前草稿（mount 时 pull，防 push 竞态） */
@@ -308,6 +313,7 @@ const api: OneApi = {
     getSystemColorMode: () => ipcRenderer.invoke('app:getSystemColorMode'),
     show: () => ipcRenderer.invoke('app:show'),
     pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),
+    selectAttachment: (type) => ipcRenderer.invoke('app:selectAttachment', type),
     onCrashRecovery: (cb) => {
       if (cachedCrashRecovery && cachedCrashRecovery.drafts.length > 0) {
         // 同步回放：订阅时主进程事件可能已发过

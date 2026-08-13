@@ -16,6 +16,14 @@
   "userPlaceholder": "Got it — let's start building from the docs.",
   "composerPlaceholder": "Ask what you think, think what you ask",
   "selectProject": "Select project directory",
+  "attachment": {
+    "image": "Image",
+    "file": "File",
+    "folder": "Folder",
+    "add": "Add attachment",
+    "close": "Close",
+    "remove": "Remove attachment"
+  },
   "mention": {
     "agent": "Agent",
     "capability": "Capability",
