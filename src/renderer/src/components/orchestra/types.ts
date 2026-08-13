@@ -36,6 +36,10 @@ export interface ChatMessage {
   toolCalls?: ToolCallInfo[]
   /** 节点执行状态记录（node_started/node_done/node_error 事件积累） */
   nodeStates?: NodeStateInfo[]
+  /** 消息创建时间戳（首 token/thinking 到达时） */
+  createdAt?: number
+  /** 消息完成时间戳（streaming 结束时） */
+  completedAt?: number
 }
 
 /** ask_user 提问卡数据（request_info → pending；request_resolved → answered/expired） */
@@ -90,6 +94,7 @@ export function toChatMessages(msgs: SessionMessage[]): ChatMessage[] {
       // 历史消息的 thinking 默认折叠（用户可展开查看）
       thinking: thinking || undefined,
       thinkingCollapsed: thinking ? true : undefined,
+      createdAt: m.createdAt,
     }
   })
 }

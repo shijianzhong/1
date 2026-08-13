@@ -209,7 +209,7 @@ export function HomePage() {
               orbState: 'breathing' as const,
             }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', thinking: delta.text, streaming: true, orbState: 'breathing' as const }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', thinking: delta.text, streaming: true, orbState: 'breathing' as const, createdAt: Date.now() }]
         })
       } else if (delta.type === 'text') {
         setStreamMsgs((prev) => {
@@ -220,7 +220,7 @@ export function HomePage() {
             void _r
             return [...prev.slice(0, -1), { ...rest, text: rest.text + delta.text, streaming: true, orbState: 'composing' as const }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.text, streaming: true, orbState: 'composing' as const }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.text, streaming: true, orbState: 'composing' as const, createdAt: Date.now() }]
         })
       } else if (delta.type === 'retry') {
         // 重试等待：在 AI 气泡位置显示「重试中（N/M，等待 Xs）」
@@ -234,7 +234,7 @@ export function HomePage() {
               retrying: t('home:retry.waiting', { attempt: delta.attempt, maxRetries: delta.maxRetries, delay: (delta.delayMs / 1000).toFixed(1), reason: delta.reason }),
             }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', orbState: 'solving' as const, retrying: t('home:retry.waiting', { attempt: delta.attempt, maxRetries: delta.maxRetries, delay: (delta.delayMs / 1000).toFixed(1), reason: delta.reason }) }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: '', orbState: 'solving' as const, retrying: t('home:retry.waiting', { attempt: delta.attempt, maxRetries: delta.maxRetries, delay: (delta.delayMs / 1000).toFixed(1), reason: delta.reason }), createdAt: Date.now() }]
         })
       } else if (delta.type === 'error') {
         // 错误显示在 AI 气泡位置（而非顶部），含重试按钮
@@ -243,7 +243,7 @@ export function HomePage() {
           if (last?.role === 'assistant' && (last.streaming || last.retrying)) {
             return [...prev.slice(0, -1), { id: last.id, role: 'assistant' as const, text: delta.error, error: true }]
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.error, error: true }]
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant' as const, text: delta.error, error: true, createdAt: Date.now() }]
         })
       } else if (delta.type === 'orch_event') {
         // 编排引擎事件（@直跳/组队跑 runner）：共享 reducer（与编辑器运行面板同一渲染逻辑），
@@ -325,8 +325,8 @@ export function HomePage() {
     // 避免 API 响应延迟期间屏幕上只有 user 消息、无 AI 图标 → 感觉卡住
     setStreamMsgs((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: 'user' as const, text },
-      { id: crypto.randomUUID(), role: 'assistant' as const, text: '', streaming: true, orbState: 'working' as const },
+      { id: crypto.randomUUID(), role: 'user' as const, text, createdAt: Date.now() },
+      { id: crypto.randomUUID(), role: 'assistant' as const, text: '', streaming: true, orbState: 'working' as const, createdAt: Date.now() },
     ])
     // 发送后强制滚动到底部
     isNearBottomRef.current = true

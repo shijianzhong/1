@@ -37,6 +37,7 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
           text: ev.text,
           streaming: !ev.final,
           speaker: ev.speaker,
+          createdAt: Date.now(),
         },
       ]
     }
@@ -65,6 +66,7 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
           speaker: ev.speaker,
           thinking: ev.text,
           thinkingCollapsed: false,
+          createdAt: Date.now(),
         },
       ]
     }
@@ -263,5 +265,10 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
 
 /** 定格所有流式气泡（新气泡出现前 / 回复完成时） */
 export function closeStreaming(prev: ChatMessage[]): ChatMessage[] {
-  return prev.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+  const now = Date.now()
+  return prev.map((m) =>
+    m.streaming
+      ? { ...m, streaming: false, completedAt: m.completedAt ?? now }
+      : m,
+  )
 }

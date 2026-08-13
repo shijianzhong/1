@@ -10,6 +10,7 @@ import { AskUserCard } from './AskUserCard'
 import { ApprovalCard } from './ApprovalCard'
 import { ToolActivityChips } from './ToolActivityChips'
 import { WorkflowTaskList } from './WorkflowTaskList'
+import { MessageMeta } from './MessageMeta'
 import type { ChatMessage } from './types'
 
 // react-markdown + remark/rehype + katex 合计约 1.2MB，不放进冷启动首包：
@@ -123,6 +124,9 @@ export function MessageItem({
                 theme="auto"
                 style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginLeft: 2 }}
               />
+            ) : null}
+            {!isActive && !m.error && m.text.trim() ? (
+              <MessageMeta text={m.text} createdAt={m.createdAt} completedAt={m.completedAt} />
             ) : null}
           </>
         ) : (
