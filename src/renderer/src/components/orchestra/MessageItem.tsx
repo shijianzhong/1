@@ -131,17 +131,8 @@ export function MessageItem({
         {m.error && onRetryError ? (
           <button
             type="button"
+            className="message__retry-btn"
             onClick={() => onRetryError(m)}
-            style={{
-              marginTop: 8,
-              border: 0,
-              borderRadius: 999,
-              background: 'var(--color-brand-500)',
-              color: 'var(--color-on-brand)',
-              padding: '4px 12px',
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-            }}
           >
             {t('common:actions.retry')}
           </button>
