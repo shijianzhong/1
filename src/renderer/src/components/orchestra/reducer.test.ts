@@ -259,6 +259,40 @@ describe('orchestra/reducer applyOrchEvent', () => {
     expect(msgs[0].toolCalls![1]).toMatchObject({ tool: 'read_file', status: 'done' })
   })
 
+  it('node_started → 末条流式气泡追加 NodeStateInfo(running)', () => {
+    const prev = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '执行中' })
+    const msgs = applyOrchEvent(prev, { type: 'node_started', node_id: 'agent-2' })
+    expect(msgs[0].nodeStates).toHaveLength(1)
+    expect(msgs[0].nodeStates![0]).toMatchObject({ nodeId: 'agent-2', status: 'running' })
+  })
+
+  it('node_done → 更新对应节点状态为 done', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '执行' })
+    msgs = applyOrchEvent(msgs, { type: 'node_started', node_id: 'agent-2' })
+    msgs = applyOrchEvent(msgs, { type: 'node_done', node_id: 'agent-2' })
+    expect(msgs[0].nodeStates![0]).toMatchObject({ nodeId: 'agent-2', status: 'done' })
+    expect(msgs[0].nodeStates![0].endedAt).toBeDefined()
+  })
+
+  it('node_error → 更新节点状态为 error + 生成错误气泡', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '执行' })
+    msgs = applyOrchEvent(msgs, { type: 'node_started', node_id: 'agent-2' })
+    msgs = applyOrchEvent(msgs, { type: 'node_error', node_id: 'agent-2', error: '超时' })
+    expect(msgs[0].nodeStates![0]).toMatchObject({ nodeId: 'agent-2', status: 'error', error: '超时' })
+    expect(msgs).toHaveLength(2)
+    expect(msgs[1]).toMatchObject({ error: true, text: 'agent-2: 超时' })
+  })
+
+  it('多节点并发 → nodeStates 按序记录', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '多节点' })
+    msgs = applyOrchEvent(msgs, { type: 'node_started', node_id: 'agent-1' })
+    msgs = applyOrchEvent(msgs, { type: 'node_started', node_id: 'agent-2' })
+    msgs = applyOrchEvent(msgs, { type: 'node_done', node_id: 'agent-1' })
+    expect(msgs[0].nodeStates).toHaveLength(2)
+    expect(msgs[0].nodeStates![0]).toMatchObject({ nodeId: 'agent-1', status: 'done' })
+    expect(msgs[0].nodeStates![1]).toMatchObject({ nodeId: 'agent-2', status: 'running' })
+  })
+
   it('thinking 事件：追加到同 speaker 末条气泡的 thinking 字段', () => {
     let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '正文' })
     msgs = applyOrchEvent(msgs, { type: 'thinking', node_id: 'a1', speaker: 'a1', text: '思考中' })

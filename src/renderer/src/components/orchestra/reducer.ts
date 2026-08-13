@@ -1,5 +1,5 @@
 import type { StreamEvent } from '@shared/types'
-import type { ChatMessage, ToolCallInfo } from './types'
+import type { ChatMessage, ToolCallInfo, NodeStateInfo } from './types'
 
 // —— 编排流事件 → 消息列表 reducer（纯函数，HomePage/EditorPage 共用）——
 // 从 HomePage 原 orch_event 分支原样抽取 + HITL request_info/request_resolved 扩展。
@@ -72,8 +72,21 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     case 'node_error':
     case 'failed': {
       const errText = ev.type === 'node_error' ? `${ev.node_id}: ${ev.error}` : ev.error
+      // 同时更新末条流式气泡的节点状态为 error
+      let updated = prev
+      if (ev.type === 'node_error') {
+        const last = prev[prev.length - 1]
+        if (last?.role === 'assistant' && last.streaming) {
+          const nodeStates = last.nodeStates?.map((ns) =>
+            ns.nodeId === ev.node_id && ns.status === 'running'
+              ? { ...ns, status: 'error' as const, endedAt: Date.now(), error: ev.error }
+              : ns,
+          )
+          updated = [...prev.slice(0, -1), { ...last, nodeStates }]
+        }
+      }
       return [
-        ...prev,
+        ...updated,
         { id: crypto.randomUUID(), role: 'assistant', text: errText, error: true },
       ]
     }
@@ -211,8 +224,39 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
       return prev
     }
 
+    case 'node_started': {
+      // 节点启动：在末条流式气泡上追加 NodeStateInfo
+      const last = prev[prev.length - 1]
+      if (last?.role === 'assistant' && last.streaming) {
+        const nodeState: NodeStateInfo = {
+          nodeId: ev.node_id,
+          status: 'running',
+          startedAt: Date.now(),
+        }
+        return [
+          ...prev.slice(0, -1),
+          { ...last, nodeStates: [...(last.nodeStates ?? []), nodeState] },
+        ]
+      }
+      return prev
+    }
+
+    case 'node_done': {
+      // 节点完成：更新对应节点状态为 done
+      const last = prev[prev.length - 1]
+      if (last?.role === 'assistant' && last.streaming) {
+        const nodeStates = last.nodeStates?.map((ns) =>
+          ns.nodeId === ev.node_id && ns.status === 'running'
+            ? { ...ns, status: 'done' as const, endedAt: Date.now() }
+            : ns,
+        )
+        return [...prev.slice(0, -1), { ...last, nodeStates }]
+      }
+      return prev
+    }
+
     default:
-      // node_started / node_done / handoff：不产生气泡
+      // handoff：不产生气泡
       return prev
   }
 }

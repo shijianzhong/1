@@ -9,6 +9,7 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { AskUserCard } from './AskUserCard'
 import { ApprovalCard } from './ApprovalCard'
 import { ToolActivityChips } from './ToolActivityChips'
+import { WorkflowTaskList } from './WorkflowTaskList'
 import type { ChatMessage } from './types'
 
 // react-markdown + remark/rehype + katex 合计约 1.2MB，不放进冷启动首包：
@@ -111,6 +112,7 @@ export function MessageItem({
               </div>
             ) : null}
             {m.toolCalls?.length ? <ToolActivityChips toolCalls={m.toolCalls} /> : null}
+            {m.nodeStates?.length ? <WorkflowTaskList nodeStates={m.nodeStates} /> : null}
             <Suspense fallback={<span style={{ whiteSpace: 'pre-wrap' }}>{m.text}</span>}>
               <Markdown>{m.text}</Markdown>
             </Suspense>

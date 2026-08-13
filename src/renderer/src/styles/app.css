@@ -556,6 +556,124 @@ html[data-platform='darwin'] .titlebar__inner {
   }
 }
 
+/* ── WorkflowTaskList：工作流节点状态列表 ── */
+.workflow-tasks {
+  margin-bottom: 12px;
+}
+
+.workflow-tasks__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--ai-inset, var(--color-bg-2));
+  color: var(--color-fg-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+  user-select: none;
+}
+
+.workflow-tasks__header:hover {
+  background: color-mix(in srgb, var(--ai-inset, var(--color-bg-2)) 80%, var(--color-fg-3));
+  color: var(--color-fg-1);
+}
+
+.workflow-tasks__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.workflow-tasks__workflow-icon {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.workflow-tasks__label {
+  letter-spacing: 0;
+}
+
+.workflow-tasks__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ai-border-subtle, var(--color-border));
+}
+
+.workflow-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  padding: 2px 0;
+  overflow: hidden;
+}
+
+.workflow-task__status {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.workflow-task__status--done {
+  color: var(--color-success);
+}
+
+.workflow-task__status--error {
+  color: var(--color-danger);
+}
+
+.workflow-task__status--running {
+  color: var(--color-fg-2);
+}
+
+.workflow-task__name {
+  font-weight: 500;
+  color: var(--color-fg-1);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.workflow-task__duration {
+  color: var(--color-fg-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.workflow-task__error {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+  margin-left: auto;
+}
+
+.workflow-tasks__spinner {
+  animation: workflow-tasks-spin 0.8s linear infinite;
+}
+
+@keyframes workflow-tasks-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-tasks__spinner {
+    animation: none;
+  }
+}
+
 /* ── ThinkingOrb 阶段 1：气泡内 64px 思考头 + 状态文字 ── */
 .message__orb-header {
   display: flex;

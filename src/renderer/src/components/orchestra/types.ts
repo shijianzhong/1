@@ -34,6 +34,8 @@ export interface ChatMessage {
   orbState?: OrbState
   /** 工具调用记录（tool_call/tool_result 事件积累，按时间排序） */
   toolCalls?: ToolCallInfo[]
+  /** 节点执行状态记录（node_started/node_done/node_error 事件积累） */
+  nodeStates?: NodeStateInfo[]
 }
 
 /** ask_user 提问卡数据（request_info → pending；request_resolved → answered/expired） */
@@ -66,6 +68,15 @@ export interface ToolCallInfo {
   resultSummary?: string    // 返回值摘要，截断 200 字符
   status: 'pending' | 'done' | 'error'
   timestamp: number
+}
+
+/** 节点执行状态（node_started/node_done/node_error 事件记录） */
+export interface NodeStateInfo {
+  nodeId: string
+  status: 'running' | 'done' | 'error'
+  startedAt: number
+  endedAt?: number
+  error?: string
 }
 
 /** 把历史消息转成 ChatMessage（用于渲染） */
