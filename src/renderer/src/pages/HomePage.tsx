@@ -303,7 +303,11 @@ export function HomePage() {
         ])
       }
     })
-    return () => streamRef.current?.()
+    return () => {
+      streamRef.current?.()
+      // 组件卸载时定格所有流式气泡（避免 streaming=true 残留）
+      setStreamMsgs((prev) => closeStreaming(prev))
+    }
   }, [])
 
   const onSend = async (overrideText?: string): Promise<void> => {
@@ -471,7 +475,11 @@ export function HomePage() {
           // 取消闭环：主 Agent 流式 / 组队运行 / ask_user 挂起 统一可停
           <button
             type="button"
-            onClick={() => void window.one.home.cancel().catch(() => undefined)}
+            onClick={() => {
+              void window.one.home.cancel().catch(() => undefined)
+              // 立即定格流式气泡（cancel 不一定触发 message_stop）
+              setStreamMsgs((prev) => closeStreaming(prev))
+            }}
           >
             {t('common:actions.stop')}
           </button>

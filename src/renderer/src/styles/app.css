@@ -430,18 +430,23 @@ html[data-platform='darwin'] .titlebar__inner {
   white-space: nowrap;
 }
 
+.message-meta__label {
+  color: var(--color-fg-3);
+  font-weight: 500;
+}
+
 .message-meta__copy {
   margin-left: auto;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
+  gap: 3px;
+  padding: 2px 6px;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: var(--color-fg-3);
   cursor: pointer;
+  font-size: var(--text-xs);
   transition: background 0.1s ease, color 0.1s ease;
 }
 

@@ -64,13 +64,14 @@ export function MessageMeta({ text, createdAt, completedAt, tokenUsage }: Messag
     <div className="message-meta">
       {createdAt ? (
         <span className="message-meta__item" title={t('common:meta.time')}>
-          <Clock size={11} />
+          <Clock size={12} />
           <span>{formatTime(createdAt)}</span>
         </span>
       ) : null}
       {duration !== undefined ? (
         <span className="message-meta__item" title={t('common:meta.duration')}>
-          <Timer size={11} />
+          <Timer size={12} />
+          <span className="message-meta__label">{t('common:meta.durationLabel')}</span>
           <span>{formatDuration(duration)}</span>
         </span>
       ) : null}
@@ -78,7 +79,8 @@ export function MessageMeta({ text, createdAt, completedAt, tokenUsage }: Messag
         className="message-meta__item"
         title={isEstimated ? t('common:meta.tokensEstimate') : t('common:meta.tokens')}
       >
-        <Coins size={11} />
+        <Coins size={12} />
+        <span className="message-meta__label">{t('common:meta.tokensLabel')}</span>
         <span>{tokenLabel}</span>
       </span>
       <button
@@ -88,7 +90,8 @@ export function MessageMeta({ text, createdAt, completedAt, tokenUsage }: Messag
         title={copied ? t('common:code.copied') : t('common:meta.copy')}
         aria-label={t('common:meta.copy')}
       >
-        {copied ? <Check size={11} /> : <Copy size={11} />}
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+        <span className="message-meta__label">{copied ? t('common:code.copied') : t('common:meta.copy')}</span>
       </button>
     </div>
   )
