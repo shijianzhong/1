@@ -249,12 +249,21 @@ html[data-platform='darwin'] .titlebar__inner {
   color: var(--color-fg-3);
 }
 
+/* —— 聊天区外层：chat-shell + ScrollSpy 并排 —— */
+.chat-wrapper {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
 .chat-shell {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 760px;
-  margin: 0 auto;
+  flex: 1 1 900px;
+  max-width: 900px;
   height: 100%;
   min-height: 0; /* 撑满 main-content，让内部消息区滚动 + composer 置底 */
 }
@@ -338,6 +347,11 @@ html[data-platform='darwin'] .titlebar__inner {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.chat-messages::-webkit-scrollbar {
+  display: none; /* Chromium (Electron) — 隐藏原生滚动条，导航交给 ScrollSpy */
 }
 
 .message {
@@ -1071,6 +1085,72 @@ html[data-platform='darwin'] .titlebar__inner {
 .mention-chip--skill {
   background: color-mix(in oklch, var(--color-success) 14%, transparent);
   color: var(--color-success);
+}
+
+/* —— 长内容定位轨道（Scroll Spy）—— */
+.scroll-spy {
+  position: relative;
+  flex: 0 0 20px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* 无段时（内容不超出）收缩为 0 宽，不占空间 */
+.scroll-spy--empty {
+  flex: 0 0 0;
+  overflow: hidden;
+}
+
+.scroll-spy__segment {
+  position: absolute;
+  left: 9px;
+  width: 10px;
+  height: 3px;
+  border-radius: 1px;
+  cursor: pointer;
+  transition: width 120ms ease, left 120ms ease, background-color 150ms ease;
+}
+
+/* 段颜色：统一浅灰底，仅特殊类型微调色相 */
+.scroll-spy__segment--user {
+  background: color-mix(in oklch, var(--color-brand-400) 40%, var(--color-border));
+}
+.scroll-spy__segment--assistant {
+  background: var(--color-border);
+}
+.scroll-spy__segment--tool {
+  background: color-mix(in oklch, oklch(0.72 0.06 60) 40%, var(--color-border));
+}
+.scroll-spy__segment--thinking {
+  background: color-mix(in oklch, oklch(0.68 0.05 300) 35%, var(--color-border));
+}
+.scroll-spy__segment--create {
+  background: color-mix(in oklch, oklch(0.72 0.06 145) 40%, var(--color-border));
+}
+.scroll-spy__segment--error {
+  background: color-mix(in oklch, var(--color-danger) 45%, var(--color-border));
+}
+.scroll-spy__segment--action {
+  background: color-mix(in oklch, oklch(0.72 0.06 85) 40%, var(--color-border));
+}
+
+/* 当前阅读位置：深色短横 */
+.scroll-spy__segment--active {
+  background: var(--color-fg-2) !important;
+  width: 14px;
+  left: 7px;
+}
+
+.scroll-spy__segment:hover {
+  width: 14px;
+  left: 7px;
+}
+
+/* 窄屏隐藏轨道，聊天区用满宽度 */
+@media (max-width: 900px) {
+  .scroll-spy {
+    display: none;
+  }
 }
 
 /* —— 创建确认卡（聊天创建能力/角色/Skill）—— */

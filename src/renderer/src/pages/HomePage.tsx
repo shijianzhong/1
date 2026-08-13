@@ -14,6 +14,7 @@ import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
 import { SelectionToolbar } from '@renderer/components/SelectionToolbar'
+import { ScrollSpy } from '@renderer/components/ScrollSpy'
 import type { CreateDraft, Attachment } from '@shared/types'
 import { mentionTokensToDisplay, type MentionKind } from '@shared/mentions'
 import {
@@ -398,6 +399,7 @@ export function HomePage() {
   }
 
   return (
+    <div className="chat-wrapper">
     <div className="chat-shell">
       {pendingCreateCount > 0 ? (
         <button
@@ -508,6 +510,8 @@ export function HomePage() {
           </button>
         )}
       </div>
+    </div>
+    <ScrollSpy messages={messages} containerRef={scrollContainerRef} />
     </div>
   )
 }
