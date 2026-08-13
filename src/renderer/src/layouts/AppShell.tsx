@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
   Boxes,
@@ -18,6 +18,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSessions } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { CommandPalette } from '@renderer/components/CommandPalette'
 import { startupMark } from '@renderer/lib/startupMark'
 
 const navItems = [
@@ -100,12 +101,22 @@ export function AppShell() {
     [chatSessions, sessionsQ.data],
   )
 
+  // Cmd+K / Ctrl+K 全局命令面板
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   useEffect(() => {
-    // reserved for future global keyboard shortcuts
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCmdPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   return (
     <>
+      <CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} />
       <div className="app-frame">
         <header className="titlebar glass-panel">
           <div className="titlebar__inner">
