@@ -11,6 +11,7 @@ import {
 import { toChatMessages, type ChatMessage } from '@renderer/components/orchestra/types'
 import { useSpeakerNames } from '@renderer/components/orchestra/useSpeakerNames'
 import { MessageItem } from '@renderer/components/orchestra/MessageItem'
+import { SelectionToolbar } from '@renderer/components/SelectionToolbar'
 import type { CreateDraft } from '@shared/types'
 import { mentionTokensToDisplay, type MentionKind } from '@shared/mentions'
 import {
@@ -427,6 +428,18 @@ export function HomePage() {
             }}
           />
         ))}
+
+        <SelectionToolbar
+          containerRef={scrollContainerRef}
+          onQuote={(text) => {
+            composerRef.current?.insertText(`> ${text}\n\n`)
+            composerRef.current?.focus()
+          }}
+          onAsk={(action, text) => {
+            const prefix = t(`common:selection.${action}Prefix`)
+            void onSend(`${prefix}${text}`)
+          }}
+        />
       </div>
 
       <div className="chat-top-bar">

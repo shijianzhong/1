@@ -330,6 +330,7 @@ html[data-platform='darwin'] .titlebar__inner {
 }
 
 .chat-messages {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -2398,6 +2399,51 @@ html[data-platform='darwin'] .titlebar__inner {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
+}
+
+/* ── Selection Toolbar（选中文本浮动操作条）── */
+.selection-toolbar {
+  position: absolute;
+  z-index: var(--z-popover, 100);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-2);
+  animation: selection-toolbar-in 0.12s ease-out;
+}
+
+@keyframes selection-toolbar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) translateY(0);
+  }
+}
+
+.selection-toolbar__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-fg-2);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.selection-toolbar__btn:hover {
+  background: var(--color-bg-2);
+  color: var(--color-fg-1);
 }
 
 /* ── prefers-reduced-motion 降级（§9.4 盲区 1）──

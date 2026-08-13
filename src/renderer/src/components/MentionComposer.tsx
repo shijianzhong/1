@@ -34,6 +34,8 @@ export interface MentionComposerHandle {
   clear: () => void
   /** 聚焦 */
   focus: () => void
+  /** 在光标位置插入文本（用于 SelectionActions 引用插入） */
+  insertText: (text: string) => void
 }
 
 interface Props {
@@ -238,6 +240,15 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
         if (editorRef.current) editorRef.current.innerHTML = ''
       },
       focus: () => editorRef.current?.focus(),
+      insertText: (text: string) => {
+        const el = editorRef.current
+        if (!el) return
+        el.focus()
+        // 优先用 execCommand 在光标处插入（Electron Chromium 支持）
+        if (document.execCommand('insertText', false, text)) return
+        // fallback：直接追加文本节点
+        el.appendChild(document.createTextNode(text))
+      },
     }))
 
     // 选中目标：替换 @query 段为芯片
