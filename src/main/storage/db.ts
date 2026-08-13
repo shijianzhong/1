@@ -5,7 +5,12 @@ import { getCorruptDbPath, getDbBackupPath, getDbPath } from './paths'
 import { logger } from '../logger'
 // 循环导入安全：reindexL3Fts 仅在 getDb() 函数体内调用（非模块顶层），此时 l3.ts 已完成初始化
 import { reindexL3Fts } from './memory/l3'
-import { countSkillFiles, countSkillsFtsRows, reindexSkillsFts } from './skills/fts'
+import {
+  collectSkillsIndexData,
+  countSkillsFtsRows,
+  getStoredSkillsFtsSignature,
+  reindexSkillsFts,
+} from './skills/fts'
 
 // —— SQLite 连接 + WAL + schema 迁移 + 启动校验 + 损坏恢复（§11.4 + §5.2.3）——
 
@@ -126,6 +131,16 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
         content_tokenized,
         content_raw UNINDEXED,
         tokenize='unicode61'
+      );
+    `,
+  },
+  {
+    // v6：通用元数据表（当前用于记录 skills_fts 内容签名，修复“数量不变但内容变了”漏重建）。
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS app_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       );
     `,
   },
@@ -250,11 +265,14 @@ export function getDb(): Database.Database {
   }
 
   try {
-    const skillFiles = countSkillFiles()
+    const data = collectSkillsIndexData()
     const skillFts = countSkillsFtsRows()
-    if (skillFiles !== skillFts) {
-      reindexSkillsFts()
-      logger.info(`[db] Skill FTS 索引重建（files=${skillFiles} fts=${skillFts}）`)
+    const storedSignature = getStoredSkillsFtsSignature()
+    if (data.count !== skillFts || data.signature !== storedSignature) {
+      reindexSkillsFts(data)
+      logger.info(
+        `[db] Skill FTS 索引重建（files=${data.count} fts=${skillFts} sigMatch=${data.signature === storedSignature}）`,
+      )
     }
   } catch (error) {
     logger.warn('[db] Skill FTS 自检失败（非致命）', error)

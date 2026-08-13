@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getDb } from '../db'
@@ -33,19 +34,87 @@ function normalizeTags(tags?: string[]): string[] {
   return (tags ?? []).map((tag) => collapseWhitespace(tag)).filter(Boolean)
 }
 
+function ensureAppMetaTable(): void {
+  getDb().exec('CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+}
+
+export interface SkillsIndexData {
+  count: number
+  signature: string
+  rows: Array<{ id: string; name: string; description?: string; tags?: string[]; content: string }>
+}
+
+export function collectSkillsIndexData(): SkillsIndexData {
+  const dir = getSkillsPath()
+  const hash = createHash('sha1')
+  const rows: Array<{ id: string; name: string; description?: string; tags?: string[]; content: string }> = []
+  let count = 0
+
+  if (!existsSync(dir)) {
+    return { count: 0, signature: hash.digest('hex'), rows }
+  }
+
+  const entries = readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('skl_upload_'))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  for (const entry of entries) {
+    const skillMdPath = join(dir, entry.name, 'SKILL.md')
+    if (!existsSync(skillMdPath)) continue
+    count++
+
+    try {
+      const text = readFileSync(skillMdPath, 'utf8')
+      hash.update(entry.name)
+      hash.update('\0')
+      hash.update(text)
+      hash.update('\0')
+
+      const parsed = parseSkillMd(text)
+      if (!parsed) continue
+      rows.push({
+        id: entry.name,
+        name: parsed.name,
+        description: parsed.description,
+        tags: parsed.tags,
+        content: parsed.content,
+      })
+    } catch {
+      hash.update(entry.name)
+      hash.update('\0<read-error>\0')
+    }
+  }
+
+  return { count, signature: hash.digest('hex'), rows }
+}
+
 /** 统计 skill 目录数（仅含 SKILL.md 的子目录） */
 export function countSkillFiles(): number {
-  const dir = getSkillsPath()
-  if (!existsSync(dir)) return 0
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && !e.name.startsWith('skl_upload_'))
-    .filter((e) => existsSync(join(dir, e.name, 'SKILL.md')))
-    .length
+  return collectSkillsIndexData().count
 }
 
 export function countSkillsFtsRows(): number {
   const db = getDb()
   return (db.prepare('SELECT COUNT(*) as c FROM skills_fts').get() as { c: number }).c
+}
+
+export function getCurrentSkillsFtsSignature(): string {
+  return collectSkillsIndexData().signature
+}
+
+export function getStoredSkillsFtsSignature(): string | null {
+  ensureAppMetaTable()
+  const row = getDb()
+    .prepare('SELECT value FROM app_meta WHERE key = ?')
+    .get('skills_fts_signature') as { value: string } | undefined
+  return row?.value ?? null
+}
+
+function setStoredSkillsFtsSignature(signature: string): void {
+  ensureAppMetaTable()
+  getDb()
+    .prepare('INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)')
+    .run('skills_fts_signature', signature)
 }
 
 export function upsertSkillFts(input: {
@@ -145,36 +214,15 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
     .filter((row): row is SkillSearchHit => !!row)
 }
 
-/** 重建 FTS 索引：扫描 config/skills/ 下的 SKILL.md 目录 */
-export function reindexSkillsFts(): void {
-  const dir = getSkillsPath()
-  const rows: { id: string; name: string; description?: string; tags?: string[]; content: string }[] = []
-  if (existsSync(dir)) {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name.startsWith('skl_upload_')) continue
-      const skillMdPath = join(dir, entry.name, 'SKILL.md')
-      if (!existsSync(skillMdPath)) continue
-      try {
-        const text = readFileSync(skillMdPath, 'utf8')
-        const parsed = parseSkillMd(text)
-        if (!parsed) continue
-        rows.push({
-          id: entry.name,
-          name: parsed.name,
-          description: parsed.description,
-          tags: parsed.tags,
-          content: parsed.content,
-        })
-      } catch {
-        // 单个 SKILL.md 读取失败跳过，不阻断整体重建
-      }
-    }
-  }
+/** 重建 FTS 索引：扫描 config/skills/ 下的 SKILL.md 目录。可传入预计算数据避免重复 I/O */
+export function reindexSkillsFts(precomputed?: SkillsIndexData): void {
+  const { rows, signature } = precomputed ?? collectSkillsIndexData()
   const db = getDb()
   const ins = db.prepare(
     'INSERT INTO skills_fts (skill_id, name, description, tags, content_tokenized, content_raw) VALUES (?, ?, ?, ?, ?, ?)',
   )
   db.transaction(() => {
+    ensureAppMetaTable()
     db.prepare('DELETE FROM skills_fts').run()
     for (const row of rows) {
       const desc = descriptionOf(row)
@@ -189,5 +237,6 @@ export function reindexSkillsFts(): void {
         `${tagsText}\n\n${row.content}`.trim(),
       )
     }
+    setStoredSkillsFtsSignature(signature)
   })()
 }

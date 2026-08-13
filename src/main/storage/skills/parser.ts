@@ -27,6 +27,50 @@ interface Frontmatter {
   [key: string]: unknown
 }
 
+function parseInlineYamlArray(value: string): string[] | null {
+  const text = value.trim()
+  if (!text.startsWith('[') || !text.endsWith(']')) return null
+  const inner = text.slice(1, -1).trim()
+  if (!inner) return []
+
+  const items: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]
+    if (quote) {
+      if (ch === '\\' && i + 1 < inner.length) {
+        current += inner[i + 1]
+        i++
+        continue
+      }
+      if (ch === quote) {
+        quote = null
+        continue
+      }
+      current += ch
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (ch === ',') {
+      const item = current.trim()
+      if (item) items.push(item)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+
+  const last = current.trim()
+  if (last) items.push(last)
+  return items
+}
+
 /** 解析 YAML frontmatter（简易版，不引入额外依赖；索引步进避免重复行误判） */
 export function parseFrontmatter(text: string): { fm: Frontmatter | null; body: string } {
   const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/)
@@ -65,6 +109,14 @@ export function parseFrontmatter(text: string): { fm: Frontmatter | null; body: 
       value = list.length > 0 ? list : ''
     } else {
       const str = String(value)
+      if (key === 'tags') {
+        const inlineArray = parseInlineYamlArray(str)
+        if (inlineArray) {
+          value = inlineArray
+          fm[key as keyof Frontmatter] = value
+          continue
+        }
+      }
       // 去引号（双引号配套反转义 \" \\——与导出侧 yamlSafe 回环保真）
       if (str.length >= 2 && str.startsWith('"') && str.endsWith('"')) {
         value = str.slice(1, -1).replace(/\\(["\\])/g, '$1')

@@ -90,16 +90,62 @@ function parseFrontmatter(text) {
   return { fm, body }
 }
 
+function parseInlineYamlArray(value) {
+  const text = String(value ?? '').trim()
+  if (!text.startsWith('[') || !text.endsWith(']')) return null
+  const inner = text.slice(1, -1).trim()
+  if (!inner) return []
+
+  const items = []
+  let current = ''
+  let quote = null
+
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]
+    if (quote) {
+      if (ch === '\\' && i + 1 < inner.length) {
+        current += inner[i + 1]
+        i++
+        continue
+      }
+      if (ch === quote) {
+        quote = null
+        continue
+      }
+      current += ch
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (ch === ',') {
+      const item = current.trim()
+      if (item) items.push(item)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+
+  const last = current.trim()
+  if (last) items.push(last)
+  return items
+}
+
 function parseSkillMd(text) {
   const { fm, body } = parseFrontmatter(text)
   const name = typeof fm?.name === 'string' ? fm.name.trim() : ''
   if (!name) return null
   const description = typeof fm?.description === 'string' ? fm.description.trim() : undefined
+  const inlineTags = typeof fm?.tags === 'string' ? parseInlineYamlArray(fm.tags) : null
   const tags = Array.isArray(fm?.tags)
     ? fm.tags.map((tag) => String(tag).trim()).filter(Boolean)
-    : typeof fm?.tags === 'string'
-      ? fm.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
-      : undefined
+    : inlineTags
+      ? inlineTags.map((tag) => String(tag).trim()).filter(Boolean)
+      : typeof fm?.tags === 'string'
+        ? fm.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+        : undefined
   return {
     name,
     description,
