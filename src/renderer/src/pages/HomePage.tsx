@@ -251,10 +251,18 @@ export function HomePage() {
         setStreamMsgs((prev) => applyOrchEvent(prev, delta.event))
       } else if (delta.type === 'message_stop') {
         // 回复完成：停止所有流式态 + 末条自动折叠 thinking + 记录 token 用量
+        const now = Date.now()
         setStreamMsgs((prev) =>
           closeStreaming(prev).map((m, i, arr) =>
             i === arr.length - 1
-              ? { ...m, retrying: undefined, thinkingCollapsed: true, tokenUsage: delta.usage }
+              ? {
+                  ...m,
+                  retrying: undefined,
+                  thinkingCollapsed: true,
+                  tokenUsage: delta.usage,
+                  streaming: false,
+                  completedAt: m.completedAt ?? now,
+                }
               : m.retrying
                 ? { ...m, retrying: undefined }
                 : m,
