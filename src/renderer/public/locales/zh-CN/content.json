@@ -1,0 +1,94 @@
+{
+  "title": "内容生产管线",
+  "subtitle": "选题调研 → 对标拆解 → 风格固化 → 产出 → 配图 → Review。AI 干体力活，人定终稿。",
+  "stage": {
+    "0": "选方向",
+    "1": "选题调研",
+    "2": "对标拆解",
+    "3": "风格固化",
+    "4": "产出初稿",
+    "5": "配图+落盘",
+    "6": "AI review 自检"
+  },
+  "topic": {
+    "title": "选题库",
+    "add": "追加选题",
+    "direction": "方向",
+    "status": {
+      "pending": "待调研",
+      "researching": "调研中",
+      "producing": "产出中",
+      "published": "已发布",
+      "archived": "已归档"
+    },
+    "recommendation": "推荐度",
+    "meta": {
+      "heatSignal": "热度信号",
+      "searchValue": "搜索价值",
+      "benchmarkGap": "对标空白",
+      "verdict": "判断结论",
+      "angle": "推荐切口",
+      "altAngles": "备选切口",
+      "triFilter": "三维过筛"
+    },
+    "empty": "选题库空空如也，先跑阶段 1 调研。",
+    "removed": "选题已删除"
+  },
+  "styleProfile": {
+    "title": "风格画像",
+    "add": "新建画像",
+    "name": "画像名",
+    "description": "描述",
+    "titleFormulas": "标题公式",
+    "structureSkeleton": "6 段式骨架",
+    "toneWords": "语气词表",
+    "wordCountRange": "字数区间",
+    "interactionHooks": "互动钩子模板",
+    "bannedInventedTerms": "自造说法禁用清单",
+    "bannedEnglishConnections": "英译式连接词禁用清单",
+    "empty": "还没有风格画像，先跑阶段 2 拆解对标号。",
+    "removed": "风格画像已删除"
+  },
+  "sampleArticle": {
+    "title": "样文",
+    "add": "添加样文",
+    "name": "显示名",
+    "source": "来源号",
+    "tags": "标签",
+    "hasReferences": "含引用",
+    "wordCount": "{{count}} 字",
+    "empty": "样文库为空，去阶段 2 存几篇翘楚代表作。",
+    "removed": "样文已删除"
+  },
+  "review": {
+    "title": "Review 档案",
+    "score": "爆款总分",
+    "verdict": {
+      "可发": "可发",
+      "需返工": "需返工",
+      "推倒重写": "推倒重写"
+    },
+    "dimensions": {
+      "title": "标题打开率",
+      "opening": "开头留存",
+      "punchline": "金句转发",
+      "authenticity": "真实感",
+      "interaction": "互动钩子"
+    },
+    "benchmark": "对标差距",
+    "revisionPoints": "改点清单",
+    "finalTweaks": "发布前微调",
+    "notPassed": "未过 review 不交付",
+    "latest": "最近一次 review"
+  },
+  "aiCavity": {
+    "title": "AI 腔逐句诊断",
+    "selfInventedTerm": "自造说法",
+    "englishConnectionMisuse": "英译式连接词",
+    "hitsCount": "{{count}} 处命中",
+    "capped": "≥3 处命中，真实感封顶为 1，需返工",
+    "sentence": "原句",
+    "marker": "命中",
+    "suggestion": "改写建议"
+  }
+}

@@ -135,13 +135,52 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
     `,
   },
   {
-    // v6：通用元数据表（当前用于记录 skills_fts 内容签名，修复“数量不变但内容变了”漏重建）。
+    // v6：通用元数据表（当前用于记录 skills_fts 内容签名，修复"数量不变但内容变了"漏重建）。
     version: 6,
     sql: `
       CREATE TABLE IF NOT EXISTS app_meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+    `,
+  },
+  {
+    // v7：选题库（内容生产 §2.3）——调研产出选题经三维过筛后入库，状态流转驱动生产。
+    version: 7,
+    sql: `
+      CREATE TABLE IF NOT EXISTS topics (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL DEFAULT 'local',
+        title TEXT NOT NULL,
+        direction TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        recommendation INTEGER,
+        meta TEXT,
+        tags TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_topics_user ON topics(user_id, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_topics_status ON topics(status);
+      CREATE INDEX IF NOT EXISTS idx_topics_direction ON topics(direction);
+    `,
+  },
+  {
+    // v8：Review 档案（内容生产 §2.3）——A6 reviewer 产出 review 落库，累积质量档案迭代风格画像。
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL DEFAULT 'local',
+        asset_type TEXT NOT NULL,
+        asset_id TEXT NOT NULL,
+        score REAL NOT NULL,
+        verdict TEXT NOT NULL,
+        notes TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_reviews_asset ON reviews(asset_type, asset_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_reviews_score ON reviews(score);
     `,
   },
 ]

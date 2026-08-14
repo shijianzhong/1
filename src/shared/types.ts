@@ -890,6 +890,155 @@ export interface L3Fact {
   ts: number
 }
 
+// ============================================================================
+// 内容生产知识资产（docs/CONTENT_PIPELINE_PLAN.md §2.3）——
+// 选题库 TopicLibrary（SQLite）/ Review 档案（SQLite）/
+// 风格画像 StyleProfile（JsonCollection）/ 样文 SampleArticle（目录化）。
+// builtin 基线经 §2.5 seedBuiltinAssets 复制进 userData，用户可改可分享。
+// ============================================================================
+
+/** 选题状态 */
+export type TopicStatus = 'pending' | 'researching' | 'producing' | 'published' | 'archived'
+
+/** 选题推荐度（1-3 个圆点） */
+export type TopicRecommendation = 1 | 2 | 3
+
+/** 选题库条目（SQLite topics 表，v7 迁移） */
+export interface Topic {
+  id: string
+  userId: string // 默认 'local'，不做隔离
+  /** 选题标题/切口 */
+  title: string
+  /** 方向（AI 全谱 / 前端工程 / 程序员职场副业 / 自定义） */
+  direction?: string
+  status: TopicStatus
+  /** 推荐度 1-3 */
+  recommendation?: TopicRecommendation
+  /** 选题价值评估（热度信号/搜索价值/对标空白/判断结论），JSON */
+  meta?: TopicMeta
+  /** 标签 */
+  tags?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** 选题价值评估细节（存 topics.meta JSON 列） */
+export interface TopicMeta {
+  /** 热度信号 */
+  heatSignal?: string
+  /** 搜索价值 */
+  searchValue?: string
+  /** 对标空白 */
+  benchmarkGap?: string
+  /** 判断结论（可行/需调角度/否决 + 理由） */
+  verdict?: string
+  /** 推荐切口 */
+  angle?: string
+  /** 备选切口 */
+  altAngles?: string[]
+  /** 三维过筛结论 */
+  triFilter?: {
+    heat?: boolean
+    redSea?: boolean
+    blank?: boolean
+  }
+}
+
+/** Review 档案条目（SQLite reviews 表，v8 迁移） */
+export interface ReviewRecord {
+  id: string
+  userId: string // 默认 'local'
+  /** 被审资产类型（article / topic / agent / capability） */
+  assetType: string
+  /** 被审资产 id（选题 id / 文章 slug / agent id） */
+  assetId: string
+  /** 爆款总分 0-10 */
+  score: number
+  /** 结论：可发/需返工/推倒重写 */
+  verdict: '可发' | '需返工' | '推倒重写'
+  /** review 详情（5 维打分 + 对标对比 + 改点清单 + AI腔命中），JSON */
+  notes?: ReviewNotes
+  createdAt: number
+}
+
+/** Review 详情（存 reviews.notes JSON 列） */
+export interface ReviewNotes {
+  /** 5 维爆款打分 */
+  dimensions?: {
+    title?: number // 0-2
+    opening?: number
+    punchline?: number
+    authenticity?: number
+    interaction?: number
+  }
+  /** 总分 */
+  total?: number
+  /** 对标账号差距 */
+  benchmark?: string
+  /** 具体改点清单（按优先级） */
+  revisionPoints?: string[]
+  /** AI腔逐句诊断命中（§2.5 两类根源） */
+  aiCavityHits?: AiCavityHit[]
+  /** 发布前微调建议 */
+  finalTweaks?: string[]
+}
+
+/** AI腔逐句诊断命中项（ai_cavity_audit 工具产出 + A6 reviewer 核定） */
+export interface AiCavityHit {
+  /** 原句 */
+  sentence: string
+  /** 根源类型 */
+  type: 'self_invented_term' | 'english_connection_misuse'
+  /** 命中词/位置 */
+  marker?: string
+  /** 改写建议 */
+  suggestion?: string
+}
+
+/** 风格画像（JsonCollection，config/style-profiles/{id}.json） */
+export interface StyleProfile {
+  id: string
+  /** 画像名（如"本号固化风格"） */
+  name: string
+  description?: string
+  /** 标题公式列表 */
+  titleFormulas?: string[]
+  /** 6 段式骨架 */
+  structureSkeleton?: string
+  /** 语气词表 */
+  toneWords?: string[]
+  /** 字数区间 */
+  wordCountRange?: string
+  /** 互动钩子模板 */
+  interactionHooks?: string[]
+  /** 自造说法禁用清单（吸收 Roland 判据） */
+  bannedInventedTerms?: string[]
+  /** 英译式连接词禁用清单（反映出/体现出/表明了 等） */
+  bannedEnglishConnections?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** 样文（目录化，config/sample-articles/<id>/ARTICLE.md + references/） */
+export interface SampleArticle {
+  id: string
+  /** 显示名 */
+  name: string
+  description?: string
+  /** 正文（ARTICLE.md 内容） */
+  content: string
+  /** 来源号（如码农翻身/量子位） */
+  source?: string
+  /** 标签 */
+  tags?: string[]
+  /** 是否含 references/ 子目录 */
+  hasReferences?: boolean
+  /** 文章字数 */
+  wordCount?: number
+  createdAt: number
+  updatedAt: number
+}
+
 /** memory_recall/memory_search 工具入参 */
 export interface MemoryRecallInput {
   query: string

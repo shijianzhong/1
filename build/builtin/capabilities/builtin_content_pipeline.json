@@ -1,0 +1,82 @@
+{
+  "id": "builtin_content_pipeline",
+  "name": "内容生产管线",
+  "description": "技术公众号内容生产闭环：选题调研→对标拆解→风格固化→产出初稿→配图落盘→Review自检。6 阶段 6 Agent 线性接力，AI 干体力活，人定终稿。未过 review 不交付。",
+  "graph": {
+    "nodes": [
+      {
+        "id": "content_pipeline",
+        "type": "sequential",
+        "data": {
+          "label": "内容生产流水线",
+          "isEntry": true,
+          "participants": ["researcher", "benchmark", "stylist", "writer", "imager", "reviewer"]
+        },
+        "position": { "x": 0, "y": 0 }
+      },
+      {
+        "id": "researcher",
+        "type": "agent",
+        "data": {
+          "parentId": "content_pipeline",
+          "label": "阶段1·选题调研",
+          "sourceAgentId": "builtin_content_researcher"
+        },
+        "position": { "x": 220, "y": 0 }
+      },
+      {
+        "id": "benchmark",
+        "type": "agent",
+        "data": {
+          "parentId": "content_pipeline",
+          "label": "阶段2·对标拆解",
+          "sourceAgentId": "builtin_content_benchmark"
+        },
+        "position": { "x": 440, "y": 0 }
+      },
+      {
+        "id": "stylist",
+        "type": "agent",
+        "data": {
+          "parentId": "content_pipeline",
+          "label": "阶段3·风格固化",
+          "sourceAgentId": "builtin_content_stylist"
+        },
+        "position": { "x": 660, "y": 0 }
+      },
+      {
+        "id": "writer",
+        "type": "agent",
+        "data": {
+          "parentId": "content_pipeline",
+          "label": "阶段4·产出初稿",
+          "sourceAgentId": "builtin_content_writer"
+        },
+        "position": { "x": 880, "y": 0 }
+      },
+      {
+        "id": "imager",
+        "type": "agent",
+        "data": {
+          "parentId": "content_pipeline",
+          "label": "阶段5·配图落盘",
+          "sourceAgentId": "builtin_content_imager"
+        },
+        "position": { "x": 1100, "y": 0 }
+      },
+      {
+        "id": "reviewer",
+        "type": "agent",
+        "data": {
+          "parentId": "content_pipeline",
+          "label": "阶段6·Review自检",
+          "sourceAgentId": "builtin_content_reviewer"
+        },
+        "position": { "x": 1320, "y": 0 }
+      }
+    ],
+    "edges": []
+  },
+  "createdAt": 1723593600000,
+  "updatedAt": 1723593600000
+}
