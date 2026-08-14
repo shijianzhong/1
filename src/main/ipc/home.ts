@@ -83,10 +83,8 @@ import { logger } from '../logger'
 const STREAM_CHANNEL = 'home:stream'
 const DEFAULT_USER_ID = 'local'
 
-/** 当前聊天的 AbortController（home:cancel 用；组队运行内 ask_user 挂起也受它取消） */
-let currentAbortController: AbortController | null = null
-/** 当前首页 HITL run 作用域（与 orchestrate 通道隔离） */
-let currentHitlRunId: string | null = null
+/** 首页运行态：按 session 维度隔离，切会话不互相串扰。 */
+const activeRuns = new Map<string, { controller: AbortController; hitlRunId: string }>()
 
 /** 创建提案草稿暂存（draftId → {draft, ts}）；确认/取消删除，超时（30min）惰性清理；同步落盘防崩溃丢失。 */
 const DRAFT_TTL_MS = 30 * 60 * 1000
@@ -215,6 +213,13 @@ export function registerHomeHandlers(): void {
       ? undefined
       : createSession({ title: message.slice(0, 20), cwd: projectPath })
     const sid = sessionId ?? newSession!.id
+    const emit = (delta: HomeStreamEvent): void => {
+      const scoped =
+        delta.type === 'run_id'
+          ? delta
+          : ({ ...delta, sessionId: sid } as HomeStreamEvent)
+      emitStream(scoped)
+    }
     if (sessionId && projectPath) {
       getDb().prepare('UPDATE sessions SET cwd = ?, updated_at = ? WHERE id = ?').run(projectPath, Date.now(), sessionId)
     }
@@ -358,21 +363,18 @@ export function registerHomeHandlers(): void {
     // —— 记忆策略指令段（铁律21 L3 激活）：告诉主 Agent 何时记/何时取，附已有记忆 key 防重复。
     const instructions = `${instructionsWithRouting}\n${skillInstruction}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}`
 
-    // 取消控制器：贯穿主 Agent 流式 / 组队 runner / ask_user 挂起（home:cancel 生效）。
-    // 并发防御：单窗口 + 渲染层 sending 守卫下不会并发，但若发生（重复 IPC 调用），
-    // 先取消上一次运行——否则旧运行失去取消句柄成僵尸
-    // M6 修复：AbortController 必须在 toolCtx 之前创建——toolCtx 闭包引用 signal，
-    // 虽 JS 闭包延迟取值不会报错，但先创建可避免 TDZ 风险 + 代码意图更清晰
-    if (currentAbortController) {
-      logger.warn('[home] 已有运行中的聊天，自动取消旧运行')
-      const prevRun = currentHitlRunId
-      currentAbortController.abort()
-      if (prevRun) rejectUserInputsForRun(prevRun, 'aborted')
+    // 取消控制器：按 session 维度隔离；同一会话重复发起时仅取消自己的旧运行。
+    // 不同会话可并发，切换会话不应互相影响。
+    const existingRun = activeRuns.get(sid)
+    if (existingRun) {
+      logger.warn(`[home] 会话 ${sid} 已有运行中的聊天，自动取消旧运行`)
+      existingRun.controller.abort()
+      rejectUserInputsForRun(existingRun.hitlRunId, 'aborted')
     }
-    currentAbortController = new AbortController()
+    const abortController = new AbortController()
     const hitlRunId = newRunId('home')
-    currentHitlRunId = hitlRunId
-    const { signal } = currentAbortController
+    activeRuns.set(sid, { controller: abortController, hitlRunId })
+    const { signal } = abortController
 
     // R1/R2：builtin + 显式 exposeToAgents 且已连接的 MCP 工具（同一快照供主 Agent / 组队节点共用）
     const agentTools = await listToolsForAgents()
@@ -406,7 +408,7 @@ export function registerHomeHandlers(): void {
       if (!fail) return
       lastProposeFailKind = kind
       logger.warn(`[home:create] propose failed: kind=${kind} code=${fail.error}`)
-      emitStream({
+          emit({
         type: 'proposal_error',
         kind,
         error: fail.error,
@@ -435,22 +437,22 @@ export function registerHomeHandlers(): void {
           const entry = { draft: stamped, ts: Date.now() }
           pendingDrafts.set(stamped.draftId, entry)
           persistCreateDraft(stamped.draftId, entry)
-          emitStream({ type: 'proposal', draft: stamped })
+          emit({ type: 'proposal', draft: stamped })
           logger.info(`[home:create] propose invoked: kind=${stamped.kind} draftId=${stamped.draftId}`)
         },
         // HITL 提问桥（ask_user 工具）：事件经 orch_event 包装，前端渲染 AskUserCard；
         // respond 收口在 orchestrate:respond（与组队节点同一 userInput 队列）
         onAskUser: async ({ question, context }) => {
           const requestId = newRequestId()
-          const emit = (event: import('@shared/types').StreamEvent): void =>
-            emitStream({ type: 'orch_event', event })
-          emit({ type: 'request_info', request_id: requestId, node_id: 'home', question, context })
+          const emitOrchEvent = (event: import('@shared/types').StreamEvent): void =>
+            emit({ type: 'orch_event', event })
+          emitOrchEvent({ type: 'request_info', request_id: requestId, node_id: 'home', question, context })
           try {
             const answer = await waitForUserInput(requestId, { nodeId: 'home', question }, signal, hitlRunId)
-            emit({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: answer })
+            emitOrchEvent({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: answer })
             return answer
           } catch (e) {
-            emit({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: '' })
+            emitOrchEvent({ type: 'request_resolved', request_id: requestId, node_id: 'home', response: '' })
             throw e
           }
         },
@@ -458,9 +460,9 @@ export function registerHomeHandlers(): void {
         // 应答 approved / approved_session / denied（本会话允许写入 sessionApprovals）
         onApprove: async ({ toolName, args }) => {
           const requestId = newRequestId()
-          const emit = (event: import('@shared/types').StreamEvent): void =>
-            emitStream({ type: 'orch_event', event })
-          emit({ type: 'approval_request', request_id: requestId, node_id: 'home', tool_name: toolName, args })
+          const emitOrchEvent = (event: import('@shared/types').StreamEvent): void =>
+            emit({ type: 'orch_event', event })
+          emitOrchEvent({ type: 'approval_request', request_id: requestId, node_id: 'home', tool_name: toolName, args })
           try {
             const response = await waitForUserInput(
               requestId,
@@ -468,16 +470,16 @@ export function registerHomeHandlers(): void {
               signal,
               hitlRunId,
             )
-            emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response })
+            emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response })
             return resolveApprovalDecision(response, sid, toolName)
           } catch (e) {
-            emit({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response: '' })
+            emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response: '' })
             return { approved: false, reason: 'timeout or cancelled' }
           }
         },
         // update_plan 计划更新桥（Task 6）：推给前端展示计划进度
         onPlanUpdate: (p) => {
-          emitStream({
+          emit({
             type: 'orch_event',
             event: {
               type: 'plan_update',
@@ -556,9 +558,9 @@ export function registerHomeHandlers(): void {
             // respond 收口在 orchestrate:respond（同一 userInput 队列）
             onAskUser: async ({ question, context }) => {
               const requestId = newRequestId()
-              const emit = (event: import('@shared/types').StreamEvent): void =>
-                emitStream({ type: 'orch_event', event })
-              emit({ type: 'request_info', request_id: requestId, node_id: node.id, question, context })
+              const emitOrchEvent = (event: import('@shared/types').StreamEvent): void =>
+                emit({ type: 'orch_event', event })
+              emitOrchEvent({ type: 'request_info', request_id: requestId, node_id: node.id, question, context })
               try {
                 const answer = await waitForUserInput(
                   requestId,
@@ -566,19 +568,19 @@ export function registerHomeHandlers(): void {
                   signal,
                   hitlRunId,
                 )
-                emit({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: answer })
+                emitOrchEvent({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: answer })
                 return answer
               } catch (e) {
-                emit({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: '' })
+                emitOrchEvent({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: '' })
                 throw e
               }
             },
             // HITL 工具审批桥：approvalMode='always' → approval_request；支持本会话允许
             onApprove: async ({ toolName, args }) => {
               const requestId = newRequestId()
-              const emit = (event: import('@shared/types').StreamEvent): void =>
-                emitStream({ type: 'orch_event', event })
-              emit({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
+              const emitOrchEvent = (event: import('@shared/types').StreamEvent): void =>
+                emit({ type: 'orch_event', event })
+              emitOrchEvent({ type: 'approval_request', request_id: requestId, node_id: node.id, tool_name: toolName, args })
               try {
                 const response = await waitForUserInput(
                   requestId,
@@ -586,16 +588,16 @@ export function registerHomeHandlers(): void {
                   signal,
                   hitlRunId,
                 )
-                emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
+                emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
                 return resolveApprovalDecision(response, sid, toolName)
               } catch (e) {
-                emit({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
+                emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
                 return { approved: false, reason: 'timeout or cancelled' }
               }
             },
             // update_plan 计划更新桥（Task 6 统一）：组队/能力节点与主 agent 同款
             onPlanUpdate: (p) => {
-              emitStream({
+                emit({
                 type: 'orch_event',
                 event: {
                   type: 'plan_update',
@@ -628,11 +630,11 @@ export function registerHomeHandlers(): void {
       () => logger.warn(`[trace:cap] home.signal.abort session=${sid}`),
       { once: true },
     )
+    emit({ type: 'run_id', sessionId: sid })
 
     try {
       if (directAgent) {
         // 单/多角色：拼图跑（单角色单 agent 图；多角色 groupchat）
-        emitStream({ type: 'run_id', sessionId: sid })
         const graph = buildTeamGraph(
           { role_ids: directAgent.map((a) => a.id) },
           getAgent,
@@ -642,7 +644,7 @@ export function registerHomeHandlers(): void {
         const question = mentions.cleanText || message
         logger.info(`[trace:cap] home.directAgent → runTeam agents=${directAgent.map((a) => a.id).join(',')}`)
         const teamTurnStart = Date.now()
-        const result = await runTeam(graph, question, sid, buildDeps, emitStream, signal)
+        const result = await runTeam(graph, question, sid, buildDeps, emit, signal)
         const teamTurnEnd = Date.now()
         addMessage({
           sessionId: sid,
@@ -652,7 +654,7 @@ export function registerHomeHandlers(): void {
             timing: { startedAt: teamTurnStart, completedAt: teamTurnEnd },
           },
         })
-        emitStream({ type: 'message_stop', stop_reason: 'end_turn' })
+        emit({ type: 'message_stop', stop_reason: 'end_turn' })
         logger.info(`[trace:cap] home.directAgent.end session=${sid} outputLen=${result.output.length}`)
         return { runId: sid }
       }
@@ -677,16 +679,16 @@ export function registerHomeHandlers(): void {
       const streamCallbacks = {
         onText: (text: string) => {
           const safe = detector.feed(text)
-          if (safe) emitStream({ type: 'text', text: safe })
+          if (safe) emit({ type: 'text', text: safe })
         },
-        onThinking: (text: string) => emitStream({ type: 'thinking', text }),
+        onThinking: (text: string) => emit({ type: 'thinking', text }),
         onRetry: (info: {
           attempt: number
           maxRetries: number
           delayMs: number
           reason: string
         }) =>
-          emitStream({
+          emit({
             type: 'retry',
             attempt: info.attempt,
             maxRetries: info.maxRetries,
@@ -702,7 +704,7 @@ export function registerHomeHandlers(): void {
             status: 'pending',
             timestamp: Date.now(),
           })
-          emitStream({
+          emit({
             type: 'orch_event',
             event: { type: 'tool_call', node_id: 'home', tool, args },
           })
@@ -717,7 +719,7 @@ export function registerHomeHandlers(): void {
             entry.status = isError ? 'error' : 'done'
             entry.resultSummary = resultStr.slice(0, 200)
           }
-          emitStream({
+          emit({
             type: 'orch_event',
             event: { type: 'tool_result', node_id: 'home', result },
           })
@@ -781,7 +783,7 @@ export function registerHomeHandlers(): void {
         logger.warn(
           `[home:create] recovery triggered: kind=${kindParam} reason=hallucination tools=${toolsForRecovery.map((t) => t.name).join(',')}`,
         )
-        emitStream({
+        emit({
           type: 'create_notice',
           messageKey: 'home:create.recovery.pending',
           params: { kind: kindParam },
@@ -832,7 +834,7 @@ export function registerHomeHandlers(): void {
           logger.info(`[home:create] recovery done: proposed=${proposeCount}`)
         } else {
           logger.error(`[home:create] recovery done: proposed=0 kind=${kindParam}`)
-          emitStream({
+          emit({
             type: 'create_notice',
             messageKey: 'home:create.recovery.failed',
             params: { kind: kindParam },
@@ -865,14 +867,13 @@ export function registerHomeHandlers(): void {
       if (decision.kind === 'team') {
         // 组队：拼编排图跑 runner，事件经 orch_event 转前端
         logger.info('[home-router] 判为组队:', JSON.stringify(decision.json))
-        emitStream({ type: 'run_id', sessionId: sid })
         const graph = buildTeamGraph(decision.json, getAgent, getCapability)
         if (graph) {
           logger.info(
             `[trace:cap] home.team.run session=${sid} graphNodes=${graph.nodes.length} ` +
               `types=[${graph.nodes.map((n) => `${n.id}:${n.type}`).join(',')}]`,
           )
-          const teamResult = await runTeam(graph, message, sid, buildDeps, emitStream, signal)
+          const teamResult = await runTeam(graph, message, sid, buildDeps, emit, signal)
           logger.info(
             `[trace:cap] home.team.done session=${sid} outputLen=${teamResult.output.length} ` +
               `tail=${JSON.stringify(teamResult.output.slice(-80))}`,
@@ -895,7 +896,7 @@ export function registerHomeHandlers(): void {
           logger.warn('[home-router] 组队图构建失败（role/capability 失效），回退直答')
           logger.warn(`[trace:cap] home.team.graph_build_failed session=${sid} json=${JSON.stringify(decision.json)}`)
           const direct = detector.flushDirect()
-          if (direct) emitStream({ type: 'text', text: direct })
+          if (direct) emit({ type: 'text', text: direct })
           addMessage({
             sessionId: sid,
             role: 'assistant',
@@ -915,7 +916,7 @@ export function registerHomeHandlers(): void {
           `[trace:cap] home.direct session=${sid} focusCap=${!!focusCap} finalTextLen=${finalText.length}`,
         )
         const tail = detector.flushDirect()
-        if (tail) emitStream({ type: 'text', text: tail })
+        if (tail) emit({ type: 'text', text: tail })
         addMessage({
           sessionId: sid,
           role: 'assistant',
@@ -938,7 +939,7 @@ export function registerHomeHandlers(): void {
       // 10. 结束事件：触顶收尾用 max_iterations，便于前端/日志区分假 end_turn
       const stopReason = result.hitIterationLimit ? 'max_iterations' : 'end_turn'
       logger.info(`[trace:cap] home.message_stop session=${sid} reason=${stopReason} aborted=${signal.aborted} usage=${turnUsage ? JSON.stringify(turnUsage) : 'none'}`)
-      emitStream({
+      emit({
         type: 'message_stop',
         stop_reason: stopReason,
         ...(turnUsage ? { usage: turnUsage } : {}),
@@ -947,32 +948,32 @@ export function registerHomeHandlers(): void {
       // 错误推到 AI 气泡位置（而非聊天区上方），含可重试提示
       const msg = e instanceof Error ? e.message : String(e)
       logger.error(`[trace:cap] home.error session=${sid} aborted=${signal.aborted} err=${msg}`, e)
-      emitStream({ type: 'error', error: msg })
-      emitStream({ type: 'message_stop', stop_reason: 'error' })
+      emit({ type: 'error', error: msg })
+      emit({ type: 'message_stop', stop_reason: 'error' })
       throw e
     } finally {
       // 仅驳回本 run 的挂起提问，避免误伤编辑器 orchestrate 通道
       rejectUserInputsForRun(hitlRunId, 'run_finished')
       // SkillContextProvider.afterRun（铁律22）：运行结束审计
       for (const p of skillProviders) p.afterRun()
-      if (currentAbortController?.signal === signal) {
-        currentAbortController = null
-        if (currentHitlRunId === hitlRunId) currentHitlRunId = null
+      const active = activeRuns.get(sid)
+      if (active?.controller.signal === signal && active.hitlRunId === hitlRunId) {
+        activeRuns.delete(sid)
       }
     }
 
     return { runId: sid }
   })
 
-  withHandler<void>('home:cancel', () => {
-    const runId = currentHitlRunId
-    if (runId) rejectUserInputsForRun(runId, 'aborted')
-    if (currentAbortController) {
-      currentAbortController.abort()
-      currentAbortController = null
-      currentHitlRunId = null
-      logger.info('[home:cancel] 已取消当前聊天/组队运行')
-    }
+  withHandler<void>('home:cancel', (_e, input) => {
+    const sid = (input as { sessionId?: string } | undefined)?.sessionId
+    if (!sid) return
+    const run = activeRuns.get(sid)
+    if (!run) return
+    rejectUserInputsForRun(run.hitlRunId, 'aborted')
+    run.controller.abort()
+    activeRuns.delete(sid)
+    logger.info(`[home:cancel] 已取消会话 ${sid} 的聊天/组队运行`)
   })
 
   // —— 聊天创建确认入库 ——

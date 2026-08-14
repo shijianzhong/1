@@ -277,7 +277,7 @@ export interface TokenUsage {
 }
 
 /** 首页流式事件（home:stream）——LlmDelta 超集 + 编排事件 + 会话 id + 创建提案 */
-export type HomeStreamEvent =
+export type HomeStreamEvent = (
   | LlmDelta
   | { type: 'run_id'; sessionId: string }
   | { type: 'orch_event'; event: StreamEvent }
@@ -297,6 +297,10 @@ export type HomeStreamEvent =
       params?: Record<string, string>
       level?: 'info' | 'warn' | 'error'
     }
+ ) & {
+  /** 首页运行所属会话；前端按会话路由流式态，避免切会话串流 */
+  sessionId?: string
+}
 
 /** 重试回调参数 */
 export interface RetryInfo {

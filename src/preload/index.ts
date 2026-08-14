@@ -111,7 +111,7 @@ export interface OneApi {
       attachments?: Attachment[]
     }) => Promise<IpcResult<{ runId: string }>>
     onStream: (cb: (delta: import('@shared/types').HomeStreamEvent) => void) => () => void
-    cancel: () => Promise<IpcResult<void>>
+    cancel: (input?: { sessionId?: string }) => Promise<IpcResult<void>>
     confirmCreate: (input: {
       draftId: string
       kind: import('@shared/types').CreateDraft['kind']
@@ -269,7 +269,7 @@ const api: OneApi = {
       ipcRenderer.on('home:stream', handler)
       return () => ipcRenderer.off('home:stream', handler)
     },
-    cancel: () => ipcRenderer.invoke('home:cancel'),
+    cancel: (input) => ipcRenderer.invoke('home:cancel', input),
     confirmCreate: (input) => ipcRenderer.invoke('home:confirmCreate', input),
     cancelCreate: (input) => ipcRenderer.invoke('home:cancelCreate', input),
     listPendingDrafts: (input) => ipcRenderer.invoke('home:listPendingDrafts', input),
