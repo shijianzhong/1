@@ -61,6 +61,15 @@
     "skill_script_timeout": "Script execution timed out, terminated",
     "skill_stdout_limit": "Script output limit exceeded, terminated",
     "skill_interpreter_not_found": "System missing script interpreter",
+    "exa_no_key": "EXA_API_KEY not configured",
+    "exa_failed": "Exa search request failed",
+    "reddit_failed": "Reddit search request failed",
+    "gh_not_found": "gh CLI not available",
+    "gh_failed": "GitHub repo verification failed",
+    "poster_template_missing": "Poster template missing (deleted — restore builtin templates in settings)",
+    "poster_render_failed": "Image render failed (Chrome headless screenshot error)",
+    "review_save_failed": "Review archive write failed",
+    "ai_cavity_empty": "Text to audit is empty",
     "unknown_tool": "Unknown tool"
   },
   "mcp": {

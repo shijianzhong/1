@@ -22,6 +22,11 @@ extraResources:
     to: trayTemplate.png
   - from: build/icons/tray.png
     to: trayColor.png
+  # 内置资产随包出厂（docs/CONTENT_PIPELINE_PLAN.md §2.5）：
+  # build/builtin（agent/skill/capability/样文/模板）→ process.resourcesPath/builtin，
+  # 首启经 seedBuiltinAssets 复制进 userData 可写层，用户可改可分享。
+  - from: build/builtin
+    to: builtin
 mac:
   category: public.app-category.productivity
   icon: build/icons/logo.icns

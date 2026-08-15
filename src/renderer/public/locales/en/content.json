@@ -1,0 +1,94 @@
+{
+  "title": "Content Pipeline",
+  "subtitle": "Topic research → benchmark teardown → style fixing → drafting → imagery → review. AI does the heavy lifting; humans finalize.",
+  "stage": {
+    "0": "Pick direction",
+    "1": "Topic research",
+    "2": "Benchmark teardown",
+    "3": "Style fixing",
+    "4": "Draft",
+    "5": "Imagery + save",
+    "6": "AI review"
+  },
+  "topic": {
+    "title": "Topic Library",
+    "add": "Add topic",
+    "direction": "Direction",
+    "status": {
+      "pending": "Pending",
+      "researching": "Researching",
+      "producing": "Producing",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "recommendation": "Recommendation",
+    "meta": {
+      "heatSignal": "Heat signal",
+      "searchValue": "Search value",
+      "benchmarkGap": "Benchmark gap",
+      "verdict": "Verdict",
+      "angle": "Recommended angle",
+      "altAngles": "Alt angles",
+      "triFilter": "Tri-filter"
+    },
+    "empty": "Topic library is empty — run stage 1 research first.",
+    "removed": "Topic removed"
+  },
+  "styleProfile": {
+    "title": "Style Profile",
+    "add": "New profile",
+    "name": "Profile name",
+    "description": "Description",
+    "titleFormulas": "Title formulas",
+    "structureSkeleton": "6-part skeleton",
+    "toneWords": "Tone words",
+    "wordCountRange": "Word count range",
+    "interactionHooks": "Interaction hooks",
+    "bannedInventedTerms": "Banned invented terms",
+    "bannedEnglishConnections": "Banned English-translation connections",
+    "empty": "No style profile yet — run stage 2 teardown first.",
+    "removed": "Style profile removed"
+  },
+  "sampleArticle": {
+    "title": "Sample Articles",
+    "add": "Add article",
+    "name": "Display name",
+    "source": "Source account",
+    "tags": "Tags",
+    "hasReferences": "Has references",
+    "wordCount": "{{count}} words",
+    "empty": "Sample library is empty — save a few top articles in stage 2.",
+    "removed": "Article removed"
+  },
+  "review": {
+    "title": "Review Archive",
+    "score": "Total score",
+    "verdict": {
+      "可发": "Ship",
+      "需返工": "Rework",
+      "推倒重写": "Rewrite"
+    },
+    "dimensions": {
+      "title": "Title open rate",
+      "opening": "Opening retention",
+      "punchline": "Punchline share",
+      "authenticity": "Authenticity",
+      "interaction": "Interaction hook"
+    },
+    "benchmark": "Benchmark gap",
+    "revisionPoints": "Revision points",
+    "finalTweaks": "Final tweaks",
+    "notPassed": "Not shipping until review passes",
+    "latest": "Latest review"
+  },
+  "aiCavity": {
+    "title": "AI-tone sentence audit",
+    "selfInventedTerm": "Self-invented term",
+    "englishConnectionMisuse": "English-translation connection",
+    "hitsCount": "{{count}} hits",
+    "capped": "≥3 hits — authenticity capped at 1, rework required",
+    "sentence": "Sentence",
+    "marker": "Marker",
+    "suggestion": "Suggestion"
+  }
+}

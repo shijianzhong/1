@@ -133,3 +133,113 @@ export const CapabilityInputSchema = CapabilitySchema.omit({ createdAt: true, up
   id: z.string().optional(),
 })
 export const PersonaInputSchema = PersonaSchema.omit({ updatedAt: true })
+
+// —— 内容生产知识资产 schema（docs/CONTENT_PIPELINE_PLAN.md §2.3）——
+
+export const TopicMetaSchema = z.object({
+  heatSignal: z.string().optional(),
+  searchValue: z.string().optional(),
+  benchmarkGap: z.string().optional(),
+  verdict: z.string().optional(),
+  angle: z.string().optional(),
+  altAngles: z.array(z.string()).optional(),
+  triFilter: z
+    .object({
+      heat: z.boolean().optional(),
+      redSea: z.boolean().optional(),
+      blank: z.boolean().optional(),
+    })
+    .optional(),
+})
+
+export const TopicSchema = z.object({
+  id,
+  userId: z.string().default('local'),
+  title: z.string().min(1),
+  direction: z.string().optional(),
+  status: z.enum(['pending', 'researching', 'producing', 'published', 'archived']).default('pending'),
+  recommendation: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  meta: TopicMetaSchema.optional(),
+  tags: z.array(z.string()).optional(),
+  createdAt: ts,
+  updatedAt: ts,
+})
+
+export const TopicInputSchema = TopicSchema.omit({ createdAt: true, updatedAt: true }).extend({
+  id: z.string().optional(),
+})
+
+export const AiCavityHitSchema = z.object({
+  sentence: z.string(),
+  type: z.enum(['self_invented_term', 'english_connection_misuse']),
+  marker: z.string().optional(),
+  suggestion: z.string().optional(),
+})
+
+export const ReviewNotesSchema = z.object({
+  dimensions: z
+    .object({
+      title: z.number().min(0).max(2).optional(),
+      opening: z.number().min(0).max(2).optional(),
+      punchline: z.number().min(0).max(2).optional(),
+      authenticity: z.number().min(0).max(2).optional(),
+      interaction: z.number().min(0).max(2).optional(),
+    })
+    .optional(),
+  total: z.number().min(0).max(10).optional(),
+  benchmark: z.string().optional(),
+  revisionPoints: z.array(z.string()).optional(),
+  aiCavityHits: z.array(AiCavityHitSchema).optional(),
+  finalTweaks: z.array(z.string()).optional(),
+})
+
+export const ReviewRecordSchema = z.object({
+  id,
+  userId: z.string().default('local'),
+  assetType: z.string().min(1),
+  assetId: z.string().min(1),
+  score: z.number().min(0).max(10),
+  verdict: z.enum(['可发', '需返工', '推倒重写']),
+  notes: ReviewNotesSchema.optional(),
+  createdAt: ts,
+})
+
+export const ReviewRecordInputSchema = ReviewRecordSchema.omit({ createdAt: true }).extend({
+  id: z.string().optional(),
+})
+
+export const StyleProfileSchema = z.object({
+  id,
+  name: z.string().min(1),
+  description: z.string().optional(),
+  titleFormulas: z.array(z.string()).optional(),
+  structureSkeleton: z.string().optional(),
+  toneWords: z.array(z.string()).optional(),
+  wordCountRange: z.string().optional(),
+  interactionHooks: z.array(z.string()).optional(),
+  bannedInventedTerms: z.array(z.string()).optional(),
+  bannedEnglishConnections: z.array(z.string()).optional(),
+  createdAt: ts,
+  updatedAt: ts,
+})
+
+export const StyleProfileInputSchema = StyleProfileSchema.omit({ createdAt: true, updatedAt: true }).extend({
+  id: z.string().optional(),
+})
+
+export const SampleArticleSchema = z.object({
+  id,
+  name: z.string().min(1),
+  description: z.string().optional(),
+  content: z.string(),
+  source: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  hasReferences: z.boolean().optional(),
+  wordCount: z.number().int().nonnegative().optional(),
+  createdAt: ts,
+  updatedAt: ts,
+})
+
+export const SampleArticleInputSchema = SampleArticleSchema.omit({ createdAt: true, updatedAt: true, hasReferences: true, wordCount: true }).extend({
+  id: z.string().optional(),
+})

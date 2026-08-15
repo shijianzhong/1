@@ -12,8 +12,12 @@ import type {
   RegistryAssetKind,
   RegistryConfig,
   RegistryExportConfirmItem,
+  ReviewRecord,
+  SampleArticle,
   Skill,
   SkillMeta,
+  StyleProfile,
+  Topic,
 } from '@shared/types'
 
 // —— TanStack Query hooks（§5.6）——
@@ -334,3 +338,171 @@ export function useApplyRegistryExport() {
 }
 
 export type { RegistryAssetKind }
+
+// —— 选题库（docs/CONTENT_PIPELINE_PLAN.md §2.3）——
+export function useTopics(opts?: {
+  status?: Topic['status']
+  direction?: string
+}) {
+  return useQuery({
+    queryKey: ['topics', opts],
+    queryFn: () => thenUnwrap(window.one.topics.list(opts)),
+  })
+}
+
+export function useTopic(id?: string) {
+  return useQuery({
+    queryKey: ['topic', id],
+    queryFn: () => thenUnwrap(window.one.topics.get(id!)),
+    enabled: !!id,
+  })
+}
+
+export function useCreateTopic() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.topics.create>[0]) =>
+      thenUnwrap(window.one.topics.create(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['topics'] }),
+  })
+}
+
+export function useUpdateTopic() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Topic> }) =>
+      thenUnwrap(window.one.topics.update(id, patch)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['topics'] })
+      qc.invalidateQueries({ queryKey: ['topic'] })
+    },
+  })
+}
+
+export function useRemoveTopic() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.topics.remove(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['topics'] }),
+  })
+}
+
+// —— Review 档案 ——
+export function useReviews(opts?: { assetType?: string; assetId?: string }) {
+  return useQuery({
+    queryKey: ['reviews', opts],
+    queryFn: () => thenUnwrap(window.one.reviews.list(opts)),
+  })
+}
+
+export function useReview(id?: string) {
+  return useQuery({
+    queryKey: ['review', id],
+    queryFn: () => thenUnwrap(window.one.reviews.get(id!)),
+    enabled: !!id,
+  })
+}
+
+export function useCreateReview() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.reviews.create>[0]) =>
+      thenUnwrap(window.one.reviews.create(input)),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['reviews'] })
+      qc.invalidateQueries({
+        queryKey: ['reviews', { assetType: vars.assetType, assetId: vars.assetId }],
+      })
+    },
+  })
+}
+
+export function useLatestReview(assetType?: string, assetId?: string) {
+  return useQuery({
+    queryKey: ['review-latest', assetType, assetId],
+    queryFn: () => thenUnwrap(window.one.reviews.latestForAsset(assetType!, assetId!)),
+    enabled: !!assetType && !!assetId,
+  })
+}
+
+export function useRemoveReview() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.reviews.remove(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reviews'] }),
+  })
+}
+
+// —— 风格画像 ——
+export function useStyleProfiles() {
+  return useQuery({
+    queryKey: ['styleProfiles'],
+    queryFn: () => thenUnwrap(window.one.styleProfiles.list()),
+  })
+}
+
+export function useStyleProfile(id?: string) {
+  return useQuery({
+    queryKey: ['styleProfile', id],
+    queryFn: () => thenUnwrap(window.one.styleProfiles.get(id!)),
+    enabled: !!id,
+  })
+}
+
+export function useSaveStyleProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.styleProfiles.save>[0]) =>
+      thenUnwrap(window.one.styleProfiles.save(input)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['styleProfiles'] })
+      qc.invalidateQueries({ queryKey: ['styleProfile'] })
+    },
+  })
+}
+
+export function useRemoveStyleProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.styleProfiles.remove(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['styleProfiles'] }),
+  })
+}
+
+// —— 样文 ——
+export function useSampleArticles() {
+  return useQuery({
+    queryKey: ['sampleArticles'],
+    queryFn: () => thenUnwrap(window.one.sampleArticles.list()),
+  })
+}
+
+export function useSampleArticle(id?: string) {
+  return useQuery({
+    queryKey: ['sampleArticle', id],
+    queryFn: () => thenUnwrap(window.one.sampleArticles.get(id!)),
+    enabled: !!id,
+  })
+}
+
+export function useSaveSampleArticle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.sampleArticles.save>[0]) =>
+      thenUnwrap(window.one.sampleArticles.save(input)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sampleArticles'] })
+      qc.invalidateQueries({ queryKey: ['sampleArticle'] })
+    },
+  })
+}
+
+export function useRemoveSampleArticle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.sampleArticles.remove(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sampleArticles'] }),
+  })
+}
+
+export type { ReviewRecord, SampleArticle, StyleProfile, Topic }

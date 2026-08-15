@@ -9,13 +9,17 @@ import type {
   McpServerStatus,
   ModelConfig,
   Persona,
+  ReviewRecord,
+  SampleArticle,
   Session,
   SessionMessage,
   Skill,
   SkillMeta,
+  StyleProfile,
   SystemPingResponse,
   TaskRecord,
   ThemeConfig,
+  Topic,
 } from '@shared/types'
 
 /**
@@ -155,6 +159,39 @@ export interface OneApi {
     connectServer: (id: string) => Promise<IpcResult<{ toolCount: number }>>
     disconnectServer: (id: string) => Promise<IpcResult<void>>
     testServer: (input: Omit<McpServerConfig, 'id'>) => Promise<IpcResult<{ toolCount: number; tools: Array<{ name: string; description?: string }> }>>
+  }
+  topics: {
+    list: (opts?: { status?: Topic['status']; direction?: string; userId?: string }) => Promise<IpcResult<Topic[]>>
+    get: (id: string) => Promise<IpcResult<Topic | null>>
+    create: (input: Partial<Topic> & { direction: string; title: string }) => Promise<IpcResult<Topic>>
+    update: (id: string, patch: Partial<Topic>) => Promise<IpcResult<Topic | null>>
+    remove: (id: string) => Promise<IpcResult<void>>
+  }
+  reviews: {
+    list: (opts?: { assetType?: string; assetId?: string; userId?: string }) => Promise<IpcResult<ReviewRecord[]>>
+    get: (id: string) => Promise<IpcResult<ReviewRecord | null>>
+    create: (input: {
+      assetType: string
+      assetId: string
+      score: number
+      verdict: '可发' | '需返工' | '推倒重写'
+      userId?: string
+      notes?: import('@shared/types').ReviewNotes
+    }) => Promise<IpcResult<ReviewRecord>>
+    latestForAsset: (assetType: string, assetId: string) => Promise<IpcResult<ReviewRecord | null>>
+    remove: (id: string) => Promise<IpcResult<void>>
+  }
+  styleProfiles: {
+    list: () => Promise<IpcResult<StyleProfile[]>>
+    get: (id: string) => Promise<IpcResult<StyleProfile | null>>
+    save: (input: Partial<StyleProfile> & { name: string }) => Promise<IpcResult<StyleProfile>>
+    remove: (id: string) => Promise<IpcResult<void>>
+  }
+  sampleArticles: {
+    list: () => Promise<IpcResult<SampleArticle[]>>
+    get: (id: string) => Promise<IpcResult<SampleArticle | null>>
+    save: (input: Partial<SampleArticle> & { id?: string; name: string; content: string }) => Promise<IpcResult<SampleArticle>>
+    remove: (id: string) => Promise<IpcResult<void>>
   }
   app: {
     setAutoLaunch: (on: boolean) => Promise<IpcResult<boolean>>
@@ -305,6 +342,33 @@ const api: OneApi = {
     connectServer: (id) => ipcRenderer.invoke('mcp:connectServer', id),
     disconnectServer: (id) => ipcRenderer.invoke('mcp:disconnectServer', id),
     testServer: (input) => ipcRenderer.invoke('mcp:testServer', input),
+  },
+  topics: {
+    list: (opts) => ipcRenderer.invoke('topics:list', opts),
+    get: (id) => ipcRenderer.invoke('topics:get', id),
+    create: (input) => ipcRenderer.invoke('topics:create', input),
+    update: (id, patch) => ipcRenderer.invoke('topics:update', { id, patch }),
+    remove: (id) => ipcRenderer.invoke('topics:remove', id),
+  },
+  reviews: {
+    list: (opts) => ipcRenderer.invoke('reviews:list', opts),
+    get: (id) => ipcRenderer.invoke('reviews:get', id),
+    create: (input) => ipcRenderer.invoke('reviews:create', input),
+    latestForAsset: (assetType, assetId) =>
+      ipcRenderer.invoke('reviews:latestForAsset', { assetType, assetId }),
+    remove: (id) => ipcRenderer.invoke('reviews:remove', id),
+  },
+  styleProfiles: {
+    list: () => ipcRenderer.invoke('styleProfiles:list'),
+    get: (id) => ipcRenderer.invoke('styleProfiles:get', id),
+    save: (input) => ipcRenderer.invoke('styleProfiles:save', input),
+    remove: (id) => ipcRenderer.invoke('styleProfiles:remove', id),
+  },
+  sampleArticles: {
+    list: () => ipcRenderer.invoke('sampleArticles:list'),
+    get: (id) => ipcRenderer.invoke('sampleArticles:get', id),
+    save: (input) => ipcRenderer.invoke('sampleArticles:save', input),
+    remove: (id) => ipcRenderer.invoke('sampleArticles:remove', id),
   },
   app: {
     setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', on),

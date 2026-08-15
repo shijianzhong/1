@@ -1,0 +1,131 @@
+<!doctype html>
+<!--
+  技术公众号配图模板 · 科技蓝 + 深底白字
+  ─────────────────────────────────────────────────
+  用途: wechat-tech-content skill 阶段5配图
+  技术路线: HTML + Chrome headless 截图(非 PIL),中文/emoji/Web字体浏览器原生支持
+
+  两种尺寸:
+    封面 cover   : 1200×630  (改 .poster 的 height)
+    引子图 intro : 1200×675
+
+  使用方式:
+    1. 复制本文件 → DailyNotes/{DATE}/{slug}-cover.html (或 -intro.html)
+    2. 改 {主标题1/2}、{副标题}、{标签}、{收尾金句}
+    3. 跑 scripts/poster-screenshot.sh 截图:
+       bash poster-screenshot.sh {html} {png} 630   # 封面
+       bash poster-screenshot.sh {html} {png} 675   # 引子图
+
+  截图4件套(缺一不可):
+    --headless=new
+    --hide-scrollbars
+    --force-device-scale-factor=1   # 避免 retina 翻倍
+    --window-size=1200,{高度}
+
+  高度速查: 封面≈630, 引子图≈675。改文案后内容超了会被切(不自动滚),先截大不截小。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>{{title_line1}}</title>
+<style>
+  :root {
+    --bg: #0B1B2B;          /* 科技深蓝底 */
+    --bg-2: #102A43;
+    --accent: #3DA9FC;       /* 亮蓝主色 */
+    --accent-2: #60E6C5;     /* 青色点缀 */
+    --ink: #FFFFFF;
+    --ink-soft: #A9C7E6;
+    --line: rgba(96,230,197,0.25);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                 -apple-system, "Apple Color Emoji", "Segoe UI Emoji",
+                 sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 网格背景纹理(科技感) */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(61,169,252,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(61,169,252,0.06) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse at top right, rgba(61,169,252,0.18), transparent 55%),
+      radial-gradient(ellipse at bottom left, rgba(96,230,197,0.10), transparent 50%);
+  }
+  .poster {
+    position: relative; z-index: 1;
+    width: 1200px;
+    height: 630px;            /* 封面630 / 引子图改675 */
+    padding: 70px 80px;
+    background: var(--bg);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* ── 顶部标签 ── */
+  .tag-row { display: flex; align-items: center; gap: 16px; }
+  .tag {
+    font-size: 26px; font-weight: 700; color: var(--accent);
+    border: 2px solid var(--accent); border-radius: 8px;
+    padding: 6px 18px; letter-spacing: 1px;
+  }
+  .tag-sub { font-size: 24px; color: var(--ink-soft); }
+
+  /* ── 主标题 ── */
+  .title-block { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .title-line1 {
+    font-size: 96px; font-weight: 900; line-height: 1.05;
+    letter-spacing: -2px; color: var(--ink);
+  }
+  .title-line2 {
+    font-size: 96px; font-weight: 900; line-height: 1.05;
+    letter-spacing: -2px; color: var(--accent); margin-top: 4px;
+  }
+  .sub {
+    margin-top: 24px; font-size: 32px; color: var(--ink-soft); font-weight: 500;
+    line-height: 1.4;
+  }
+
+  /* ── 底部 ── */
+  .footer {
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid var(--line); padding-top: 24px;
+    font-size: 26px; color: var(--ink-soft);
+  }
+  .footer .accent { color: var(--accent-2); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="poster">
+
+  <!-- ↓↓↓ 改这里 ↓↓↓ -->
+  <div class="tag-row">
+    <span class="tag">{{tag}}</span>
+    <span class="tag-sub">{{tag_sub}}</span>
+  </div>
+
+  <div class="title-block">
+    <div class="title-line1">{{title_line1}}</div>
+    <div class="title-line2">{{title_line2}}</div>
+    <div class="sub">{{sub}}</div>
+  </div>
+
+  <div class="footer">
+    <span>{{author}}</span>
+    <span class="accent">📌 {{punchline}}</span>
+  </div>
+
+</div>
+</body>
+</html>

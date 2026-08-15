@@ -5,6 +5,7 @@ import { app, BrowserWindow, nativeImage } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
 import { closeDb, getDb } from './storage/db'
 import { seedDefaultModels } from './storage/models'
+import { seedBuiltinAssets } from './storage/builtin'
 import { registerMemoryTools } from './tools/builtin/memory'
 import { registerCreateTools } from './tools/builtin/create'
 import { registerAskUserTools } from './tools/builtin/askUser'
@@ -18,6 +19,14 @@ import { registerStrReplaceEditorTool } from './tools/builtin/strReplace'
 import { registerGrepTool } from './tools/builtin/grep'
 import { registerGlobTool } from './tools/builtin/glob'
 import { registerPlanTools } from './tools/builtin/plan'
+// 内容生产管线工具（docs/CONTENT_PIPELINE_PLAN.md §2.2）
+import { registerExaTools } from './tools/builtin/exa'
+import { registerRedditTools } from './tools/builtin/reddit'
+import { registerGhTools } from './tools/builtin/gh'
+import { registerPosterTools } from './tools/builtin/poster'
+import { registerReviewArchiveTools } from './tools/builtin/reviewArchive'
+import { registerAiCavityTools } from './tools/builtin/aiCavity'
+import { registerAssetCrudTools } from './tools/builtin/assetCrud'
 import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
 import { createTray, destroyTray } from './tray'
 import {
@@ -135,6 +144,8 @@ if (!gotLock) {
     startupMark('main:getDb')
     seedDefaultModels() // 首次启动 seed Claude Code 预置模型
     startupMark('main:seedModels')
+    seedBuiltinAssets() // 首启复制 builtin 出厂基线进 userData（§2.5，内容生产等内置能力随包即用）
+    startupMark('main:seedBuiltin')
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerCreateTools() // 聊天创建工具（propose_*，不落库，确认才入库）
     registerAskUserTools() // HITL 提问工具（编排内 agent 向用户提问，挂起等作答）
@@ -148,6 +159,14 @@ if (!gotLock) {
     registerPlanTools() // 规划工具（update_plan，内存态，sessionId 隔离）
     registerSkillScriptTools() // 技能脚本工具（skill_run_script，async spawn 铁律23）
     registerShellTools() // Shell 工具（shell_run，approvalMode='always' + DANGER_PATTERNS preCheck）
+    // 内容生产管线工具（§2.2，agent 自动从 registry 取）
+    registerExaTools() // Exa 语义搜索（范式A HTTP）
+    registerRedditTools() // Reddit 帖子检索（范式A HTTP，公开 .json）
+    registerGhTools() // GitHub 仓库/代码/issue 检索与核验（spawn gh CLI）
+    registerPosterTools() // poster HTML→PNG Chrome headless 截图（spawn Chrome）
+    registerReviewArchiveTools() // review 档案落库（SQLite 写 reviews 表）
+    registerAiCavityTools() // AI腔逐句规则预筛（纯规则零 spawn，§2.5 第一层）
+    registerAssetCrudTools() // 资产库 CRUD（topic/sample_article/style_profile 读写，§2.4）
     startupMark('main:tools-registered')
     // MCP 服务器异步自动连接（不阻塞启动）
     void initMcpServers()

@@ -61,6 +61,15 @@
     "skill_script_timeout": "脚本执行超时，已终止",
     "skill_stdout_limit": "脚本输出超限，已终止",
     "skill_interpreter_not_found": "系统缺少脚本解释器",
+    "exa_no_key": "未配置 EXA_API_KEY",
+    "exa_failed": "Exa 搜索请求失败",
+    "reddit_failed": "Reddit 检索请求失败",
+    "gh_not_found": "gh CLI 不可用",
+    "gh_failed": "GitHub 仓库核验失败",
+    "poster_template_missing": "poster 模板不存在（模板被删，请在设置恢复内置模板）",
+    "poster_render_failed": "配图渲染失败（Chrome headless 截图异常）",
+    "review_save_failed": "Review 档案写入失败",
+    "ai_cavity_empty": "待诊断文本为空",
     "unknown_tool": "未知工具"
   },
   "mcp": {

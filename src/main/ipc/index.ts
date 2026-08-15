@@ -25,6 +25,10 @@ import { registerNativeHandlers } from './native'
 import { registerProvidersHandlers } from './providers'
 import { registerRegistryHandlers } from './registry'
 import { registerMcpHandlers } from './mcp'
+import { registerTopicsHandlers } from './topics'
+import { registerReviewsHandlers } from './reviews'
+import { registerStyleProfilesHandlers } from './styleProfiles'
+import { registerSampleArticlesHandlers } from './sampleArticles'
 import { registerUpdaterHandlers } from '../updater'
 import { startupMarkFromRenderer } from '../startup-log'
 
@@ -271,6 +275,11 @@ export function registerIpcHandlers(): void {
   registerMcpHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
   registerUpdaterHandlers()
+  // —— 内容生产管线资产（docs/CONTENT_PIPELINE_PLAN.md §2.3）——
+  registerTopicsHandlers()
+  registerReviewsHandlers()
+  registerStyleProfilesHandlers()
+  registerSampleArticlesHandlers()
 }
 
 /** 递归生成目录树摘要（用于 folder 附件） */

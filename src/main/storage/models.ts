@@ -9,6 +9,8 @@ import {
   PersonaSchema,
   ProviderInputSchema,
   ProviderSchema,
+  StyleProfileInputSchema,
+  StyleProfileSchema,
 } from '../config'
 import {
   getAgentsPath,
@@ -16,6 +18,7 @@ import {
   getModelsPath,
   getPersonaPath,
   getProvidersPath,
+  getStyleProfilesDir,
 } from './paths'
 import {
   JsonCollection,
@@ -29,6 +32,7 @@ import type {
   ModelConfig,
   Persona,
   Provider,
+  StyleProfile,
 } from '@shared/types'
 import { resolveModelIdByUsage } from '@shared/types'
 
@@ -44,6 +48,33 @@ export {
   getSkillDir,
   invalidateSkillsCache,
 } from './skills/store'
+
+// —— 样文：目录化存储（docs/CONTENT_PIPELINE_PLAN.md §2.3）——
+// 实现在 storage/sample-articles/store.ts，此处 re-export 保持 import 路径统一。
+export {
+  listSampleArticles,
+  getSampleArticle,
+  saveSampleArticle,
+  removeSampleArticle,
+  getSampleArticleDir,
+  invalidateSampleArticlesCache,
+} from './sample-articles/store'
+
+// —— 选题库 / Review 档案：SQLite CRUD ——
+export {
+  createTopic,
+  listTopics,
+  getTopic,
+  updateTopic,
+  removeTopic,
+} from './topics'
+export {
+  createReview,
+  listReviews,
+  getReview,
+  removeReview,
+  getLatestReviewForAsset,
+} from './reviews'
 
 // —— models：单文件存储（userData/config/models.json）——
 const modelsStore = new JsonSingleton<ModelConfig[]>(
@@ -147,6 +178,46 @@ export function saveCapability(input: unknown, opts?: { now?: number }): Capabil
 
 export function removeCapability(id: string): void {
   capabilitiesStore.remove(id)
+}
+
+// —— style-profiles：多文件（userData/config/style-profiles/{id}.json）——
+// 内容生产 §2.3 风格画像：A3 stylist 固化回填，A4 writer 套用，A6 review 对标。
+const styleProfilesStore = new JsonCollection<StyleProfile>(getStyleProfilesDir(), (raw) =>
+  StyleProfileSchema.parse(raw),
+)
+
+export function listStyleProfiles(): StyleProfile[] {
+  return styleProfilesStore.list().sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+export function getStyleProfile(id: string): StyleProfile | null {
+  return styleProfilesStore.get(id)
+}
+
+export function saveStyleProfile(input: unknown, opts?: { now?: number }): StyleProfile {
+  const parsed = StyleProfileInputSchema.parse(input)
+  const now = opts?.now ?? Date.now()
+  const existing = parsed.id ? getStyleProfile(parsed.id) : null
+  const next: StyleProfile = {
+    id: existing?.id ?? generateId('sty_'),
+    name: parsed.name,
+    description: parsed.description,
+    titleFormulas: parsed.titleFormulas ?? existing?.titleFormulas,
+    structureSkeleton: parsed.structureSkeleton ?? existing?.structureSkeleton,
+    toneWords: parsed.toneWords ?? existing?.toneWords,
+    wordCountRange: parsed.wordCountRange ?? existing?.wordCountRange,
+    interactionHooks: parsed.interactionHooks ?? existing?.interactionHooks,
+    bannedInventedTerms: parsed.bannedInventedTerms ?? existing?.bannedInventedTerms,
+    bannedEnglishConnections: parsed.bannedEnglishConnections ?? existing?.bannedEnglishConnections,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  styleProfilesStore.save(next)
+  return next
+}
+
+export function removeStyleProfile(id: string): void {
+  styleProfilesStore.remove(id)
 }
 
 // —— agents（角色）：多文件（userData/config/agents/{id}.json）——
