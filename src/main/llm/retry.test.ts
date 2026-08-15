@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { APIError, AuthenticationError, BadRequestError } from '@anthropic-ai/sdk'
+import { APIError, AnthropicError, AuthenticationError, BadRequestError } from '@anthropic-ai/sdk'
 import type { LlmRequest, LlmResponse } from '@shared/types'
 import { RetryingClient } from './retry'
 import { LLMClient } from './client'
@@ -132,6 +132,40 @@ describe('RetryingClient', () => {
     const client = new RetryingClient(makeClient((req) => stream()))
 
     await expect(client.stream(mockReq())).rejects.toThrow('something broke')
+    expect(stream).toHaveBeenCalledTimes(1)
+  })
+
+  // —— 模型吐畸形 tool input JSON（铁律11 精神延伸）——
+  // SDK 流式累积 tool input 解析失败抛裸 AnthropicError（无 status，非 APIError 子类）。
+  // 旧逻辑所有分支都 miss → 不重试 → 崩整个 chat。改为特征串匹配后可重试。
+  it('toolInputParseError 可重试（裸 AnthropicError 特征串匹配）', async () => {
+    const parseErr = new AnthropicError(
+      'Unable to parse tool parameter JSON from model. Please retry your request or adjust your prompt. ' +
+        'Error: SyntaxError: Expected double-quoted property name in JSON at position 565. ' +
+        'JSON: {"name":"x","graph":{"nodes":[{"data":{"sequential":true}]}}',
+    )
+    const stream = vi
+      .fn()
+      .mockRejectedValueOnce(parseErr)
+      .mockResolvedValueOnce(mockResponse())
+    const client = new RetryingClient(makeClient((req) => stream()))
+
+    const p = client.stream(mockReq())
+    await vi.advanceTimersToNextTimerAsync()
+    const res = await p
+
+    expect(stream).toHaveBeenCalledTimes(2)
+    expect(res.stopReason).toBe('end_turn')
+  })
+
+  it('非 toolInputParseError 的裸 AnthropicError 仍不重试（避免过度重试）', async () => {
+    // 其他裸 AnthropicError（无特征串）保持不重试，防止把未知 SDK 错误也拉进重试
+    const stream = vi
+      .fn()
+      .mockRejectedValue(new AnthropicError('some other SDK error'))
+    const client = new RetryingClient(makeClient((req) => stream()))
+
+    await expect(client.stream(mockReq())).rejects.toThrow('some other SDK error')
     expect(stream).toHaveBeenCalledTimes(1)
   })
 })

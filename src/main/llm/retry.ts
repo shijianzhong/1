@@ -61,6 +61,16 @@ function isRetryable(error: unknown): boolean {
   // 401/400 明确不重试（即使 instanceof 失效）
   if (/401|400|bad.?request|unauthor/i.test(errStr)) return false
 
+  // —— 模型吐畸形 tool input JSON（铁律11 精神延伸）——
+  // Anthropic SDK 流式累积 tool input 时解析失败抛裸 AnthropicError（无 status，非 APIError
+  // 子类），消息模板固定 "Unable to parse tool parameter JSON from model..."。模型偶发吐畸形
+  // JSON 是正常现象（尤其复杂 graph 嵌套），SDK 官方建议 retry。上面所有分支都 miss 它，
+  // 不在此拦截 → 直接抛 → 崩整个 chat。用原始 message 前缀匹配（errStr 已 toLowerCase，
+  // 但 SDK 模板是混合大小写，用原始 message 更稳）。
+  if (error instanceof Error && error.message.startsWith('Unable to parse tool parameter JSON')) {
+    return true
+  }
+
   if (error instanceof Error) {
     const name = error.name.toLowerCase()
     // name 或 message 任一含网络/超时/中转关键词即重试

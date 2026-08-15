@@ -260,11 +260,18 @@ export function HomePage() {
         })
       } else if (delta.type === 'retry') {
         // 重试等待：在 AI 气泡位置显示「重试中（N/M，等待 Xs）」
+        // 重试会重跑整个 stream（retry.ts:129），模型从头生成。清空已发的 text/thinking
+        // 防重复 prose：429/5xx 在 stream 前拒绝无已发文本（清空无副作用）；
+        // toolInputParseError 是 mid-stream 抛错（prose 已部分发出），不清空 → 旧+新重复。
+        // tool_use_* delta 在 agent.emitDelta 被丢弃、tool_call 事件只在 post-stream emit，
+        // 故 retry 时无 stale tool chip 需清。
         setSessionStreamMsgs(targetSessionId, (prev) => {
           const last = prev[prev.length - 1]
           if (last?.role === 'assistant' && (last.streaming || last.retrying)) {
             return [...prev.slice(0, -1), {
               ...last,
+              text: '',
+              thinking: undefined,
               streaming: false,
               orbState: 'solving' as const,
               retrying: t('home:retry.waiting', { attempt: delta.attempt, maxRetries: delta.maxRetries, delay: (delta.delayMs / 1000).toFixed(1), reason: delta.reason }),
