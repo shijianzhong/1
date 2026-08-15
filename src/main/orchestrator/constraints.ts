@@ -59,3 +59,30 @@ export function repairToolPairs(messages: OrchMessage[]): OrchMessage[] {
 export function stripToolBlocksFilter(messages: OrchMessage[]): OrchMessage[] {
   return messages.filter((m) => m.role !== 'tool' && !m.isFunctionResult)
 }
+
+/**
+ * 剥非本 agent 的上游 tool 块（铁律16 精神，用 author 字段而非未落地的 context_mode）。
+ * Sequential 有工具的下游收到上游 full_conversation 转发——上游 tool_use/tool_result
+ * 属于别的 agent 命名空间，对当前 agent 永远是孤儿（tools 定义里没有那些 tool_use）。
+ * 重建为真 block 发出 → Anthropic 2013。剥掉降级为文本（保语义：上游工具调用的
+ * 结果内容对下游仍是有效上下文），只留本 agent 自己的 tool 块给 repairToolPairs 配对。
+ */
+export function stripForeignToolBlocks(messages: OrchMessage[], selfId: string): OrchMessage[] {
+  return messages.map((m) => {
+    const isToolBlock =
+      m.role === 'tool' || m.isFunctionResult || (!!m.toolUseId && !!m.toolUseName)
+    if (!isToolBlock) return m
+    // 本 agent 自有 tool 块保留：author 显式等于 selfId，或 author 缺失（保守不误剥）。
+    // 上游转发消息一定带 author（runner.ts:404-406 + toOrchMessage 保 author），
+    // 故 author 明确不等于 selfId 才是上游块。
+    if (!m.author || m.author === selfId) return m
+    // 上游 tool 块降级为普通文本（保 content 语义）
+    const { toolUseId: _d1, toolUseName: _d2, toolUseInput: _d3, isFunctionResult: _d4, ...rest } = m
+    rest.role = m.role === 'assistant' ? 'assistant' : 'user'
+    // content 为空兜底（防空 text 块触发 Anthropic 校验错，同 repairToolPairs 范式）
+    if (!rest.content?.trim()) {
+      rest.content = m.isFunctionResult ? '[上游工具结果]' : '[上游工具调用]'
+    }
+    return rest
+  })
+}

@@ -10,7 +10,7 @@ import { Agent } from '../agent'
 import type { AgentConfig } from '@shared/types'
 import type { LLMClientOptions } from '../../llm/client'
 import { logger } from '../../logger'
-import { repairToolPairs, stripToolBlocksFilter } from '../constraints'
+import { repairToolPairs, stripForeignToolBlocks, stripToolBlocksFilter } from '../constraints'
 
 // —— Agent 叶子 Executor（§三 D + §三之三 G Sequential）——
 // handle 接收消息 → 组装 LlmMessage（Task 8b 条件化保 tool 块 / strip 无 tool 下游，
@@ -118,8 +118,10 @@ export class AgentExecutor implements Executor {
 
   /**
    * 组装 messages：cache OrchMessage → LlmMessage。
-   * Task 8b（铁律16-18 条件化）：本 agent 有 tools → repairToolPairs 保留 tool 块配对；
-   * 无 tools → stripToolBlocksFilter 剥上游 tool 块（治 Anthropic 2013）。
+   * Task 8b（铁律16-18 条件化）：
+   *   有 tools → 先 stripForeignToolBlocks 剥上游（外 agent 命名空间）tool 块（治跨 agent 2013），
+   *              再 repairToolPairs 对本 agent 自有 tool 块配对。
+   *   无 tools → stripToolBlocksFilter 剥所有 tool 块。
    * wake_on_upstream（§G）：末条 assistant 且 author≠self 时追加 user 唤醒指令治复述。
    */
   private assembleMessages(ctx: WorkflowContext): LlmMessage[] {
@@ -127,7 +129,12 @@ export class AgentExecutor implements Executor {
       (this.agent.config.tools?.length ?? 0) > 0 ||
       (this.agent.config.toolNames?.length ?? 0) > 0
     let source = [...this.cache]
-    source = hasTools ? repairToolPairs(source) : stripToolBlocksFilter(source)
+    if (hasTools) {
+      source = stripForeignToolBlocks(source, this.id) // 先剥上游 tool 块（治跨 agent 2013）
+      source = repairToolPairs(source) // 再对本 agent 自有 tool 块配对
+    } else {
+      source = stripToolBlocksFilter(source)
+    }
 
     const messages: LlmMessage[] = []
     for (const m of source) {
