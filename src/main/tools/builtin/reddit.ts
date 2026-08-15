@@ -2,7 +2,9 @@ import { z } from 'zod'
 import { registerTool } from '../registry'
 
 // —— Reddit 帖子检索（内容生产 §2.2，范式A：HTTP fetch）——
-// Reddit 公开 JSON：在搜索/子版 URL 后加 .json 即可，免 OAuth（带 UA，限流宽松）。
+// Reddit 公开 JSON：在搜索/子版 URL 后加 .json。2026 年起 Reddit 收紧裸 fetch，
+// 缺 Accept 头 / UA 像爬虫易 403。带 Accept+UA 后多数情况可过；仍 403 时返回
+// 结构化错误引导 agent 改走 opencli_run（登录态浏览器）兜底，不卡死。
 // 用于"某技术在 Reddit 上的讨论热度/开发者真实反馈"——选题红海度+实现空白判断。
 // 错误策略仿 web.ts：4xx 结构化返回不重试，5xx 抛走 registry。
 // 错误文案带 messageKey（铁律 T2）。
@@ -11,6 +13,11 @@ const TIMEOUT_MS = 30_000
 const RESULT_CAP = 10
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+const HEADERS = {
+  'User-Agent': UA,
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+} as const
 
 type FetchOutcome = { ok: true; data: unknown } | { ok: false; status: number }
 
@@ -20,7 +27,7 @@ async function fetchJson(url: string, signal: AbortSignal | undefined): Promise<
   const onAbort = (): void => ctrl.abort(signal?.reason ?? new Error('aborted'))
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: ctrl.signal })
+    const res = await fetch(url, { headers: HEADERS, signal: ctrl.signal })
     if (!res.ok && res.status < 500) return { ok: false, status: res.status }
     if (!res.ok) return { ok: false, status: res.status }
     try {
@@ -100,6 +107,15 @@ export function registerRedditTools(): void {
         : `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=${s}&limit=${cap}`
       const r = await fetchJson(url, ctx.signal)
       if (!r.ok) {
+        // 403：Reddit 收紧裸 fetch，引导 agent 改走 opencli_run 兜底（登录态浏览器）
+        if (r.status === 403) {
+          return {
+            ok: false,
+            error: 'http_403',
+            messageKey: 'errors.tools.reddit_blocked',
+            hint: 'Reddit 拒绝裸 fetch，改走 opencli_run({args:["reddit","search","<query>","-f","json"]}) 兜底',
+          }
+        }
         return {
           ok: false,
           error: `http_${r.status}`,

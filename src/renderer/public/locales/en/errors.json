@@ -64,6 +64,7 @@
     "exa_no_key": "EXA_API_KEY not configured",
     "exa_failed": "Exa search request failed",
     "reddit_failed": "Reddit search request failed",
+    "reddit_blocked": "Reddit blocked raw fetch, use opencli_run fallback",
     "gh_not_found": "gh CLI not available",
     "gh_failed": "GitHub repo verification failed",
     "poster_template_missing": "Poster template missing (deleted — restore builtin templates in settings)",

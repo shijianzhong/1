@@ -6,24 +6,53 @@ tags: [content-pipeline, research, topic]
 
 # 选题调研纪律（A1 content-researcher）
 
-阶段1选题调研按本纪律跑。所有平台抓取走内置工具（exa_search / gh_search / reddit_search / web_search / web_read），不自己 curl 瞎猜。平台按"搜索价值+讨论热度+趋势验证"三类并行跑，最后汇总成选题价值评估表。
+阶段1选题调研按本纪律跑。所有平台抓取走内置工具，不自己 curl 瞎猜。平台按"中文社区+搜索价值+讨论热度+趋势验证"多路并行跑，最后汇总成选题价值评估表。
 
 ## 调研工具映射
 
 | 平台 | 工具 | 用途 |
 |------|------|------|
-| 语义趋势 | `exa_search` | 近3-6个月新内容，抓选题角度和爆款标题 |
-| GitHub | `gh_search`(action=search_repos) | 锁真火项目（star>5K 或近30天 trending），避免写过气 |
+| **中文社区（主力）** | `opencli_run` | 小红书/知乎/掘金/微信公众号等登录态社区，中文选题红海度+讨论热度主数据源 |
+| 语义趋势 | `exa_search` | 近3-6个月新内容，抓选题角度和爆款标题（需 EXA_API_KEY，无 key 跳过） |
+| GitHub | `gh_search`(action=search_repos) | 锁真火项目（star>5K 或近30天 trending），避免写过气（需 gh 已登录，未登录跳过） |
 | GitHub 核验 | `gh_search`(action=repo_view) | 查某仓库 star/issue 元数据，防 AI 编造 |
-| Reddit | `reddit_search` | 海外开发者讨论热度，海外火国内没写=选题红利 |
+| Reddit | `reddit_search` | 海外开发者讨论热度，海外火国内没写=选题红利（403 时改走 opencli reddit 兜底） |
 | 全网 | `web_search` | 微信指数/百度/搜狗同题文章数（红海度判断） |
 | 读全文 | `web_read` | 读重点文章/帖子/公告全文 |
 
-## 三类并行调研
+## opencli_run 用法范式（中文社区调研主力）
 
-1. **趋势与选题**：`exa_search`（query="<方向> 2026 趋势 爆款 实战"，numResults=8，带 startPublishedDate 提时效）
-2. **GitHub 锁真火**：`gh_search`(action=search_repos, query="<方向关键词>", limit=20) + 限定 `--created=">2026-01-01"` 找新项目。**硬规则**：写工具盘点类，项目必须 star>5K 或近30天 trending，否则不写。
-3. **Reddit 验证全球热度**：`reddit_search`(query, subreddit=LocalLLaMA/programming 等, sort=hot)。看 upvote 高的帖，海外火的国内公众号还没写=选题红利。
+opencli_run 走用户本机已登录浏览器读登录态社区，是中文调研唯一能触达小红书/知乎/掘金/微信公众号的路。args 是子命令参数数组（不含 "opencli" 本身），输出尽量带 `"-f","json"`。
+
+```
+# 小红书搜关键词
+opencli_run({args:["xiaohongshu","search","<关键词>","--limit","5","-f","json"]})
+# 知乎热榜
+opencli_run({args:["zhihu","hot","-f","json"]})
+# 知乎搜问题
+opencli_run({args:["zhihu","search","<关键词>","-f","json"]})
+# 掘金搜
+opencli_run({args:["juejin","search","<关键词>","-f","json"]})
+# 微信公众号文章
+opencli_run({args:["weixin","search","<关键词>","-f","json"]})
+# Reddit 兜底（reddit_search 403 时）
+opencli_run({args:["reddit","search","<关键词>","-f","json"]})
+# 站点/命令不确定先查
+opencli_run({args:["list"]})
+```
+
+## 多路并行调研
+
+1. **中文社区（主力）**：`opencli_run` 跑小红书/知乎/掘金/微信公众号，看讨论热度+同题覆盖量。这是中文选题红海度的主数据源——**第一路就跑它**。
+2. **趋势与选题**：`exa_search`（query="<方向> 2026 趋势 爆款 实战"，numResults=8，带 startPublishedDate 提时效）。无 EXA_API_KEY → 跳过，用 web_search 补。
+3. **GitHub 锁真火**：`gh_search`(action=search_repos, query="<方向关键词>", limit=20) + 限定 `--created=">2026-01-01"` 找新项目。**硬规则**：写工具盘点类，项目必须 star>5K 或近30天 trending，否则不写。未登录报 spawn 失败/未授权 → 跳过 gh 路，改 web_search 核验热度，不要误读成"字段 bug"（gh --json 字段名是对的）。
+4. **Reddit 验证全球热度**：`reddit_search`(query, subreddit=LocalLLaMA/programming 等, sort=hot)。看 upvote 高的帖，海外火的国内公众号还没写=选题红利。返回 http_403 → 改走 `opencli_run({args:["reddit","search","<query>","-f","json"]})` 兜底，不卡在 403。
+
+## 工具失败跳过纪律（防卡死）
+
+任一工具无 key / 未登录 / 403 / 限流 → **跳过该路继续跑别的，不报错中断**。无 EXA_API_KEY 跳 exa；gh 未登录跳 gh；reddit 403 改 opencli 兜底。绝不能因一路挂掉就全退化成 web_search——opencli 是中文社区唯一通路，必须先跑。
+
+**唯一例外——browser_bridge_down**：opencli_run 返回 browser_bridge_down 说明用户 Chrome 未装 OpenCLI 扩展（Browser Bridge）。此时中文社区全断（小红书/知乎/掘金/微信公众号都读不了），**必须停下来用 ask_user 提示用户装扩展后重跑，不能静默退化成纯 web_search**。opencli 是中文调研唯一通路，它不可用时强行用 web_search 会让调研退化回老问题。
 
 ## 选题评审决策（调研完必做，不能只列数据）
 

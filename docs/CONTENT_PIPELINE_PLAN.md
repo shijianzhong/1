@@ -40,7 +40,7 @@ SKILL.md 编排逻辑         ──→          Capability（编排图，6节�
 
 | # | Agent name | 对应原 skill 阶段 | 职责 | 绑定 Skill | 绑定 Tool（allowedToolNames） |
 |---|-----------|----------------|------|-----------|---------------------------|
-| A1 | `content-researcher` | 阶段1 选题调研 | 多平台并行调研（GitHub/Reddit/Exa/微信），出选题价值评估表+三维过筛+判断结论 | `topic-research-discipline` | `web_search`, `exa_search`, `reddit_search`, `gh_search`, `topic_add` |
+| A1 | `content-researcher` | 阶段1 选题调研 | 多平台并行调研（**opencli 中文社区主力** + GitHub/Reddit/Exa/全网），出选题价值评估表+三维过筛+判断结论 | `topic-research-discipline` | `opencli_run`, `web_search`, `exa_search`, `reddit_search`, `gh_search`, `topic_add`, `ask_user` |
 | A2 | `content-benchmark` | 阶段2 对标拆解 | 拆解有热度同类号，提炼所长，样文入库 | `benchmark-discipline` | `web_read`, `sample_article_save` |
 | A3 | `content-stylist` | 阶段3 风格固化 | 综合拆解所长+样文，回填风格画像 | `style-freeze-discipline` | `style_profile_update`, `sample_article_read` |
 | A4 | `content-writer` | 阶段4 产出初稿 | 套风格模板+6段式写稿，标30%人工改写点 | `writing-style`（核心风格画像） | `topic_get`, `sample_article_read`, `style_profile_read`, `web_read`（核验事实） |

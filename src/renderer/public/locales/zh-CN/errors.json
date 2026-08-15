@@ -64,6 +64,7 @@
     "exa_no_key": "未配置 EXA_API_KEY",
     "exa_failed": "Exa 搜索请求失败",
     "reddit_failed": "Reddit 检索请求失败",
+    "reddit_blocked": "Reddit 拒绝裸 fetch，改走 opencli_run 兜底",
     "gh_not_found": "gh CLI 不可用",
     "gh_failed": "GitHub 仓库核验失败",
     "poster_template_missing": "poster 模板不存在（模板被删，请在设置恢复内置模板）",
