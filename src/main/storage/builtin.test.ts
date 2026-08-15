@@ -107,31 +107,38 @@ describe('storage/builtin seedBuiltinAssets', () => {
     expect(existsSync(join(destTemplates, 'wechat-poster.html'))).toBe(true)
   })
 
-  it('幂等：二次调用不覆盖已有（保用户改动）', () => {
+  // 强制覆盖策略（2026-08-15 修订）：builtin 是出厂基线，每次启动用出厂源覆盖本地副本。
+  // 历史缺陷：旧逻辑"目标存在即跳过"→官方改了 builtin agent 定义后老用户拿不到新版
+  //（如 A1 加 opencli_run 后本地旧副本不更新→调研仍全退化成 web_search）。
+  // 纪律前提：用户要改 builtin 能力应复制成 custom id 再改，不该直接改 builtin_ 副本（会被覆盖）。
+  it('强制覆盖：二次调用用出厂源覆盖本地副本（官方升级即生效）', () => {
     seedSource()
     seedBuiltinAssets()
-    // 用户改了 agent
+    // 本地副本被改成旧版/脏数据（模拟用户误改或上一版残留）
     const agentPath = join(destAgents, 'builtin_content_writer.json')
-    writeFileSync(agentPath, '{"id":"builtin_content_writer","userEdited":true}')
-    // 用户改了 skill
+    writeFileSync(agentPath, '{"id":"builtin_content_writer","stale":true}')
     const skillPath = join(destSkills, 'writing-style', 'SKILL.md')
-    writeFileSync(skillPath, '---\nname: user-changed\n---\n# changed by user')
-    // 再 seed
+    writeFileSync(skillPath, '---\nname: stale\n---\n# stale content')
+    // 再 seed（模拟重启）
     seedBuiltinAssets()
-    // 用户改动保留
-    expect(readFileSync(agentPath, 'utf8')).toContain('userEdited')
-    expect(readFileSync(skillPath, 'utf8')).toContain('user-changed')
+    // 被出厂源覆盖回最新版（用户对 builtin_ 副本的改动不保留——这是基线纪律）
+    expect(readFileSync(agentPath, 'utf8')).not.toContain('stale')
+    expect(readFileSync(agentPath, 'utf8')).toContain('builtin_content_writer')
+    expect(readFileSync(skillPath, 'utf8')).not.toContain('stale')
+    expect(readFileSync(skillPath, 'utf8')).toContain('writing-style')
   })
 
-  it('幂等：目标已存在的文件不复制', () => {
+  it('官方升级：源里 agent 内容变了，再 seed 后本地拿到新版', () => {
     seedSource()
     seedBuiltinAssets()
-    const beforeStat = readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')
-    // 源变了（模拟官方升级）
+    const before = readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')
+    // 源变了（模拟官方升级 v2）
     writeFileSync(join(srcAgents, 'builtin_content_writer.json'), '{"id":"builtin_content_writer","v":2}')
     seedBuiltinAssets()
-    // 目标不变（存在即跳过，不覆盖）
-    expect(readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')).toBe(beforeStat)
+    // 本地被覆盖成新版（关键：老用户拿得到升级内容）
+    const after = readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')
+    expect(after).not.toBe(before)
+    expect(after).toContain('"v":2')
   })
 
   it('空源不报错（无 builtin 资产时安全跳过）', () => {
@@ -140,22 +147,26 @@ describe('storage/builtin seedBuiltinAssets', () => {
     expect(existsSync(destAgents)).toBe(false)
   })
 
-  it('部分已落地：只复制缺失的，已有的保留', () => {
+  it('部分已落地：已有的被覆盖成最新，缺失的补上', () => {
     seedSource()
-    // 预先放一个已存在的 agent
+    // 预先放一个旧版 agent（模拟老用户残留）
     mkdirSync(destAgents, { recursive: true })
     writeFileSync(join(destAgents, 'builtin_content_writer.json'), '{"preset":true}')
     seedBuiltinAssets()
-    // 已有的不动
-    expect(readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')).toContain('preset')
+    // 已有的被出厂源覆盖（不是保留旧 preset）
+    expect(readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')).not.toContain(
+      'preset',
+    )
+    expect(readFileSync(join(destAgents, 'builtin_content_writer.json'), 'utf8')).toContain(
+      'builtin_content_writer',
+    )
     // 缺的补上
     expect(existsSync(join(destAgents, 'builtin_content_research_gh.json'))).toBe(true)
   })
 
-  // issue #2：目录型资产升级回填。老用户 config/skills/ 已存在（首装时复制过 writing-style），
-  // 官方升级新增了一个 builtin skill（new-skill）。旧逻辑 copyBuiltinIfAbsent 见目标根目录
-  // 已存在就整包跳过 → 老用户永远拿不到 new-skill。新逻辑逐子项回填：缺的补，有的不动。
-  it('升级回填：老用户已落地后，新加的 builtin skill 能补发（不整目录跳过）', () => {
+  // 目录型资产升级：老用户已落地后，官方源新增 builtin skill + 改了已有 skill 内容。
+  // 强制覆盖：新 skill 补发，已有 skill 被出厂最新版覆盖。
+  it('升级回填：老用户已落地后，新加 builtin skill 补发 + 已有 skill 覆盖成最新', () => {
     seedSource() // 源含 writing-style
     seedBuiltinAssets() // 首启：writing-style 落地
     expect(existsSync(join(destSkills, 'writing-style', 'SKILL.md'))).toBe(true)
@@ -166,22 +177,25 @@ describe('storage/builtin seedBuiltinAssets', () => {
       join(srcSkills, 'new-builtin-skill', 'SKILL.md'),
       '---\nname: new-builtin-skill\n---\n# new',
     )
-    // 用户对已有 skill 的改动
+    // 本地已有 skill 被改成脏数据
     writeFileSync(
       join(destSkills, 'writing-style', 'SKILL.md'),
-      '---\nname: user-changed\n---\n# changed by user',
+      '---\nname: stale\n---\n# stale',
     )
 
     seedBuiltinAssets() // 升级回填
 
-    // 新 skill 补发到位（关键：老用户拿得到升级内容）
+    // 新 skill 补发到位
     expect(existsSync(join(destSkills, 'new-builtin-skill', 'SKILL.md'))).toBe(true)
     expect(readFileSync(join(destSkills, 'new-builtin-skill', 'SKILL.md'), 'utf8')).toContain(
       'new-builtin-skill',
     )
-    // 已有 skill 的用户改动保留
+    // 已有 skill 被出厂最新版覆盖（脏数据清掉）
+    expect(readFileSync(join(destSkills, 'writing-style', 'SKILL.md'), 'utf8')).not.toContain(
+      'stale',
+    )
     expect(readFileSync(join(destSkills, 'writing-style', 'SKILL.md'), 'utf8')).toContain(
-      'user-changed',
+      'writing-style',
     )
   })
 })

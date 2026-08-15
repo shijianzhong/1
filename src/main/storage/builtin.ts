@@ -16,59 +16,55 @@ import { logger } from '../logger'
 
 // —— 内置资产首启复制（docs/CONTENT_PIPELINE_PLAN.md §2.5）——
 // builtin 出厂基线（build/builtin，随包 extraResources）→ userData 可写层。
-// 用户可改自己那份副本，改完走现有 Registry 导出/导入分享给他人。
 //
 // 引擎零侵入：复制进 userData 后与 custom 长得一模一样，引擎不区分也不在乎。
 //
-// 升级判定（实用主义，非 registry.isLocallyModified）：
-//   目标已存在 → 视为"已落地"，跳过覆盖（不管用户改没改过，都不破坏用户现有状态）。
-//   官方升级 builtin 资产版本号后，走显式提示路径（后续 P3 填资产时细化），
-//   不自动覆盖——保住用户改动是第一优先级。
-//   理由：builtin 基线不带 registry provenance（非 registry 导入），没有 importedAt
-//   锚点判定"改没改过"；靠 mtime 不可靠（用户可能改完又改回）。存在即跳过最安全。
+// 升级策略——强制覆盖：
+//   每次启动用出厂源覆盖本地 builtin 副本（单文件直接覆盖，目录型逐子项覆盖）。
+//   官方改了 builtin agent/skill/capability 定义后，升级即生效，老用户拿得到新版。
+//
+//   纪律前提：builtin 是出厂基线，不是用户草稿。用户要改 builtin 能力，应复制成
+//   custom id（如 builtin_content_writer → my_content_writer）再改，不该直接改 builtin_
+//   副本——直接改的会被下次升级覆盖。这和 seedDefaultModels 的 provider 基线同理。
 
 /**
  * 目录型 builtin 资产回填（skill / sample-articles）：每个子目录是一独立资产。
- * 逐子项判存在：目标子目录已存在 → 跳过（保用户对该资产的改动）；不存在 → 复制。
- *
- * 这样老用户升级时能收到新加的 builtin 子项（如后续新增的 skill / 样文），
- * 而非"目标根目录已存在就整包跳过"——后者只首装拷贝、不向现有安装补发缺失 builtin。
+ * 强制覆盖：逐子项用出厂源覆盖本地副本（保出厂最新；用户改过的 builtin 子项会被冲回）。
+ * 不存在的子项新增，存在的覆盖，确保老用户升级拿到新加 builtin 子项 + 已有子项的最新版。
  */
-function copyBuiltinSubdirsIfAbsent(srcDir: string, destDir: string, label: string): number {
+function copyBuiltinSubdirsForce(srcDir: string, destDir: string, label: string): number {
   if (!existsSync(srcDir)) return 0
   const entries = readdirSync(srcDir, { withFileTypes: true }).filter((e) => e.isDirectory())
   let copied = 0
   for (const entry of entries) {
     const src = join(srcDir, entry.name)
     const dest = join(destDir, entry.name)
-    if (existsSync(dest)) continue // 该资产已落地，跳过（保用户改动）
-    cpSync(src, dest, { recursive: true })
+    cpSync(src, dest, { recursive: true, force: true })
     copied++
   }
   logger.info(
-    `[builtin] ${label} 回填 ${copied}/${entries.length} 子项: ${srcDir} → ${destDir}`,
+    `[builtin] ${label} 覆盖 ${copied}/${entries.length} 子项: ${srcDir} → ${destDir}`,
   )
   return copied
 }
 
 /**
  * 复制 builtin 单文件资产（agent/capability JSON、模板 HTML）。
- * 目标文件已存在 → 跳过；不存在 → 复制。
- * 按目录批量：源目录所有文件复制到目标目录，逐文件判存在。
+ * 强制覆盖：目标文件已存在也用出厂源覆盖（保出厂最新），不存在则新增。
+ * 按目录批量：源目录所有文件复制到目标目录，逐文件强制覆盖。
  */
-function copyBuiltinFilesIfAbsent(srcDir: string, destDir: string, label: string): number {
+function copyBuiltinFilesForce(srcDir: string, destDir: string, label: string): number {
   if (!existsSync(srcDir)) return 0
   let copied = 0
   const entries = readdirSync(srcDir, { withFileTypes: true }).filter((e) => e.isFile())
   for (const entry of entries) {
     const src = join(srcDir, entry.name)
     const dest = join(destDir, entry.name)
-    if (existsSync(dest)) continue // 已落地，跳过
-    cpSync(src, dest)
+    cpSync(src, dest, { force: true })
     copied++
   }
   logger.info(
-    `[builtin] ${label} 首启复制 ${copied}/${entries.length} 文件: ${srcDir} → ${destDir}`,
+    `[builtin] ${label} 覆盖 ${copied}/${entries.length} 文件: ${srcDir} → ${destDir}`,
   )
   return copied
 }
@@ -77,27 +73,27 @@ function copyBuiltinFilesIfAbsent(srcDir: string, destDir: string, label: string
  * 首启复制 builtin 资产基线进 userData 可写层（仿 seedDefaultModels 范式）。
  * 在 index.ts app.whenReady 内、seedDefaultModels 之后调用。
  *
- * 幂等：目标已存在即跳过。每类资产独立复制，互不影响。
+ * 强制覆盖：每次启动用出厂源覆盖本地 builtin 副本，官方升级即生效。
  */
 export function seedBuiltinAssets(): void {
   // agent（单 JSON 文件，builtin_*.json → config/agents/builtin_*.json）
-  copyBuiltinFilesIfAbsent(getBuiltinAgentsDir(), getAgentsPath(), 'agents')
+  copyBuiltinFilesForce(getBuiltinAgentsDir(), getAgentsPath(), 'agents')
 
   // capability（单 JSON 文件）
-  copyBuiltinFilesIfAbsent(getBuiltinCapabilitiesDir(), getCapabilitiesDir(), 'capabilities')
+  copyBuiltinFilesForce(getBuiltinCapabilitiesDir(), getCapabilitiesDir(), 'capabilities')
 
-  // skill（目录，每个 skill 是一个子目录）——逐子项回填，老用户升级能收到新加的 builtin skill
-  copyBuiltinSubdirsIfAbsent(getBuiltinSkillsDir(), getSkillsPath(), 'skills')
+  // skill（目录，每个 skill 是一个子目录）——强制覆盖，升级拿得到最新 builtin skill
+  copyBuiltinSubdirsForce(getBuiltinSkillsDir(), getSkillsPath(), 'skills')
 
-  // 样文（目录，每个样文是一个子目录）——逐子项回填，后续补样文时老用户也能收到
-  copyBuiltinSubdirsIfAbsent(
+  // 样文（目录，每个样文是一个子目录）——强制覆盖，后续补样文老用户即拿
+  copyBuiltinSubdirsForce(
     getBuiltinSampleArticlesDir(),
     getSampleArticlesPath(),
     'sample-articles',
   )
 
   // 模板（单 HTML 文件）
-  copyBuiltinFilesIfAbsent(getBuiltinTemplatesDir(), getTemplatesPath(), 'templates')
+  copyBuiltinFilesForce(getBuiltinTemplatesDir(), getTemplatesPath(), 'templates')
 }
 
 /**
