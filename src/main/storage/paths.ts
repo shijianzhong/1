@@ -93,7 +93,7 @@ export function getRegistryCacheDir(): string {
 /** builtin 出厂基线根目录（只读，随包） */
 export function getBuiltinResourcesDir(): string {
   // 打包：process.resourcesPath/builtin；开发：源码 build/builtin
-  const devPath = join(__dirname, '..', '..', '..', 'build', 'builtin')
+  const devPath = join(__dirname, '..', '..', 'build', 'builtin')
   try {
     if (app.isPackaged) {
       const packaged = join(process.resourcesPath, 'builtin')
