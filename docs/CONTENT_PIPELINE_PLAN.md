@@ -109,7 +109,7 @@ SKILL.md 编排逻辑         ──→          Capability（编排图，6节�
 > - `paths.ts:14-79` 所有 get*Dir() 全指向 userData（可写），**没有 builtin 只读边界**。
 > - 可复用范式：OpenCLI（`opencli.ts:38-60`，`extraResources + process.resourcesPath + app.isPackaged 分流`）+ registry `isLocallyModified`（`importer.ts:54-68`，`updatedAt > importedAt`，判"官方基线 vs 用户改动"）。
 
-**范式（路径B 修正版：固定 id + 首启复制 + isLocallyModified 升级）：**
+**范式（路径B 修正版：固定 id + 首启复制 + 强制覆盖升级）：**
 
 ```
 随包打包（electron-builder.yml extraResources）：
@@ -129,13 +129,16 @@ SKILL.md 编排逻辑         ──→          Capability（编排图，6节�
   用户改过也保留原 id → 导出分享给别人，别人导入后还是同一能力的演进版，可继续叠改。
   不靠易丢的 source 字段区分身份（已实证 registry 链路会丢 source）。
 
-升级判定（实用主义实现，非 registry.isLocallyModified）：
-  单文件资产（agent/capability/模板）：目标文件已存在 → 跳过覆盖（保用户改动）。
-  目录型资产（skill/样文）：逐子项回填——目标子目录已存在 → 跳过该子项（保用户对该资产
-    的改动）；不存在 → 复制。老用户升级时能收到新加的 builtin 子项，而非"目标根目录已
-    存在就整包跳过"。
-  （原设计的 isLocallyModified 覆盖判定因 builtin 不带 registry provenance/importedAt 锚点
-    未采用；"提示有新版本"留作后续增强。）
+升级判定（强制覆盖策略，2026-08-15 修订）：
+  每次启动用出厂源覆盖本地 builtin 副本——单文件直接覆盖，目录型逐子项覆盖。
+  官方改了 builtin agent/skill/capability 定义后，升级即生效，老用户拿得到新版。
+  历史缺陷：旧逻辑"目标存在即跳过"→官方给 A1 加 opencli_run 后本地旧副本不更新，
+  runtime 仍加载 stale 版本，调研全退化成 web_search，中文社区全断。
+  纪律前提：builtin 是出厂基线，不是用户草稿。用户要改 builtin 能力应复制成 custom id
+  （如 builtin_content_writer → my_content_writer）再改，不该直接改 builtin_ 副本
+  （会被下次升级覆盖）。同 seedDefaultModels 的 provider 基线。
+  （原设计的 isLocallyModified 覆盖判定因 builtin 不带 registry provenance/importedAt
+    锚点未采用；"提示有新版本"留作后续增强。）
 
 引擎零侵入：builtin 复制进 userData 后，对编排引擎/runner/builder/IPC/preload 来说
   和 custom 长得一模一样，零特殊路径。引擎不区分也不在乎 builtin/custom。
@@ -152,7 +155,7 @@ SKILL.md 编排逻辑         ──→          Capability（编排图，6节�
 | 放出厂资产源文件 | `build/builtin/{agents,capabilities,skills,sample-articles,templates}/` | 静态文件，非代码 | 否 |
 | 首启复制 | 新增 `seedBuiltinAssets()`（仿 `seedDefaultModels`），`index.ts:136` 后调用 | ~40 行 | 否 |
 | 固定 id | builtin 资产用固定 id（`builtin_*`） | 约定级 | 否 |
-| 升级判定 | 复用 registry `isLocallyModified` 范式 | 复用现有 | 否 |
+| 升级判定 | 强制覆盖：每次启动用出厂源覆盖本地副本 | ~builtin.ts 复用 | 否 |
 
 > 引擎层（编排/runner/builder/模式）、IPC handler 结构、preload 白名单——**零改动**。builtin 资产复制进 userData 后即用户可改的活资产，改完走现有 Registry 导出/导入分享给他人。
 
@@ -308,12 +311,13 @@ const graph: WorkflowGraph = {
 
 | 阶段 | 范围 | 完成标志 | 状态 |
 |------|------|---------|------|
-| P0 分发基线 | §2.5 内置资产分发范式：`paths.ts` 加 `getBuiltinResourcesDir` + `electron-builder.yml` extraResources + `seedBuiltinAssets()` + 固定 id + isLocallyModified 升级 | builtin 资产随包出厂，首启落地 userData，用户可改，升级不覆盖改动 | ✅ |
+| P0 分发基线 | §2.5 内置资产分发范式：`paths.ts` 加 `getBuiltinResourcesDir` + `electron-builder.yml` extraResources + `seedBuiltinAssets()` + 固定 id + 强制覆盖升级 | builtin 资产随包出厂，首启落地 userData，升级强制覆盖即生效，改 builtin 应复制成 custom id | ✅ |
 | P1 存储 | 2 表 v7/v8 + StyleProfile JsonCollection + Topic/Review CRUD + 类型/Schema/IPC/Preload | 4 类资产可经 IPC 增删改查 | ✅ |
 | P2 工具 | 6 个 builtin tool（exa/reddit/gh/poster/reviewArchive/ai_cavity_audit）+ 6 资产 CRUD 工具 + index.ts 注册 | agent 能调全部工具 | ✅ |
 | P3 Agent×Skill | 6 个 builtin Agent（固定 id `builtin_content_*`）+ 6 个 Skill 出厂源落 `build/builtin/`，首启复制 | 画布能拖出 6 个预置 agent | ✅ |
 | P4 Capability | 预置 content-pipeline Capability（固定 id `builtin_content_pipeline`）+ 端到端跑通 | 画布点运行，6 阶段接力 + HITL 挂起 + 落盘 Obsidian | ✅ 静态层（JSON 过 schema + graph 能 buildWorkflow）；端到端需真机+LLM |
-| P4.1 审查修复 | ① capability 文件名==id（`builtin_content_pipeline.json`）+ 回归测试；② 目录型 builtin 资产逐子项回填（老用户升级拿得到新 builtin skill/样文）；③ 新 IPC CRUD 面入口 Zod parse（匹配 sessions.ts 约定） | 文件名/id 一致、升级分发不短路、IPC 边界结构化报错 | ✅ 508 测试 + typecheck 干净 |
+| P4.1 审查修复 | ① capability 文件名==id（`builtin_content_pipeline.json`）+ 回归测试；② 目录型 builtin 资产逐子项回填（老用户升级拿得到新 builtin skill/样文）；③ 新 IPC CRUD 面入口 Zod parse（匹配 sessions.ts 约定） | 文件名/id 一致、升级分发不短路、IPC 边界结构化报错 | ✅ |
+| P4.2 强制覆盖升级 | §2.5 升级策略从"存在即跳过"改强制覆盖——每次启动用出厂源覆盖本地 builtin 副本，官方改动即生效 | A1 加 opencli_run 后重启即落地，runtime 不再加载 stale 副本 | ✅ 10 测试 + typecheck 干净 |
 
 ---
 
@@ -325,7 +329,7 @@ const graph: WorkflowGraph = {
 2. **样文存储**：目录化（`config/sample-articles/<id>/ARTICLE.md + references/`），不用 JsonCollection。随包出厂（`build/builtin/sample-articles/` 首启复制），用户可改副本、可分享。一步到位，不搞"MVP 先 JsonCollection 后升级"。
 3. **AI腔检测**：两层——① builtin tool `ai_cavity_audit` 做规则预筛（逐句扫自造说法候选 + `反映出/体现出/表明了` 连接词位置 + 前后句关系待核），输出透明命中清单，零 LLM 成本；② A6 reviewer agent 拿预筛清单 + review-discipline §2.5 判据逐条定夺改写。规则透明可解释，LLM 判语义。`ai_cavity_audit` 作 builtin tool 随包分发。判据吸收自 Roland《我找到了AI写作问题的根源》（见 §2.4 review-discipline + 原 skill review-checklist.md §2.5）。
 4. **HTML poster 模板**：出厂源 `build/builtin/templates/wechat-poster.html`，首启复制进 `config/templates/`。`poster_render` 读 overlay（用户层有则用，无则回退 builtin 原版）。不内联进工具代码（改不了）、不单落 userData（不随包分发）。
-5. **预置 Agent/Capability/Skill 分发**：走 §2.5 内置资产分发范式（出厂源 `build/builtin/` → extraResources 打包 → `seedBuiltinAssets` 首启复制进 userData → 固定 id → isLocallyModified 升级）。不走纯 Registry 导入（依赖远端拉取，不"开箱即用"），不靠 source 字段区分身份（registry 链路已证实丢 source）。
+5. **预置 Agent/Capability/Skill 分发**：走 §2.5 内置资产分发范式（出厂源 `build/builtin/` → extraResources 打包 → `seedBuiltinAssets` 首启复制进 userData → 固定 id → 强制覆盖升级）。不走纯 Registry 导入（依赖远端拉取，不"开箱即用"），不靠 source 字段区分身份（registry 链路已证实丢 source）。
 
 ---
 
