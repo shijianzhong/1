@@ -86,3 +86,61 @@ export function stripForeignToolBlocks(messages: OrchMessage[], selfId: string):
     return rest
   })
 }
+
+/**
+ * 剥模型降级 function calling 吐出的伪工具标记文本。
+ * MiniMax-M2.7 经中转网关不返回真 tool_use block，改把各种自创伪调用语法
+ * 当文本吐出 → 泄漏进用户可见正文。实测见过的格式族（方括号系 + XML 标签系）：
+ *   - [tool:web_search]              冒号+标识符
+ *   - [tool:="sample_article_save"]   冒号+=+引号
+ *   - [tool:=...]                     冒号+=
+ *   - [tool name="..." query="..."]   方括号 name 属性系（单标签或多行块）
+ *   - [TOOL_CALL] {tool => "..." ...} [/TOOL_CALL]   方括号大写下划线块
+ *   - <minimax:tool_call>...</minimax:tool_call>     XML 外层块
+ *   - <invoke name="...">...</invoke>                 XML 内层块
+ *   - <parameter name="...">值</parameter>            XML 参数对
+ *   + 散落残留孤立开/闭合标签
+ * 模型会持续发明新变体，此函数按"结构信号"匹配（冒号系 / name= 属性系 /
+ * TOOL_CALL 块 / minimax:invoke:parameter 标签），只碰这些特异结构，
+ * 保留 [tool reference]/[tooling guide] 等合法 tool 词与合法 HTML <div> 等。
+ */
+export function stripPseudoToolMarkers(text: string): string {
+  if (!text) return text
+  // 行级：整行恰好一个方括号系伪调用标记（删前是纯标记行）→ 整行丢。
+  // 必须在 substring 删之前做，否则标记被删后该行变空识别不出原是标记行。
+  let s = text
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim()
+      // 整行是一个冒号系标记 [tool:...] / [tool:="..."] / [tool:=...]
+      if (/^\[tool\s*:[^>]*?\]$/i.test(t)) return false
+      // 整行是一个 name 属性系标记 [tool name=...]
+      if (/^\[tool\s+name=/i.test(t)) return false
+      return true
+    })
+    .join('\n')
+  // 块级 + 行内残留标记 substring 删：
+  s = s
+    // —— XML 标签系 ——
+    // <minimax:tool_call>...</minimax:tool_call> 外层块（吞内部所有 invoke/parameter）
+    .replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/gi, '')
+    // <invoke name="...">...</invoke> 块（吞内部 parameter）
+    .replace(/<invoke\s+name="[^"]*">[\s\S]*?<\/invoke>/gi, '')
+    // <parameter name="...">值</parameter> 单对（句中残留）
+    .replace(/<parameter\s+name="[^"]*">[\s\S]*?<\/parameter>/gi, '')
+    // 残留孤立开/闭合标签
+    .replace(/<\/?(?:invoke|parameter|minimax:tool_call)[^>]*>/gi, '')
+    // —— 方括号系 ——
+    // [TOOL_CALL]...[/TOOL_CALL] 块（跨行整段删，含大括号伪 JSON 参数）
+    .replace(/\[tool_call\][\s\S]*?\[\/tool_call\]/gi, '')
+    // [tool name="..." ...]...[/tool] 多行块（name 属性系，跨行）
+    .replace(/\[tool\s+name="[^"]*"(?:\s+\w+="[^"]*")*\s*\][\s\S]*?\[\/tool\]/gi, '')
+    // 冒号系单标签 [tool:X] / [tool:="X"] / [tool:=...]（句中残留）
+    .replace(/\[tool\s*:[^>]*?\]/gi, '')
+    // name 属性系单标签 [tool name="..." ...]（句中残留）
+    .replace(/\[tool\s+name="[^"]*"(?:\s+\w+="[^"]*")*\s*\/?\]/gi, '')
+    // name 无引号系 [tool name=foo]
+    .replace(/\[tool\s+name=\S+\s*\]/gi, '')
+  // 收尾：纯空白行（只含空格/tab）归一为真空行 → 3+ 空行压成 2 → 去首尾空白
+  return s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}

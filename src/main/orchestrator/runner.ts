@@ -9,6 +9,7 @@ import { ConcurrentExecutor } from './patterns/concurrent'
 import { AgentExecutor } from './patterns/agent'
 import { logger } from '../logger'
 import { approxTokenCount } from '../llm/token-count'
+import { stripPseudoToolMarkers } from './constraints'
 
 // —— Pregel superstep 执行模型（§三之三 E + 铁律7）——
 // N emit / N+1 deliver；同 superstep 内所有收到消息的 executor 并发（Promise.all）。
@@ -56,7 +57,8 @@ function createWorkflowContext(
       })
     },
     async yield_output(data) {
-      const text = typeof data === 'string' ? data : JSON.stringify(data)
+      const raw = typeof data === 'string' ? data : JSON.stringify(data)
+      const text = stripPseudoToolMarkers(raw) // 剥模型伪工具标记（治 MiniMax 降级 function calling 泄漏）
       ctx.output.push(text)
       // 空文本不发 output 事件（防 final 替换把流式气泡清空成空气泡；
       // 如 thinking-only 响应 finalText 为空的边缘场景）
@@ -70,6 +72,10 @@ function createWorkflowContext(
       })
     },
     async add_event(e) {
+      // 兜底：流式增量与 thinking 也可能夹伪工具标记，出清洗后的副本
+      if ((e.type === 'output' || e.type === 'thinking') && typeof e.text === 'string') {
+        e = { ...e, text: stripPseudoToolMarkers(e.text) }
+      }
       ctx.onEvent(e)
     },
     get_source_executor_id() {
@@ -99,7 +105,8 @@ function createChildContext(parent: WorkflowContextImpl, source: string): Workfl
       })
     },
     async yield_output(data) {
-      const text = typeof data === 'string' ? data : JSON.stringify(data)
+      const raw = typeof data === 'string' ? data : JSON.stringify(data)
+      const text = stripPseudoToolMarkers(raw) // 剥模型伪工具标记（同父上下文）
       parent.output.push(text)
       if (!text) return
       parent.onEvent({
@@ -111,6 +118,9 @@ function createChildContext(parent: WorkflowContextImpl, source: string): Workfl
       })
     },
     async add_event(e) {
+      if ((e.type === 'output' || e.type === 'thinking') && typeof e.text === 'string') {
+        e = { ...e, text: stripPseudoToolMarkers(e.text) }
+      }
       parent.onEvent(e)
     },
     get_source_executor_id() {
