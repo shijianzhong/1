@@ -18,3 +18,6 @@ logs/
 .tmp-*.html
 .trae-html-share-packages/
 one-code-review/
+
+# local tooling data (WorkBuddy memory/skills, not part of the product)
+.workbuddy/
