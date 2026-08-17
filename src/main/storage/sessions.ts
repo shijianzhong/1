@@ -62,13 +62,13 @@ export function renameSession(id: string, title: string): void {
 export function removeSession(id: string): void {
   const db = getDb()
   // messages 走外键 ON DELETE CASCADE；memory_l1/l2 无外键，需手动级联（观察点：防孤儿数据）
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
-  db.prepare('DELETE FROM memory_l1 WHERE session_id = ?').run(id)
-  db.prepare('DELETE FROM memory_l2 WHERE session_id = ?').run(id)
-}
-
-export function touchSession(id: string): void {
-  getDb().prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), id)
+  // 三 DELETE 必须原子：中途崩溃会留孤儿 memory_l1/l2 行（session 已删但摘要残留）→
+  // 下次启动无法通过 session 关联回收，且列表/检索出现幽灵摘要。包 db.transaction 保证全成或全废。
+  db.transaction(() => {
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
+    db.prepare('DELETE FROM memory_l1 WHERE session_id = ?').run(id)
+    db.prepare('DELETE FROM memory_l2 WHERE session_id = ?').run(id)
+  })()
 }
 
 // —— 消息 ——
@@ -79,6 +79,7 @@ export function addMessage(input: {
   content: string
   meta?: unknown
 }): SessionMessage {
+  const db = getDb()
   const msg: SessionMessage = {
     id: randomUUID(),
     sessionId: input.sessionId,
@@ -87,13 +88,15 @@ export function addMessage(input: {
     meta: input.meta,
     createdAt: Date.now(),
   }
-  getDb()
-    .prepare(
+  // INSERT 消息 + touchSession(updated_at) 必须原子：中途崩溃会出现「消息已入库但 sessions.updated_at
+  // 未更新」→ 列表按 updated_at 排序时该会话沉底/不置顶，用户以为没收到回复。
+  db.transaction(() => {
+    db.prepare(
       `INSERT INTO messages (id, session_id, role, content, meta, created_at)
        VALUES (@id, @sessionId, @role, @content, @meta, @createdAt)`,
-    )
-    .run({ ...msg, meta: msg.meta ? JSON.stringify(msg.meta) : null })
-  touchSession(input.sessionId)
+    ).run({ ...msg, meta: msg.meta ? JSON.stringify(msg.meta) : null })
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), input.sessionId)
+  })()
   return msg
 }
 

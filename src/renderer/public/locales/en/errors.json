@@ -42,6 +42,7 @@
     "precheck_failed": "Tool pre-check failed, blocked",
     "approval_unavailable": "Tool approval not available in this environment",
     "approval_timeout": "Tool approval timed out (300s no response)",
+    "approval_aborted": "Run cancelled or superseded by a new task, tool approval aborted",
     "approval_denied": "User denied tool execution",
     "shell_danger_command": "Dangerous command blocked",
     "shell_timeout": "Shell command execution timed out",

@@ -45,6 +45,15 @@ export function tokenizeForFts(text: string): string {
   return tokens.join(' ')
 }
 
+/**
+ * 转义 LIKE 模式串里的 % 与 _（CODE_AUDIT 断言 4.5）。
+ * 未转义时，含 % 的查询（如「折扣 50%」）会被当通配符 → 全表扫描拖慢主进程 +
+ * 召回噪声。转义为字面量后按精确子串匹配。ESCAPE 子句声明反斜杠为转义符。
+ */
+function escapeLikePattern(literal: string): string {
+  return literal.replace(/[%_\\]/g, '\\$&')
+}
+
 /** 把查询串转成 FTS5 MATCH 表达式：bigram 用 AND 语义太严，这里用 OR 连接提高召回 */
 function buildMatchQuery(query: string): string {
   const seg = tokenizeForFts(query)
@@ -105,12 +114,13 @@ export function searchL3(userId: string, query: string, limit = 5): L3Fact[] {
   const score = new Map<string, number>()
   const bump = (key: string, w: number) => score.set(key, (score.get(key) ?? 0) + w)
 
-  // 路 1：key 精确 / 前缀
+  // 路 1：key 精确 / 前缀（LIKE 转义 %/_，防通配符全表扫描——断言 4.5）
+  const keyPat = escapeLikePattern(query)
   const keyRows = db
     .prepare(
-      'SELECT key FROM memory_l3 WHERE user_id = ? AND (key = ? OR key LIKE ?) LIMIT ?',
+      'SELECT key FROM memory_l3 WHERE user_id = ? AND (key = ? OR key LIKE ? ESCAPE \'\\\') LIMIT ?',
     )
-    .all(userId, query, `${query}%`, limit) as { key: string }[]
+    .all(userId, query, `${keyPat}%`, limit) as { key: string }[]
   for (const r of keyRows) bump(r.key, 3)
 
   // 路 2：FTS5（BM25，rank 越小越相关）
@@ -130,13 +140,14 @@ export function searchL3(userId: string, query: string, limit = 5): L3Fact[] {
     }
   }
 
-  // 路 3：LIKE 子串兜底
-  const pattern = `%${query}%`
+  // 路 3：LIKE 子串兜底（转义 %/_，防通配符全表扫描——断言 4.5）
+  const esc = escapeLikePattern(query)
+  const likePat = `%${esc}%`
   const likeRows = db
     .prepare(
-      'SELECT key FROM memory_l3 WHERE user_id = ? AND (key LIKE ? OR value LIKE ?) LIMIT ?',
+      "SELECT key FROM memory_l3 WHERE user_id = ? AND (key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\') LIMIT ?",
     )
-    .all(userId, pattern, pattern, limit) as { key: string }[]
+    .all(userId, likePat, likePat, limit) as { key: string }[]
   for (const r of likeRows) bump(r.key, 1)
 
   if (score.size === 0) return []

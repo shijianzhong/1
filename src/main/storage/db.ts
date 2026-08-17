@@ -185,11 +185,18 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
   },
 ]
 
-/** 周期备份：把当前库复制为 .bak（写操作前后调用太频，启动时调一次） */
-function backupCurrentDb(): void {
+/**
+ * 启动备份：把当前库复制为 .bak（启动时调一次）。
+ * 与周期 backupDatabase 同语义：WAL 模式下刚跑完 migration 的写入可能还在 db-wal 里
+ * 未 checkpoint —— 只拷主库文件会得到缺最近建表/改表的「假备份」，损坏恢复时丢数据。
+ * 故先 wal_checkpoint(TRUNCATE) 合并回主库再拷贝（单连接，无 BUSY）。
+ * 入参 db 为当前打开的连接（启动时 dbInstance 尚未赋值，故显式传入）。
+ */
+function backupCurrentDb(db: Database.Database): void {
   const dbPath = getDbPath()
   if (!existsSync(dbPath)) return
   try {
+    db.pragma('wal_checkpoint(TRUNCATE)')
     copyFileSync(dbPath, getDbBackupPath())
     logger.info('[db] backed up to one.db.bak')
   } catch (error) {
@@ -249,8 +256,14 @@ function runMigrations(db: Database.Database): void {
   for (const m of MIGRATIONS) {
     if (applied.has(m.version)) continue
     logger.info(`[db] applying migration v${m.version}`)
-    db.exec(m.sql)
-    db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(m.version)
+    // DDL 执行 + 版本登记必须原子：中途崩溃（进程被杀/断电）会留下「表已建一半但
+    // schema_version 未登记」的半截 schema → 下次启动该版本被判为未应用、重跑 CREATE
+    // 可能因已存在对象报错，且部分表结构不可用。better-sqlite3 的 transaction 对 DDL
+    // 亦生效（单连接串行），保证全成或全废。
+    db.transaction(() => {
+      db.exec(m.sql)
+      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(m.version)
+    })()
   }
 }
 
@@ -287,7 +300,7 @@ export function getDb(): Database.Database {
   db.pragma('foreign_keys = ON')
 
   runMigrations(db)
-  backupCurrentDb()
+  backupCurrentDb(db)
 
   dbInstance = db
 

@@ -486,5 +486,48 @@ describe('Sequential 管线 full_conversation 转发', () => {
   })
 })
 
+// —— 断言 1.4 修复：abort 返回 stopReason='aborted'，不混入 converged ——
+describe('runner abort stopReason（断言 1.4）', () => {
+  it('signal 已 abort → 立即返回 stopReason=aborted，发 failed 事件，不发 done', async () => {
+    const a = new RecordingExecutor('A', '不该产出')
+    const executors = new Map<string, Executor>([['A', a]])
+    const wf: RuntimeWorkflow = {
+      executors,
+      startExecutor: 'A',
+      edges: new Map(),
+      conditions: new Map(),
+      nodes: new Map(),
+    }
+    const events: StreamEvent[] = []
+    // 进 runWorkflow 前已 abort：首个 superstep 检查即命中
+    const controller = new AbortController()
+    controller.abort()
+    const result = await runWorkflow(wf, { text: '问题' }, (e) => events.push(e), controller.signal)
+    expect(result.stopReason).toBe('aborted')
+    expect(events.some((e) => e.type === 'failed' && e.error === 'aborted')).toBe(true)
+    // abort 路径不发 done（正常路径才发）；前端靠 failed 收尾区分
+    expect(events.some((e) => e.type === 'done')).toBe(false)
+    // A 不该被实际执行（abort 在 superstep 检查处短路）
+    expect(a.calls.length).toBe(0)
+  })
+
+  it('正常收敛 → stopReason=converged，发 done', async () => {
+    const a = new RecordingExecutor('A', '产出')
+    const executors = new Map<string, Executor>([['A', a]])
+    const wf: RuntimeWorkflow = {
+      executors,
+      startExecutor: 'A',
+      edges: new Map(),
+      conditions: new Map(),
+      nodes: new Map(),
+    }
+    const events: StreamEvent[] = []
+    const result = await runWorkflow(wf, { text: '问题' }, (e) => events.push(e))
+    expect(result.stopReason).toBe('converged')
+    expect(events.some((e) => e.type === 'done')).toBe(true)
+    expect(events.some((e) => e.type === 'failed')).toBe(false)
+  })
+})
+
 // 占位避免 lint 未使用告警
 void vi

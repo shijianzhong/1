@@ -145,6 +145,17 @@ export type StreamEvent =
   | { type: 'handoff'; from: string; to: string }
   | { type: 'failed'; error: string }
   | { type: 'done' }
+  // LLM 重试（429/5xx/断网等）：通知前端清空该 speaker 已发的 text/thinking 增量，
+  // 防重试第二轮重放导致气泡文本翻倍（铁律10 重试层包 stream 外层，整段重跑）。
+  | {
+      type: 'retry'
+      node_id: string
+      speaker: string
+      attempt: number
+      maxRetries: number
+      delayMs: number
+      reason: string
+    }
   // —— HITL 人机交互（ask_user 工具桥，对照原框架 request_info）——
   // request_info：编排内 agent 向用户提问，工作流挂起等待；渲染层渲染提问卡。
   | { type: 'request_info'; request_id: string; node_id: string; question: string; context?: string }

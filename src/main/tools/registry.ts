@@ -13,6 +13,19 @@ const RETRY_DELAYS_MS = [500, 1000, 1500]
 
 export type ToolApprovalMode = 'auto' | 'always' | 'never'
 
+/**
+ * 工具审批决议（HITL 桥返回）。approved=false 时 reason 区分语义，
+ * 供 registry 闸门选对应的 i18n key（timeout/aborted/denied），不再合并成单一 denied
+ *（CODE_AUDIT 断言 5.5：旧实现 reason 硬编码 'timeout or cancelled' 且 registry 不读 reason，
+ *  超时/取消/拒绝全混成 approval_denied，前端无法区分）。
+ * 桥（onApprove catch）必发 reason；resolveApprovalDecision 对 denied 也填 reason。
+ */
+export type ApprovalReason = 'approved' | 'approved_session' | 'timeout' | 'aborted' | 'denied'
+export interface ApprovalDecision {
+  approved: boolean
+  reason?: ApprovalReason
+}
+
 /** 审批前硬拦截结果：{ ok: false } 则直接拒绝，不弹审批框 */
 export interface PreCheckResult {
   ok: boolean
@@ -46,7 +59,7 @@ export interface ToolContext {
   onAskUser?: (req: { question: string; context?: string }) => Promise<string>
   /** HITL 工具审批桥（approvalMode='always' → approval_request 事件 + 挂起等待）；
    *  未注入 = 当前运行环境不可审批，always 工具返回 approval_unavailable */
-  onApprove?: (req: { toolName: string; args: unknown }) => Promise<{ approved: boolean; reason?: string }>
+  onApprove?: (req: { toolName: string; args: unknown }) => Promise<ApprovalDecision>
   /** update_plan 计划更新回调（home/orchestrate 注入 → emitStream/emitEvent，渲染层展示计划进度） */
   onPlanUpdate?: (plan: { explanation?: string; plan: Array<{ step: string; status: string }> }) => void
 }
@@ -176,11 +189,20 @@ export async function executeTool(
       }
     }
     if (!result.approved) {
+      // 按 reason 分流 i18n key：timeout（超时）/ aborted（运行被取消/顶替）/ denied（用户拒绝）
+      // 旧实现 reason 硬编码且不读 → 全混 approval_denied，前端无法区分（CODE_AUDIT 断言 5.5）
+      const reason = result.reason ?? 'denied'
+      const messageKey =
+        reason === 'timeout'
+          ? 'errors.tools.approval_timeout'
+          : reason === 'aborted'
+            ? 'errors.tools.approval_aborted'
+            : 'errors.tools.approval_denied'
       return {
         toolUseId,
         content: JSON.stringify({
-          error: 'approval_denied',
-          messageKey: 'errors.tools.approval_denied',
+          error: reason === 'timeout' ? 'approval_timeout' : reason === 'aborted' ? 'approval_aborted' : 'approval_denied',
+          messageKey,
         }),
         isError: true,
       }
@@ -208,6 +230,20 @@ export async function executeTool(
       return { toolUseId, content, isError }
     } catch (error) {
       lastError = error
+      // abort 不重试：运行已被取消（用户停止 / 编排结束 / 超时 abort）时，ctx.signal.aborted=true。
+      // 此刻重试只会把已废弃的操作再跑 N 次（带退避延迟），延长取消响应、浪费配额，且 handler
+      // 多半仍会再次 abort。立即返回结构化 abort 错误，让 agent loop 尽快收尾。
+      if (ctx.signal?.aborted) {
+        logger.info(`[tool:${name}] 执行被 abort 取消，跳过重试`)
+        return {
+          toolUseId,
+          content: JSON.stringify({
+            error: 'aborted',
+            message: '工具执行已被取消（运行停止或超时）',
+          }),
+          isError: true,
+        }
+      }
       if (attempt < maxAttempts - 1) {
         logger.warn(`[tool:${name}] 重试 ${attempt + 1}`, error)
         await sleep(RETRY_DELAYS_MS[attempt])

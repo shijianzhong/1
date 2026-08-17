@@ -18,6 +18,7 @@
   },
   "run": "运行",
   "running": "运行中…",
+  "draftRestored": "已恢复未保存的草稿，保存后清除",
   "stop": "停止",
   "tabs": {
     "inspector": "属性",

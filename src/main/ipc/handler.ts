@@ -18,7 +18,14 @@ export function withHandler<T>(channel: string, handler: InvokeHandler): void {
       const message = error instanceof Error ? error.message : String(error)
       const retryable = isTransient(error)
       const messageKey = error instanceof IpcErrorThrow ? error.messageKey : undefined
-      logger.error(`[ipc:${channel}]`, error)
+      // 分级日志（P3-17）：IpcErrorThrow 是业务正常驳回（环检测/无供应商/提问失效），
+      // 非瞬态、非系统故障 → warn 级，不污染错误统计；真异常（非 IpcErrorThrow）
+      // 才 error 级。retryable 也作为辅助判据（瞬态=网络/超时等，warn 即可）。
+      if (error instanceof IpcErrorThrow || retryable) {
+        logger.warn(`[ipc:${channel}] ${message}`)
+      } else {
+        logger.error(`[ipc:${channel}]`, error)
+      }
       return err(`ipc.${channel}`, message, retryable, messageKey)
     }
   })

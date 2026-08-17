@@ -104,6 +104,41 @@ describe('tools/builtin/opencli', () => {
     const child = spawnMock.mock.results[0].value as { kill: ReturnType<typeof vi.fn> }
     expect(child.kill).toHaveBeenCalledWith('SIGKILL')
   })
+
+  it('(site,verb) 元组级 access：同一动词 read 站点放行、write 站点拒绝', async () => {
+    // bilibili/download 在 manifest 标 read → 放行
+    spawnMock.mockReturnValue(fakeChild({ stdout: '{"url":"x"}', code: 0 }))
+    const rOk = await executeTool('opencli_run', { args: ['bilibili', 'download', 'video-1'] }, 'tu_6', {})
+    const dOk = JSON.parse(rOk.content)
+    expect(dOk.ok).toBe(true)
+
+    // suno/download 在 manifest 标 write → 拦截
+    const rBlock = await executeTool('opencli_run', { args: ['suno', 'download', 'song-1'] }, 'tu_7', {})
+    const dBlock = JSON.parse(rBlock.content)
+    expect(dBlock.ok).toBe(false)
+    expect(dBlock.error).toBe('write_op_blocked')
+    expect(spawnMock).not.toHaveBeenCalledWith(
+      'opencli',
+      expect.arrayContaining(['suno', 'download']),
+      expect.anything(),
+    )
+  })
+
+  it('未知 (site,verb) 元组 → fail-closed 拒绝（防新动词绕过）', async () => {
+    // 一个 manifest 不存在的 site+verb 组合：应被拒（白名单语义，默认拒绝）
+    const r = await executeTool('opencli_run', { args: ['fakesite_xyz', 'fakeread'] }, 'tu_8', {})
+    const data = JSON.parse(r.content)
+    expect(data.ok).toBe(false)
+    expect(data.error).toBe('write_op_blocked')
+    expect(spawnMock).not.toHaveBeenCalled()
+  })
+
+  it('全局只读命令 list/help/version 放行（无 site/verb 配对）', async () => {
+    spawnMock.mockReturnValue(fakeChild({ stdout: '{"sites":[]}', code: 0 }))
+    const r = await executeTool('opencli_run', { args: ['list'] }, 'tu_9', {})
+    const data = JSON.parse(r.content)
+    expect(data.ok).toBe(true)
+  })
 })
 
 describe('resolveOpenCli 随包解析', () => {

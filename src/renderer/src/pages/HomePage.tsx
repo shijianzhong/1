@@ -98,6 +98,54 @@ export function HomePage() {
     if (p) setProjectPath(p)
   }
 
+  // 崩溃草稿灌回 composer（CODE_AUDIT 断言 2 闭环）：
+  // 挂载 / 切会话时读 home-composer.json，若草稿 sessionId 匹配当前（或同为 null=新会话）
+  // → insertText 灌回 composer，用户继续未发送的输入。下方 2s 写盘 effect 会把灌回的
+  // 文本原样重写（幂等），故无冲突。用户清空 composer 后写盘 effect 自动 removeDraft。
+  useEffect(() => {
+    let cancelled = false
+    void window.one.app
+      .listDrafts()
+      .then(unwrap)
+      .then((list) => {
+        if (cancelled) return
+        const draft = list.find((d) => d.name === 'home-composer.json')
+        if (!draft) return
+        try {
+          const parsed = JSON.parse(draft.content) as {
+            kind?: string
+            text?: string
+            sessionId?: string | null
+          }
+          if (parsed.kind !== 'home-composer' || !parsed.text) return
+          // sessionId 匹配：草稿属当前会话，或草稿是 null（新会话未绑定）且当前也无会话
+          const draftSid = parsed.sessionId ?? null
+          const curSid = sessionId ?? null
+          if (draftSid !== curSid) return
+          // composer ref 首次 effect 可能尚未就绪（ref 在同 commit 内挂载）→ 队到下一帧
+          const apply = (): void => {
+            const handle = composerRef.current
+            if (!handle) {
+              if (!cancelled) window.requestAnimationFrame(apply)
+              return
+            }
+            // 仅当 composer 当前为空时灌回，避免覆盖用户已开始的新输入
+            if (!handle.getText()?.trim()) {
+              handle.insertText(parsed.text!)
+              handle.focus()
+            }
+          }
+          apply()
+        } catch {
+          // 草稿 JSON 损坏：静默丢弃
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
+
   // 崩溃恢复：未发送输入 debounce 落盘（2s 轮询 composer）
   useEffect(() => {
     const tick = (): void => {

@@ -324,6 +324,47 @@ describe('OpenAILLMClient', () => {
       const toolUse = res.content.find((b) => b.type === 'tool_use')
       expect(toolUse).toMatchObject({ id: 'call_0', name: 'test' })
     })
+
+    it('延迟给 id：首帧无 id 不发 start，真 id 到后补发，全程 id 一致（断言 1.2）', async () => {
+      // 部分网关首帧只给 name 不给 id，后续帧才补真 id。
+      // 旧行为：首帧用合成 'call_0' 发 start/delta，后续改 existing.id='toolu_real'
+      // 再发 delta/stop → start/delta 与 stop id 不一致，消费者配对断裂。
+      // 修后：首帧无 id 挂起不发 start/delta，真 id 到了补发 start + 累积 args，
+      // 全程 tool_use_start/delta/stop 用同一真 id。
+      const client = new OpenAILLMClient({ apiKey: 'sk-test' })
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        makeSSEResponse([
+          // 帧 1：首现，有 name 无 id → 挂起，不发 start
+          sseData({ choices: [{ delta: { tool_calls: [{ index: 0, type: 'function', function: { name: 'get_weather', arguments: '{"ci' } }] }, finish_reason: null }] }),
+          // 帧 2：补真 id + 继续 args → 补发 start + 全部累积 args（'{"city":"NYC"}'）
+          sseData({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'toolu_real', function: { arguments: 'ty":"NYC"}' } }] }, finish_reason: 'tool_calls' }] }),
+          'data: [DONE]\n\n',
+        ]),
+      )
+      const deltas: { type: string; id?: string; name?: string; partial_json?: string }[] = []
+      const res = await client.stream(makeReq({
+        onDelta: (d) => {
+          if (d.type === 'tool_use_start') deltas.push({ type: d.type, id: d.id, name: d.name })
+          else if (d.type === 'tool_use_delta') deltas.push({ type: d.type, id: d.id, partial_json: d.partial_json })
+          else if (d.type === 'tool_use_stop') deltas.push({ type: d.type, id: d.id })
+        },
+      }))
+      // 全程 id 一致为真 id（无合成 'call_0' 混入）
+      const ids = deltas.map((d) => d.id)
+      expect(ids).toEqual(['toolu_real', 'toolu_real', 'toolu_real'])
+      // start 名对、delta 拼回完整 JSON、stop 配对
+      expect(deltas[0]).toEqual({ type: 'tool_use_start', id: 'toolu_real', name: 'get_weather' })
+      // 挂起期间累积的 args 在补发 start 后一次性发完整串
+      expect(deltas[1]).toEqual({ type: 'tool_use_delta', id: 'toolu_real', partial_json: '{"city":"NYC"}' })
+      expect(deltas[2]).toEqual({ type: 'tool_use_stop', id: 'toolu_real' })
+      // 最终 content 用真 id
+      expect(res.content).toContainEqual({
+        type: 'tool_use',
+        id: 'toolu_real',
+        name: 'get_weather',
+        input: { city: 'NYC' },
+      })
+    })
   })
 
   describe('signal 透传', () => {

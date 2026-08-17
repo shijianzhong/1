@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { killProcessGroup } from '../processKill'
 import { existsSync } from 'node:fs'
 import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { z } from 'zod'
@@ -57,15 +58,18 @@ function runScript(
     const child = spawn(interpreter.cmd, [scriptAbs, ...scriptArgs], {
       cwd,
       env: interpreter.env ?? process.env,
+      // detached:true → 子进程成为新进程组组长；终止时用 process.kill(-pid)
+      // 连同孙进程（Python subprocess / shell-out）一并杀，防孤儿泄漏（P1-6）
+      detached: true,
     })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => {
-      child.kill('SIGKILL')
+      killProcessGroup(child)
       reject(new Error('timeout'))
     }, TIMEOUT_MS)
     const onAbort = (): void => {
-      child.kill('SIGKILL')
+      killProcessGroup(child)
       reject(signal?.reason ?? new Error('aborted'))
     }
     signal?.addEventListener('abort', onAbort, { once: true })
@@ -73,7 +77,7 @@ function runScript(
       stdout += d.toString()
       if (stdout.length > STDOUT_MAX_CHARS) {
         clearTimeout(timer)
-        child.kill('SIGKILL')
+        killProcessGroup(child)
         reject(new Error('stdout_limit_exceeded'))
       }
     })

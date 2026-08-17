@@ -18,6 +18,7 @@
   },
   "run": "Run",
   "running": "Running…",
+  "draftRestored": "Restored unsaved draft — save to clear",
   "stop": "Stop",
   "tabs": {
     "inspector": "Inspector",

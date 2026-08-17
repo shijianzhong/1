@@ -62,7 +62,7 @@ import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
-import { resolveApprovalDecision } from '../tools/sessionApprovals'
+import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
 import {
   newRequestId,
   newRunId,
@@ -473,8 +473,10 @@ export function registerHomeHandlers(): void {
             emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response })
             return resolveApprovalDecision(response, sid, toolName)
           } catch (e) {
+            // 超时/取消/被顶替：吞错返回 falsy 带区分 reason（铁律11 不抛 → 不死循环），
+            // registry 闸门按 reason 选 errors.tools.approval_timeout/approval_aborted（CODE_AUDIT 断言 5.5）。
             emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: 'home', response: '' })
-            return { approved: false, reason: 'timeout or cancelled' }
+            return { approved: false, reason: rejectionToApprovalReason(e) }
           }
         },
         // update_plan 计划更新桥（Task 6）：推给前端展示计划进度
@@ -591,8 +593,10 @@ export function registerHomeHandlers(): void {
                 emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
                 return resolveApprovalDecision(response, sid, toolName)
               } catch (e) {
+                // 超时/取消/被顶替：吞错返回 falsy 带区分 reason（铁律11 不抛 → 不死循环），
+                // registry 闸门按 reason 选 errors.tools.approval_timeout/approval_aborted（CODE_AUDIT 断言 5.5）。
                 emitOrchEvent({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
-                return { approved: false, reason: 'timeout or cancelled' }
+                return { approved: false, reason: rejectionToApprovalReason(e) }
               }
             },
             // update_plan 计划更新桥（Task 6 统一）：组队/能力节点与主 agent 同款

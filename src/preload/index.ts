@@ -126,9 +126,9 @@ export interface OneApi {
     listPendingDrafts: (input?: { sessionId?: string }) => Promise<IpcResult<import('@shared/types').CreateDraft[]>>
   }
   orchestrate: {
-    run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string; /** 项目根绝对路径（写入 sessions.cwd，agent 文件工具 + shell 默认 cwd 用） */ projectPath?: string }) => Promise<IpcResult<{ runId: string; output: string }>>
+    run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string; /** 项目根绝对路径（写入 sessions.cwd，agent 文件工具 + shell 默认 cwd 用） */ projectPath?: string }) => Promise<IpcResult<{ runId: string; output: string; stopReason: 'converged' | 'max_supersteps' | 'aborted' }>>
     onStream: (cb: (e: import('@shared/types').StreamEvent) => void) => () => void
-    cancel: () => Promise<IpcResult<void>>
+    cancel: (input?: { sessionId?: string }) => Promise<IpcResult<void>>
     /** 作答 ask_user 提问（HITL 提问卡提交；home 组队运行也走本通道，同一应答队列） */
     respond: (input: { requestId: string; response: string }) => Promise<IpcResult<void>>
   }
@@ -318,7 +318,7 @@ const api: OneApi = {
       ipcRenderer.on('orchestrate:stream', handler)
       return () => ipcRenderer.off('orchestrate:stream', handler)
     },
-    cancel: () => ipcRenderer.invoke('orchestrate:cancel'),
+    cancel: (input?: { sessionId?: string }) => ipcRenderer.invoke('orchestrate:cancel', input),
     respond: (input) => ipcRenderer.invoke('orchestrate:respond', input),
   },
   registry: {

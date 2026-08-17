@@ -26,6 +26,7 @@ describe('tools/builtin/web', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     delete process.env.JINA_API_KEY
+    delete process.env.BRAVE_API_KEY
   })
 
   it('两个工具注册进清单（编排 agent 可见）', () => {
@@ -124,5 +125,24 @@ describe('tools/builtin/web', () => {
     expect(data.error).toBe('http_403')
     expect(data.hint).toContain('JINA_API_KEY')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('web_search：Brave 5xx 不重试直接降级到 Bing（断言 4.4 修复）', async () => {
+    // Brave 有 key 但返回 503：旧行为 fetchText 5xx throw → registry 重试 3 次全 503
+    // → 降级链（Jina/Bing）永远到不了。修后 searchBrave try/catch 接住 5xx 返回
+    // {ok:false} → 降级到 Jina（无 key 跳过）→ Bing（本例 mock 返回有效结果）。
+    process.env.BRAVE_API_KEY = 'brave-key'
+    // 第 1 次 Brave 503，第 2 次（Bing）返回有效 HTML
+    fetchMock
+      .mockResolvedValueOnce(new Response('service unavailable', { status: 503 }))
+      .mockResolvedValueOnce(new Response(BING_FIXTURE, { status: 200 }))
+
+    const r = await executeTool('web_search', { query: 'AI' }, 'tu_9', {})
+    const data = JSON.parse(r.content)
+    // 降级到 Bing 成功，不是 503 错误
+    expect(data.ok).toBe(true)
+    expect(data.backend).toBe('bing')
+    // Brave + Bing 两次请求，不该有 Brave 重试（5xx 降级非重试）
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

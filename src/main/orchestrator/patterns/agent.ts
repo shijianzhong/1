@@ -91,6 +91,20 @@ export class AgentExecutor implements Executor {
           isFunctionResult: true,
         })
       },
+      // LLM 重试（429/5xx/断网）：通知前端清空该 speaker 已发的 text/thinking 增量，
+      // 防重试第二轮重放导致气泡文本翻倍。agent.ts:118 转发 onRetry，此处桥接到事件流。
+      // 对齐 home 主链路 HomePage.tsx:261 的 retry 事件清空语义（CODE_AUDIT 断言 1.1）。
+      onRetry: (info) => {
+        void ctx.add_event({
+          type: 'retry',
+          node_id: this.id,
+          speaker: this.id,
+          attempt: info.attempt,
+          maxRetries: info.maxRetries,
+          delayMs: info.delayMs,
+          reason: info.reason,
+        })
+      },
     }
 
     logger.info(

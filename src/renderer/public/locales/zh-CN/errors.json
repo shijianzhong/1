@@ -42,6 +42,7 @@
     "precheck_failed": "工具预检失败，已拦截",
     "approval_unavailable": "当前环境不支持工具审批",
     "approval_timeout": "工具审批超时（300秒未响应）",
+    "approval_aborted": "运行被取消或被新任务顶替，工具审批中止",
     "approval_denied": "用户拒绝了工具执行",
     "shell_danger_command": "危险命令已被拦截",
     "shell_timeout": "Shell 命令执行超时",

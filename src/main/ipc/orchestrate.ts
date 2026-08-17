@@ -25,7 +25,7 @@ import { getDb } from '../storage/db'
 import { SkillContextProvider } from '../skills/provider'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
-import { resolveApprovalDecision } from '../tools/sessionApprovals'
+import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
 import { resolveThinkingConfig } from '../llm/thinking'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -37,10 +37,20 @@ import { logger } from '../logger'
 
 const STREAM_CHANNEL = 'orchestrate:stream'
 
-// 当前编排的 AbortController（用于 cancel）
-let currentAbortController: AbortController | null = null
-/** 当前编排 HITL run 作用域（与 home 通道隔离） */
-let currentHitlRunId: string | null = null
+/**
+ * 按 sessionId 隔离的活跃编排（CODE_AUDIT 断言 5.4：旧实现是模块级单例，
+ * Electron 多 BrowserWindow 共享主进程模块实例 → 第二个 orchestrate:run
+ * 覆盖第一个的 controller，且 finally 的 `===` 判不等 → 不清空 → 时序隐患）。
+ * key = sessionId（无 sessionId 的临时运行用 '__transient' 哨兵）。
+ * 多窗口各自有独立 sessionId → 互不顶替；cancel(sid) 精确取消该会话的运行。
+ */
+interface ActiveRun {
+  controller: AbortController
+  hitlRunId: string
+}
+const activeRuns = new Map<string, ActiveRun>()
+const TRANSIENT_KEY = '__transient'
+const runKey = (sessionId?: string): string => sessionId ?? TRANSIENT_KEY
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
@@ -194,8 +204,10 @@ function makeResolveAgent(
             emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
             return resolveApprovalDecision(response, sessionId, toolName)
           } catch (e) {
+            // 超时/取消/被顶替：吞错返回 falsy 带区分 reason（铁律11 不抛 → 不死循环），
+            // registry 闸门按 reason 选 errors.tools.approval_timeout/approval_aborted（CODE_AUDIT 断言 5.5）。
             emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response: '' })
-            return { approved: false, reason: 'timeout or cancelled' }
+            return { approved: false, reason: rejectionToApprovalReason(e) }
           }
         },
         // update_plan 计划更新桥（Task 6）：推给前端展示计划进度
@@ -215,7 +227,7 @@ function makeResolveAgent(
 }
 
 export function registerOrchestrateHandlers(): void {
-  withHandler<{ runId: string; output: string }>(
+  withHandler<{ runId: string; output: string; stopReason: 'converged' | 'max_supersteps' | 'aborted' }>(
     'orchestrate:run',
     async (_e, input) => {
       const { graph, input: text, sessionId, projectPath } = input as {
@@ -246,17 +258,19 @@ export function registerOrchestrateHandlers(): void {
 
       // 先建 AbortController：signal 贯穿 toolCtx（agent 循环 + ask_user 挂起），
       // cancel 才能真正打断「等用户作答」与工具循环（原来只断 superstep 间隙）。
-      // 并发防御：已有运行时先取消旧的（渲染层 running 守卫下不会并发，兜底重复 IPC）
-      if (currentAbortController) {
-        logger.warn('[orchestrate] 已有运行中的编排，自动取消旧运行')
-        const prevRun = currentHitlRunId
-        currentAbortController.abort()
-        if (prevRun) rejectUserInputsForRun(prevRun, 'aborted')
+      // 并发防御：同 sessionId 已有运行时先取消旧的（渲染层 running 守卫下不会并发，兜底重复 IPC）。
+      // 按 sessionId 隔离：多窗口各持独立会话，互不顶替（断言 5.4）。
+      const key = runKey(sessionId)
+      const existing = activeRuns.get(key)
+      if (existing) {
+        logger.warn(`[orchestrate] 会话 ${key} 已有运行中的编排，自动取消旧运行`)
+        existing.controller.abort()
+        rejectUserInputsForRun(existing.hitlRunId, 'aborted')
       }
-      currentAbortController = new AbortController()
+      const controller = new AbortController()
       const hitlRunId = newRunId('orch')
-      currentHitlRunId = hitlRunId
-      const { signal } = currentAbortController
+      activeRuns.set(key, { controller, hitlRunId })
+      const { signal } = controller
       const agentTools = await listToolsForAgents()
       const { resolveAgent, skillProviders } = makeResolveAgent(
         modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId, hitlRunId,
@@ -270,18 +284,25 @@ export function registerOrchestrateHandlers(): void {
       if (sessionId) addMessage({ sessionId, role: 'user', content: text })
       try {
         const result = await runWorkflow(wf, { text, sessionId }, emitStream, signal)
-        if (sessionId && result.output) {
+        // abort / max_supersteps 时只落用户输入，不把半截聚合输出当完整 assistant 消息存库
+        //（CODE_AUDIT 断言 1.4：abort 被当成功存部分输出）。事件流已发 failed，前端区分。
+        if (sessionId && result.output && result.stopReason === 'converged') {
           addMessage({ sessionId, role: 'assistant', content: result.output })
         }
-        return { runId: sessionId ?? `run_${randomUUID().slice(0, 8)}`, output: result.output }
+        return {
+          runId: sessionId ?? `run_${randomUUID().slice(0, 8)}`,
+          output: result.output,
+          stopReason: result.stopReason,
+        }
       } finally {
         // 仅驳回本 run 的挂起提问，避免误伤首页 home 通道
         rejectUserInputsForRun(hitlRunId, 'run_finished')
         // SkillContextProvider.afterRun（铁律22）：运行结束审计
         for (const p of skillProviders) p.afterRun()
-        if (currentAbortController?.signal === signal) {
-          currentAbortController = null
-          if (currentHitlRunId === hitlRunId) currentHitlRunId = null
+        // 仅清自己的 entry（=== controller 比对：防被新 run 顶替后误删新 controller）
+        const entry = activeRuns.get(key)
+        if (entry?.controller === controller) {
+          activeRuns.delete(key)
         }
       }
     },
@@ -302,14 +323,17 @@ export function registerOrchestrateHandlers(): void {
 
   withHandler<void>(
     'orchestrate:cancel',
-    async () => {
-      const runId = currentHitlRunId
-      if (runId) rejectUserInputsForRun(runId, 'aborted')
-      if (currentAbortController) {
-        currentAbortController.abort()
-        currentAbortController = null
-        currentHitlRunId = null
-        logger.info('[orchestrate] 已取消编排')
+    async (_e, input) => {
+      // 按 sessionId 精确取消该会话的活跃运行（断言 5.4：多窗口隔离）。
+      // 无 sessionId 入参 → 取消临时运行（__transient）；这是向后兼容的旧行为。
+      const sessionId = (input as { sessionId?: string } | undefined)?.sessionId
+      const key = runKey(sessionId)
+      const entry = activeRuns.get(key)
+      if (entry) {
+        rejectUserInputsForRun(entry.hitlRunId, 'aborted')
+        entry.controller.abort()
+        activeRuns.delete(key)
+        logger.info(`[orchestrate] 已取消会话 ${key} 的编排`)
       }
     },
   )

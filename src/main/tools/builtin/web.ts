@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { registerTool } from '../registry'
+import { logger } from '../../logger'
 
 // —— 内置联网工具（P2-search：搜索后端优先 API，弃用裸爬 Bing HTML）——
 // web_read   = Jina Reader（r.jina.ai，免 key 有限流；JINA_API_KEY 提额）
@@ -113,29 +114,39 @@ async function searchBrave(
   if (!key) return { ok: false, error: 'no_key', messageKey: 'errors.tools.search_no_key' }
 
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${SEARCH_LIMIT}`
-  const r = await fetchJson(url, signal, {
-    'X-Subscription-Token': key,
-    Accept: 'application/json',
-  })
-  if (!r.ok) {
-    return {
-      ok: false,
-      error: `http_${r.status}`,
-      messageKey: r.status === 401 || r.status === 429
-        ? 'errors.tools.search_rate_limited'
-        : 'errors.tools.search_failed',
+  // 整段包 try/catch（断言 4.4）：fetchText 对 5xx 直接 throw（web.ts:40），5xx 冒泡到
+  // 这里若不接住 → registry 重试 3 次全 5xx → 降级链（Jina/Bing）永远到不了。
+  // 现接住返回 {ok:false} 让降级链继续；4xx 已由 fetchJson 转 {ok:false} 不走 throw。
+  try {
+    const r = await fetchJson(url, signal, {
+      'X-Subscription-Token': key,
+      Accept: 'application/json',
+    })
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: `http_${r.status}`,
+        messageKey: r.status === 401 || r.status === 429
+          ? 'errors.tools.search_rate_limited'
+          : 'errors.tools.search_failed',
+      }
     }
+
+    const data = r.data as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } }
+    const raw = data.web?.results ?? []
+    const results: SearchResult[] = raw.slice(0, SEARCH_LIMIT).map((item) => ({
+      title: item.title ?? '',
+      url: item.url ?? '',
+      snippet: item.description ?? '',
+    })).filter((r) => r.url)
+
+    return { ok: true, results }
+  } catch (e) {
+    // 5xx / 网络错误：不 throw，降级到 Jina/Bing（断言 4.4 修复）
+    const msg = e instanceof Error ? e.message : String(e)
+    logger.warn(`[web] Brave 5xx/网络错误，降级到 Jina：${msg}`)
+    return { ok: false, error: `brave_${msg}`, messageKey: 'errors.tools.search_failed' }
   }
-
-  const data = r.data as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } }
-  const raw = data.web?.results ?? []
-  const results: SearchResult[] = raw.slice(0, SEARCH_LIMIT).map((item) => ({
-    title: item.title ?? '',
-    url: item.url ?? '',
-    snippet: item.description ?? '',
-  })).filter((r) => r.url)
-
-  return { ok: true, results }
 }
 
 /** Jina Search：语义搜索，需 JINA_API_KEY */
@@ -212,9 +223,9 @@ export function registerWebTools(): void {
       if (brave.ok) {
         return { ok: true, query, backend: 'brave', results: brave.results }
       }
-      // 无 key → 跳过；有 key 但失败 → 记录后降级
+      // 无 key → 静默跳过降级；有 key 但失败（5xx/网络/限流）→ 记一行日志降级到 Jina
       if (brave.error !== 'no_key') {
-        // Brave 有 key 但失败了 → 降级到 Jina
+        logger.info(`[web] Brave 失败（${brave.error}），降级到 Jina`)
       }
 
       // —— 2. Jina Search（次选：语义搜索，需 key）——

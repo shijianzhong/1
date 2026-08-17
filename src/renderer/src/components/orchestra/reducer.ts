@@ -16,19 +16,61 @@ function summarize(value: unknown): string {
   }
 }
 
+/**
+ * 按 speaker 查找该发言者的「可追加」流式气泡（断言 1.3 修复）。
+ * 旧实现只看 prev[末]，Concurrent 并行流式时 peer A 的后续 delta 到达
+ * 末条若是 peer B → last.speaker 不匹配 → else 走 closeStreaming+新建 A 气泡
+ * → A 的文本被拆成多个碎片气泡；tool_call 则直接 return prev 丢失。
+ *
+ * 修法：从末尾往前找最近一个 speaker 匹配 + streaming（或 retrying）+ 非卡片
+ * 的 assistant 气泡。并发流式多气泡共存，各 speaker 续写到自己的气泡。
+ * 返回 [index, msg] 或 null（未找到 → 调用方新建气泡）。
+ */
+function findStreamingBubbleForSpeaker(
+  prev: ChatMessage[],
+  speaker: string | undefined,
+): [number, ChatMessage] | null {
+  if (!speaker) return null
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const m = prev[i]
+    if (
+      m.role === 'assistant' &&
+      m.speaker === speaker &&
+      !m.draft &&
+      !m.askUser &&
+      !m.approval &&
+      (m.streaming || m.retrying)
+    ) {
+      return [i, m]
+    }
+    // 遇到已完成的同 speaker 气泡就停（不跨过它的历史气泡去复活更早的流式态）——
+    // 避免误把早先的 streaming 气泡当续写目标。已完成 = 既不 streaming 也不 retrying。
+    if (m.role === 'assistant' && m.speaker === speaker && !m.streaming && !m.retrying) {
+      return null
+    }
+  }
+  return null
+}
+
 /** 编排流事件应用到消息列表，返回新列表 */
 export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessage[] {
   switch (ev.type) {
     case 'output': {
-      const last = prev[prev.length - 1]
-      // 同 speaker 的末条流式气泡：final 事件替换文本（终端完整输出，去掉已累加的增量重复），
-      // 增量事件累加文本。
-      if (last?.role === 'assistant' && last.streaming && !last.draft && !last.askUser && last.speaker === ev.speaker) {
+      // 按 speaker 查找可续写的流式气泡（断言 1.3：Concurrent 并行流式多气泡共存）。
+      // final 事件替换文本（终端完整输出，去重复增量）；增量累加文本。
+      // retrying 态（重试等待中）也算同一气泡——重试后第二轮重放 resume 续写不开新泡
+      //（对齐 home 主链路 HomePage.tsx:254 的 last.streaming || last.retrying 语义）。
+      const found = findStreamingBubbleForSpeaker(prev, ev.speaker)
+      if (found) {
+        const [idx, last] = found
+        // 重试恢复：剥掉 retrying/retryInfo（等待态结束，回到正常流式）
+        const { retrying: _r, retryInfo: _ri, ...rest } = last
+        void _r; void _ri
         const text = ev.final ? ev.text : last.text + ev.text
-        return [...prev.slice(0, -1), { ...last, text, streaming: !ev.final }]
+        return [...prev.slice(0, idx), { ...rest, text, streaming: !ev.final }, ...prev.slice(idx + 1)]
       }
-      // final 事件到达时若末条不是该 speaker 的流式气泡，说明增量未建立气泡（如 groupchat 容器
-      // 非流式输出）→ 直接用完整文本新建成形气泡（streaming=false）。
+      // 该 speaker 尚无流式气泡（首条增量 / final 但无前置增量 / groupchat 容器非流式输出）：
+      // 新建气泡。先定格其它仍在流式的气泡（新气泡出现前的纪律）。
       return [
         ...closeStreaming(prev),
         {
@@ -43,16 +85,23 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     }
 
     case 'thinking': {
-      // 编排内 agent 推理过程：追加到该 speaker 的末条气泡的 thinking 字段（不混进正文）
-      const last = prev[prev.length - 1]
-      if (last?.role === 'assistant' && last.speaker === ev.speaker) {
+      // 编排内 agent 推理过程：追加到该 speaker 的流式气泡的 thinking 字段（不混进正文）。
+      // 按 speaker 查气泡（断言 1.3：Concurrent 并行流式多气泡共存）。
+      // retrying 态同样 resume 到同一气泡（重试后第二轮思考续写，对齐 home 主链路 :240 语义）。
+      const found = findStreamingBubbleForSpeaker(prev, ev.speaker)
+      if (found) {
+        const [idx, last] = found
+        const { retrying: _r, retryInfo: _ri, ...rest } = last
+        void _r; void _ri
         return [
-          ...prev.slice(0, -1),
+          ...prev.slice(0, idx),
           {
-            ...last,
+            ...rest,
+            streaming: true,
             thinking: (last.thinking ?? '') + ev.text,
             thinkingCollapsed: false,
           },
+          ...prev.slice(idx + 1),
         ]
       }
       // 尚无该 speaker 的气泡：先建一个只含 thinking 的占位气泡，后续 output 合并
@@ -74,7 +123,9 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     case 'node_error':
     case 'failed': {
       const errText = ev.type === 'node_error' ? `${ev.node_id}: ${ev.error}` : ev.error
-      // 同时更新末条流式气泡的节点状态为 error
+      // 更新末条流式气泡的节点状态为 error。注意：node_started/done/error 的 node_id
+      // 是子执行器 id，但事件在父/聚合器上下文里发出 → 仍按「末条流式气泡」归属（保留
+      // 父气泡跟踪多子节点的既有语义，非按 speaker 查——否则并发聚合器场景断）。
       let updated = prev
       if (ev.type === 'node_error') {
         const last = prev[prev.length - 1]
@@ -169,6 +220,39 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
       )
     }
 
+    case 'retry': {
+      // LLM 重试（429/5xx/断网）：重试层整段重跑 stream，模型从头生成。
+      // 清空该 speaker 已发的 text/thinking 增量，防第二轮重放导致气泡文本翻倍
+      //（CODE_AUDIT 断言 1.1：编排链路 patterns/agent.ts 缺 onRetry 桥接，已补）。
+      // tool_use delta 在 agent.emitDelta 被丢弃、tool_call 事件只在 post-stream emit，
+      // 故 retry 时无 stale tool chip 需清——与 home 主链路 HomePage.tsx:261 语义对齐。
+      // reducer 是纯函数无 i18n hook，存 raw retryInfo，MessageItem 渲染时 t('home:retry.waiting')。
+      // 按 speaker 查气泡（断言 1.3：Concurrent 并行时 retry 只清自己 speaker 的气泡）。
+      const found = findStreamingBubbleForSpeaker(prev, ev.speaker)
+      if (found) {
+        const [idx, last] = found
+        return [
+          ...prev.slice(0, idx),
+          {
+            ...last,
+            text: '',
+            thinking: undefined,
+            streaming: false,
+            orbState: 'solving' as const,
+            retrying: '1',
+            retryInfo: {
+              attempt: ev.attempt,
+              maxRetries: ev.maxRetries,
+              delayMs: ev.delayMs,
+              reason: ev.reason,
+            },
+          },
+          ...prev.slice(idx + 1),
+        ]
+      }
+      return prev
+    }
+
     case 'done':
       // 不产生气泡，但定格全部流式态——防御：主进程虽保证 message_stop 全路径配对
       // 发送，done 到达即运行终结，任何事件丢失都不应留下 streaming=true 的泄漏
@@ -194,9 +278,12 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     }
 
     case 'tool_call': {
-      // 工具调用：在末条流式气泡上标记 searching 态 + 追加 ToolCallInfo
-      const last = prev[prev.length - 1]
-      if (last?.role === 'assistant' && last.streaming) {
+      // 工具调用：在该 speaker 的流式气泡上标记 searching 态 + 追加 ToolCallInfo。
+      // 按 speaker 查气泡（断言 1.3：Concurrent 并行时各 peer 的 toolCall 落到自己的气泡，
+      // 不再因末条是别的 peer 而丢失）。
+      const found = findStreamingBubbleForSpeaker(prev, ev.node_id)
+      if (found) {
+        const [idx, last] = found
         const toolCall: ToolCallInfo = {
           id: crypto.randomUUID(),
           tool: ev.tool,
@@ -205,8 +292,9 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
           timestamp: Date.now(),
         }
         return [
-          ...prev.slice(0, -1),
+          ...prev.slice(0, idx),
           { ...last, orbState: 'searching' as const, toolCalls: [...(last.toolCalls ?? []), toolCall] },
+          ...prev.slice(idx + 1),
         ]
       }
       return prev
@@ -214,20 +302,23 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
 
     case 'tool_result': {
       // 工具返回：恢复 working 态 + 更新最后一个 pending 的 toolCall 为 done
-      const last = prev[prev.length - 1]
-      if (last?.role === 'assistant' && last.streaming) {
+      const found = findStreamingBubbleForSpeaker(prev, ev.node_id)
+      if (found) {
+        const [idx, last] = found
         const toolCalls = last.toolCalls?.map((tc, i, arr) =>
           i === arr.length - 1 && tc.status === 'pending'
             ? { ...tc, status: 'done' as const, resultSummary: summarize(ev.result) }
             : tc,
         )
-        return [...prev.slice(0, -1), { ...last, orbState: 'working' as const, toolCalls }]
+        return [...prev.slice(0, idx), { ...last, orbState: 'working' as const, toolCalls }, ...prev.slice(idx + 1)]
       }
       return prev
     }
 
     case 'node_started': {
-      // 节点启动：在末条流式气泡上追加 NodeStateInfo
+      // 节点启动：在末条流式气泡上追加 NodeStateInfo。node_id 是子执行器 id，
+      // 但事件在父/聚合器上下文发出 → 按「末条流式气泡」归属（父气泡跟踪多子节点，
+      // 不按 speaker 查——否则并发聚合器场景下子节点 id ≠ 父气泡 speaker 会丢）。
       const last = prev[prev.length - 1]
       if (last?.role === 'assistant' && last.streaming) {
         const nodeState: NodeStateInfo = {
@@ -244,7 +335,7 @@ export function applyOrchEvent(prev: ChatMessage[], ev: StreamEvent): ChatMessag
     }
 
     case 'node_done': {
-      // 节点完成：更新对应节点状态为 done
+      // 节点完成：更新对应节点状态为 done（同 node_started：末条流式气泡归属）
       const last = prev[prev.length - 1]
       if (last?.role === 'assistant' && last.streaming) {
         const nodeStates = last.nodeStates?.map((ns) =>

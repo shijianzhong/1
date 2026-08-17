@@ -16,6 +16,8 @@ export interface ChatMessage {
   tokenUsage?: TokenUsage
   error?: boolean
   retrying?: string
+  /** LLM 重试结构化信息（reducer 纯函数存 raw，MessageItem 渲染时 t('home:retry.waiting')） */
+  retryInfo?: { attempt: number; maxRetries: number; delayMs: number; reason: string }
   thinking?: string
   thinkingCollapsed?: boolean // 回复完成后自动折叠
   /** 创建提案草稿（渲染确认卡）；与 text 互斥 */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveStartExecutor } from './builder'
+import { IpcErrorThrow } from '@shared/types'
 import type { GraphNode, WorkflowGraph } from '@shared/types'
 
 // —— resolveStartExecutor 入口解析（拓扑感知 + 容器递归）——
@@ -97,12 +98,15 @@ describe('resolveStartExecutor', () => {
     expect(resolveStartExecutor(g)).toBe('A')
   })
 
-  it('sequential 无有效 participant → 兜底首个 agent', () => {
+  it('sequential 无有效 participant → 抛 errors.graph.empty（非静默兜底，P3-18）', () => {
     const g = graph([
       { id: 'seq', type: 'sequential', position: { x: 0, y: 0 }, data: { participants: ['MISSING'] } },
       agent('A'),
     ])
-    expect(resolveStartExecutor(g)).toBe('A')
+    // 旧行为兜底到无关 agent A → 静默跑错起点；现显式抛错让前端区分「解析失败」。
+    // IpcErrorThrow 经 normalizeI18nKey 把 'errors.graph.empty' 归一为 'errors:graph.empty'
+    expect(() => resolveStartExecutor(g)).toThrow(IpcErrorThrow)
+    expect(() => resolveStartExecutor(g)).toThrow('errors:graph.empty')
   })
 
   it('空图 → 空串', () => {

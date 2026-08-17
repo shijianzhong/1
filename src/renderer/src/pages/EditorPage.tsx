@@ -105,6 +105,90 @@ function serializeGraph(graph: WorkflowGraph): string {
   })
 }
 
+/**
+ * 把 WorkflowGraph 归一化为 ReactFlow 画布的 nodes/edges。
+ * 远端已保存图（capQ.data.graph）与崩溃草稿图（editor-*.json 的 graph 字段）走同一路径，
+ * 保证灌回的草稿与正常加载的图渲染完全一致（CODE_AUDIT 断言 2 闭环）。
+ *
+ * 归一化内容：
+ *   1. 整理 concurrent 容器连线：补 container→aggregator 视觉边、删 participant→aggregator 多余边；
+ *   2. 清理触及容器子节点的历史遗留边；
+ *   3. 创建节点（agent→'agent'、其它→'container'），恢复 parentId/extent，expandParent；
+ *   4. edges 加 id/animated/data。
+ * 入参 graph 会被就地 push/filter，调用方需传入拷贝（edges 数组）防污染 React Query 缓存。
+ */
+function normalizeGraphToCanvas(graph: WorkflowGraph): { nodes: Node[]; edges: Edge[] } {
+  // 整理 concurrent 容器的连线：
+  // - 补 container → aggregator 的视觉边（一根线代表 fan-in）
+  // - 删除 participant → aggregator 的多余边（运行时由 buildConcurrent 内部处理）
+  const edgeExists = (s: string, t: string) =>
+    graph.edges.some((e) => e.source === s && e.target === t)
+  for (const n of graph.nodes) {
+    if (n.type !== 'concurrent') continue
+    const participants = (n.data as { participants?: string[] })?.participants ?? []
+    const aggregator = (n.data as { aggregator?: string })?.aggregator
+    if (!aggregator) continue
+    if (!edgeExists(n.id, aggregator)) {
+      graph.edges.push({ source: n.id, target: aggregator })
+    }
+    graph.edges = graph.edges.filter(
+      (e) => !(participants.includes(e.source) && e.target === aggregator),
+    )
+  }
+
+  // 清理触及容器子节点的历史遗留边：画布已禁止子节点连线（isValidConnection），
+  // 容器内部布线由 pattern builder 决定，旧图残留的子节点边一并剔除
+  const childIds = new Set(
+    graph.nodes
+      .filter((n) => Boolean((n.data as { parentId?: string })?.parentId))
+      .map((n) => n.id),
+  )
+  if (childIds.size > 0) {
+    graph.edges = graph.edges.filter(
+      (e) => !childIds.has(e.source) && !childIds.has(e.target),
+    )
+  }
+
+  // 第一轮：创建所有节点（暂不带 parentId）
+  const loadedNodes: Node[] = graph.nodes.map((n) => {
+    const isAgent = n.type === 'agent'
+    const rfNode: Node = {
+      id: n.id,
+      type: isAgent ? 'agent' : 'container',
+      position: n.position,
+      data: {
+        ...(n.data as Record<string, unknown>),
+        kind: n.type,
+        label: (n.data as { label?: string })?.label ?? n.id,
+      } as Record<string, unknown>,
+      width: isAgent ? AGENT_DEFAULT_SIZE.width : CONTAINER_DEFAULT_SIZE.width,
+      height: isAgent ? AGENT_DEFAULT_SIZE.height : CONTAINER_DEFAULT_SIZE.height,
+    }
+    // 恢复 parentId 关系
+    const parentId = (n.data as { parentId?: string })?.parentId
+    if (parentId) {
+      rfNode.parentId = parentId
+      rfNode.extent = 'parent' as const
+    }
+    return rfNode
+  })
+
+  // expandParent 设置在子节点上，让 ReactFlow 自动撑大父容器（借鉴 Proton）
+  const finalNodes = loadedNodes.map((n) =>
+    n.parentId ? { ...n, expandParent: true } : n,
+  )
+
+  const finalEdges: Edge[] = graph.edges.map((e) => ({
+    id: `${e.source}-${e.target}`,
+    source: e.source,
+    target: e.target,
+    animated: false,
+    data: { condition: e.condition } as Record<string, unknown>,
+  }))
+
+  return { nodes: finalNodes, edges: finalEdges }
+}
+
 /** 获取节点的绝对坐标（递归累加 parent 位置） */
 function getAbsolutePos(node: Node, allNodes: Node[]): { x: number; y: number } {
   if (!node.parentId) return { x: node.position.x, y: node.position.y }
@@ -157,6 +241,8 @@ function EditorCanvas() {
   const [running, setRunning] = useState(false)
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // 当前运行编排的 sessionId，用于精确 cancel（断言 5.4：多窗口隔离）
+  const [activeRunSid, setActiveRunSid] = useState<string | null>(null)
   // 项目根（编排运行时 agent 文件工具/shell cwd 用）：新会话选好后随首条任务写入 sessions.cwd
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const pickProject = useCallback(async (): Promise<void> => {
@@ -202,6 +288,8 @@ function EditorCanvas() {
   const lastGraphHashRef = useRef<string>('')
   /** 记录上次显式保存时间戳，用于显示「已保存」反馈 */
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  /** 崩溃草稿灌回时间戳：非 null 表示当前画布是从未保存草稿恢复的，需提示用户 */
+  const [restoredDraftAt, setRestoredDraftAt] = useState<number | null>(null)
 
   const agents: Agent[] = agentsQ.data ?? []
   const skills = skillsQ.data ?? []
@@ -252,84 +340,65 @@ function EditorCanvas() {
     if (incomingHash === lastGraphHashRef.current) return
     lastGraphHashRef.current = incomingHash
 
-    // 拷贝 graph 外壳 + edges 数组：下面的归一化有 push / filter 重赋值，
+    // 拷贝 graph 外壳 + edges 数组：normalizeGraphToCanvas 会 push/filter 重赋值，
     // 直接别名 capQ.data.graph 会就地污染 React Query 缓存。
     // （edges 必须一起拷——仅 { ...cap.graph } 时 push 仍会改到缓存数组；
     //   nodes 只读不改，无需拷贝。）
-    const g = { ...cap.graph, edges: [...cap.graph.edges] }
-
-    // 整理 concurrent 容器的连线：
-    // - 补 container → aggregator 的视觉边（一根线代表 fan-in）
-    // - 删除 participant → aggregator 的多余边（运行时由 buildConcurrent 内部处理）
-    const edgeExists = (s: string, t: string) => g.edges.some((e) => e.source === s && e.target === t)
-    for (const n of g.nodes) {
-      if (n.type !== 'concurrent') continue
-      const participants = (n.data as { participants?: string[] })?.participants ?? []
-      const aggregator = (n.data as { aggregator?: string })?.aggregator
-      if (!aggregator) continue
-      // 补 container → aggregator
-      if (!edgeExists(n.id, aggregator)) {
-        g.edges.push({ source: n.id, target: aggregator })
-      }
-      // 删 participant → aggregator（画布不显示，运行时由 builder 加）
-      g.edges = g.edges.filter(
-        (e) => !(participants.includes(e.source) && e.target === aggregator),
-      )
-    }
-
-    // 清理触及容器子节点的历史遗留边：画布已禁止子节点连线（isValidConnection），
-    // 容器内部布线由 pattern builder 决定，旧图残留的子节点边一并剔除
-    const childIds = new Set(
-      g.nodes
-        .filter((n) => Boolean((n.data as { parentId?: string })?.parentId))
-        .map((n) => n.id),
-    )
-    if (childIds.size > 0) {
-      g.edges = g.edges.filter(
-        (e) => !childIds.has(e.source) && !childIds.has(e.target),
-      )
-    }
-
-    // 第一轮：创建所有节点（暂不带 parentId）
-    const loadedNodes: Node[] = g.nodes.map((n) => {
-      const isAgent = n.type === 'agent'
-      const rfNode: Node = {
-        id: n.id,
-        type: isAgent ? 'agent' : 'container',
-        position: n.position,
-        data: {
-          ...(n.data as Record<string, unknown>),
-          kind: n.type,
-          label: (n.data as { label?: string })?.label ?? n.id,
-        } as Record<string, unknown>,
-        width: isAgent ? AGENT_DEFAULT_SIZE.width : CONTAINER_DEFAULT_SIZE.width,
-        height: isAgent ? AGENT_DEFAULT_SIZE.height : CONTAINER_DEFAULT_SIZE.height,
-      }
-      // 恢复 parentId 关系
-      const parentId = (n.data as { parentId?: string })?.parentId
-      if (parentId) {
-        rfNode.parentId = parentId
-        rfNode.extent = 'parent' as const
-      }
-      return rfNode
+    const { nodes: rfNodes, edges: rfEdges } = normalizeGraphToCanvas({
+      ...cap.graph,
+      edges: [...cap.graph.edges],
     })
-
-    // expandParent 设置在子节点上，让 ReactFlow 自动撑大父容器（借鉴 Proton）
-    const finalNodes = loadedNodes.map((n) =>
-      n.parentId ? { ...n, expandParent: true } : n,
-    )
-
-    setNodes(finalNodes)
-    setEdges(
-      g.edges.map((e) => ({
-        id: `${e.source}-${e.target}`,
-        source: e.source,
-        target: e.target,
-        animated: false,
-        data: { condition: e.condition } as Record<string, unknown>,
-      })),
-    )
+    setNodes(rfNodes)
+    setEdges(rfEdges)
   }, [capQ.data])
+
+  // —— 崩溃草稿灌回（CODE_AUDIT 断言 2 闭环）——
+  // capQ.data.graph 加载后（或该能力无已保存图、远端为空时）读 editor-${capabilityId}.json：
+  // 若存在即上次崩溃/异常退出留下的未保存画布 → 经 normalizeGraphToCanvas 灌回（与正常
+  // 加载同路径），并提示用户「已恢复未保存草稿，保存后清除」。草稿在 save 成功时由
+  // 写盘 effect 自行 removeDraft（:414），此处只负责读 + 灌回 + 标记 restoredDraftAt。
+  // 依赖 [capabilityId, capQ.data]：capabilityId 变（切能力）重读；capQ.data 变（远端图
+  // 加载完）后再灌草稿覆盖。
+  useEffect(() => {
+    if (!capabilityId) return
+    let cancelled = false
+    void window.one.app
+      .listDrafts()
+      .then(unwrap)
+      .then((list) => {
+        if (cancelled) return
+        const name = `editor-${capabilityId}.json`
+        const draft = list.find((d) => d.name === name)
+        if (!draft) return
+        try {
+          const parsed = JSON.parse(draft.content) as {
+            kind?: string
+            capabilityId?: string
+            graph?: WorkflowGraph
+            updatedAt?: number
+          }
+          // 草稿 kind/capabilityId 必须匹配，防跨能力串扰
+          if (parsed.kind !== 'editor-graph' || parsed.capabilityId !== capabilityId || !parsed.graph) {
+            return
+          }
+          const { nodes: rfNodes, edges: rfEdges } = normalizeGraphToCanvas({
+            ...parsed.graph,
+            edges: [...parsed.graph.edges],
+          })
+          setNodes(rfNodes)
+          setEdges(rfEdges)
+          // 标记草稿 hash，防写盘 effect 立即把恢复的图当新变更写回（循环）
+          lastGraphHashRef.current = serializeGraph(parsed.graph)
+          setRestoredDraftAt(Date.now())
+        } catch {
+          // 草稿 JSON 损坏：静默丢弃，避免阻塞画布加载
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [capabilityId, capQ.data])
 
   // —— 向后兼容：agents 加载后，为缺快照的旧节点补全配置 ——
   useEffect(() => {
@@ -960,6 +1029,8 @@ function EditorCanvas() {
     })
 
     try {
+      // 记录本次运行的 sessionId，供 onStop 精确 cancel（断言 5.4：多窗口隔离）
+      setActiveRunSid(sid)
       await window.one.orchestrate.run({
         graph,
         input: text,
@@ -984,6 +1055,7 @@ function EditorCanvas() {
       setActiveNodeId(null)
     } finally {
       unsub()
+      setActiveRunSid(null)
     }
   }, [nodes, edges, running, capabilityId, qc])
 
@@ -1212,6 +1284,23 @@ function EditorCanvas() {
             <Badge variant="brand">{t('editor:running')} · {activeNodeId}</Badge>
           </div>
         ) : null}
+
+        {/* 崩溃草稿已灌回提示（CODE_AUDIT 断言 2）：保存后写盘 effect 会 removeDraft，
+            此处 restoredDraftAt 在保存成功时不会自动清——但草稿文件已删，下次刷新不再灌回。
+            用户保存即视为消化，故提示随 savedAt 出现后自动淡出（3s 窗口外不再显示）。 */}
+        {restoredDraftAt && (!savedAt || savedAt < restoredDraftAt) ? (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 'var(--z-dropdown)',
+            }}
+          >
+            <Badge variant="warning">{t('editor:draftRestored')}</Badge>
+          </div>
+        ) : null}
       </div>
 
       {/* ── 右侧栏：属性 Inspector / 运行对话 tabs（左缘拖拽调宽）── */}
@@ -1326,7 +1415,7 @@ function EditorCanvas() {
             speakerName={speakerName}
             running={running}
             onSend={(text) => void onRun(text)}
-            onStop={() => void window.one.orchestrate.cancel()}
+            onStop={() => void window.one.orchestrate.cancel({ sessionId: activeRunSid ?? undefined })}
             projectPath={projectPath}
             onPickProject={pickProject}
             t={t}

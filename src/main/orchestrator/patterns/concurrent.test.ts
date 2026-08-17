@@ -51,7 +51,6 @@ describe('Concurrent 黄金用例', () => {
         l.push(t)
         edges.set(s, l)
       },
-      addSwitchCaseEdgeGroup() {},
       addCondition() {},
     }
 
@@ -129,7 +128,6 @@ describe('Concurrent 黄金用例', () => {
         l.push(t)
         edges.set(s, l)
       },
-      addSwitchCaseEdgeGroup() {},
       addCondition() {},
     }
 

@@ -14,6 +14,16 @@ import { logger } from '../logger'
 // —— JSON 文件存储工具（§5.2）——
 // 配置类（capability/agent/skill/model/persona）存 JSON；
 // 原子写盘（临时文件 + rename，§11.4）。
+//
+// 【设计权衡：同步 fs（CODE_AUDIT 断言 3.1 CONFIRMED，接受为设计缺口）】
+// 主进程单线程，writeFileSync/readFileSync 阻塞期间所有 IPC + UI 冻结——机制上成立。
+// 但本存储承载的是配置类小 JSON（capability/agent/skill/model/persona，单文件通常 < 数十 KB），
+// 同步 fs 在 SSD 上耗时亚毫秒级，不构成可感知卡顿。CLAUDE.md §11.4 只规定「原子写盘」，
+// 未要求 I/O 异步化——故维持同步。
+// 若将来出现大文件 I/O（如 skill 包内联文本膨胀到 MB 级、或频繁批量写），再异步化：
+// 方法签名 read→Promise<T>、write→Promise<T>，调用链 models.ts（~20 方法）+ 18 个 IPC/工具
+// 调用方全部串联 await（IPC handler 经 withHandler 已包 Promise，改动可承受）。
+// 当前不做此大改，避免为一亚毫秒级缺口引入 ~80 处 await 串联的回归风险。
 
 /** 生成短 id（8 字节 hex + 时间戳后 4 位，避免 Math.random） */
 export function generateId(prefix = ''): string {

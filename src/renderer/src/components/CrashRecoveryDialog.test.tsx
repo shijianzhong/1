@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 
 // —— Mock react-i18next ——
@@ -38,6 +39,15 @@ vi.mock('./ui/Button', () => ({
 }))
 
 import { CrashRecoveryDialog } from './CrashRecoveryDialog'
+
+// —— render 包裹 MemoryRouter：组件内 useNavigate 需要 Router 上下文 ——
+function renderDialog() {
+  return render(
+    <MemoryRouter>
+      <CrashRecoveryDialog />
+    </MemoryRouter>,
+  )
+}
 
 // —— Mock window.one API ——
 type CrashCb = (payload: { drafts: Array<{ name: string; content: string }> }) => void
@@ -88,12 +98,12 @@ afterEach(() => {
 
 describe('CrashRecoveryDialog', () => {
   it('无草稿时不显示对话框', () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
   it('收到崩溃恢复事件（含草稿）→ 显示草稿列表', () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([{ name: 'draft-1.json', content: 'Hello' }])
     expect(screen.getByTestId('dialog')).toBeDefined()
     expect(screen.getByText('draft-1.json')).toBeDefined()
@@ -101,13 +111,13 @@ describe('CrashRecoveryDialog', () => {
   })
 
   it('收到空草稿列表 → 不显示对话框', () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([])
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
   it('dismiss → 调用 removeDraft 并移除该草稿', async () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([{ name: 'draft-1.json', content: 'Hello' }])
 
     await act(async () => {
@@ -121,7 +131,7 @@ describe('CrashRecoveryDialog', () => {
   })
 
   it('dismissAll → 调用 removeDraft 全部并清空列表', async () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([
       { name: 'draft-1.json', content: 'A' },
       { name: 'draft-2.json', content: 'B' },
@@ -140,7 +150,7 @@ describe('CrashRecoveryDialog', () => {
   })
 
   it('copy → 调用 clipboard.writeText', () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([{ name: 'draft-1.json', content: 'Copy me' }])
 
     fireEvent.click(screen.getByText('crashRecovery.copy'))
@@ -150,7 +160,7 @@ describe('CrashRecoveryDialog', () => {
 
   it('内容超过 500 字符 → 截断显示（500 + …）', () => {
     const longContent = 'x'.repeat(600)
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([{ name: 'draft-1.json', content: longContent }])
 
     // pre 元素内含 500 个 x + 换行 + …
@@ -160,7 +170,7 @@ describe('CrashRecoveryDialog', () => {
   })
 
   it('close 按钮 → 关闭对话框（不清除草稿文件）', () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([{ name: 'draft-1.json', content: 'Hello' }])
 
     fireEvent.click(screen.getByText('actions.close'))
@@ -170,13 +180,13 @@ describe('CrashRecoveryDialog', () => {
   })
 
   it('组件卸载 → 取消 crashRecovery 订阅', () => {
-    const { unmount } = render(<CrashRecoveryDialog />)
+    const { unmount } = renderDialog()
     unmount()
     expect(mockUnsub).toHaveBeenCalled()
   })
 
   it('多草稿 → 全部显示在列表中', () => {
-    render(<CrashRecoveryDialog />)
+    renderDialog()
     emitCrashRecovery([
       { name: 'a.json', content: 'AAA' },
       { name: 'b.json', content: 'BBB' },
@@ -186,5 +196,40 @@ describe('CrashRecoveryDialog', () => {
     expect(screen.getByText('a.json')).toBeDefined()
     expect(screen.getByText('b.json')).toBeDefined()
     expect(screen.getByText('c.json')).toBeDefined()
+  })
+
+  it('restore 按钮：仅可恢复草稿（home-composer / editor-*）显示，点击后导航并关闭弹窗', () => {
+    renderDialog()
+    emitCrashRecovery([
+      { name: 'home-composer.json', content: '{"kind":"home-composer","text":"未发送"}' },
+      { name: 'draft-1.json', content: '不可恢复' },
+    ])
+
+    // home-composer 草稿应显示 restore 按钮，draft-1 不应显示
+    const restoreBtn = screen.getByText('crashRecovery.restore')
+    expect(restoreBtn).toBeDefined()
+    // 只有一个 restore 按钮（draft-1 不渲染 restore）
+    expect(screen.getAllByText('crashRecovery.restore')).toHaveLength(1)
+
+    act(() => {
+      fireEvent.click(restoreBtn)
+    })
+
+    // 点击后弹窗关闭
+    expect(screen.queryByTestId('dialog')).toBeNull()
+  })
+
+  it('editor 草稿 restore → 导航到 /capability/:id', () => {
+    renderDialog()
+    emitCrashRecovery([
+      { name: 'editor-cap-abc.json', content: '{"kind":"editor-graph","graph":{}}' },
+    ])
+
+    const restoreBtn = screen.getByText('crashRecovery.restore')
+    act(() => {
+      fireEvent.click(restoreBtn)
+    })
+
+    expect(screen.queryByTestId('dialog')).toBeNull()
   })
 })

@@ -5,6 +5,7 @@ import {
   clearSessionToolApprovals,
   grantSessionToolApproval,
   isSessionToolApproved,
+  rejectionToApprovalReason,
   resolveApprovalDecision,
 } from './sessionApprovals'
 
@@ -57,7 +58,31 @@ describe('sessionApprovals（本会话允许）', () => {
     expect(isSessionToolApproved('sess_1', 'shell_run')).toBe(false)
   })
 
-  it('resolveApprovalDecision: denied → 拒绝', () => {
-    expect(resolveApprovalDecision('denied', 'sess_1', 'shell_run').approved).toBe(false)
+  it('resolveApprovalDecision: denied → 拒绝（带区分 reason）', () => {
+    const r = resolveApprovalDecision('denied', 'sess_1', 'shell_run')
+    expect(r.approved).toBe(false)
+    expect(r).toMatchObject({ reason: 'denied' })
+  })
+
+  // 断言 5.5：waitForUserInput 的 rejection 映射成区分 reason，供 registry 分流 i18n key
+  describe('rejectionToApprovalReason（断言 5.5）', () => {
+    it('user_input_timeout → timeout', () => {
+      expect(rejectionToApprovalReason(new Error('user_input_timeout'))).toBe('timeout')
+    })
+    it('消息含 timeout → timeout', () => {
+      expect(rejectionToApprovalReason(new Error('some timeout occurred'))).toBe('timeout')
+    })
+    it('aborted → aborted', () => {
+      expect(rejectionToApprovalReason(new Error('aborted'))).toBe('aborted')
+    })
+    it('rejectUserInputsForRun 的非超时 reason → aborted（运行被顶替）', () => {
+      expect(rejectionToApprovalReason(new Error('superseded_by_new_run'))).toBe('aborted')
+    })
+    it('其它非超时 → aborted（保守：非超时即视为运行中断）', () => {
+      expect(rejectionToApprovalReason(new Error('unexpected'))).toBe('aborted')
+    })
+    it('非 Error 值 → aborted', () => {
+      expect(rejectionToApprovalReason('whatever')).toBe('aborted')
+    })
   })
 })

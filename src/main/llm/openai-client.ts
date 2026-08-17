@@ -109,8 +109,16 @@ export class OpenAILLMClient implements LLMProtocol {
     // —— SSE 流式解析 ——
     const contentBlocks: LlmContentBlock[] = []
     let textBuffer = ''
-    // tool_calls 按 index 聚合：{ index → { id, name, args } }
-    const toolCallMap = new Map<number, { id: string; name: string; args: string }>()
+    // tool_calls 按 index 聚合。id 可能延迟到后续 chunk 才给（部分网关首帧无 id），
+    // 此时若立即用合成 id 'call_'+index 发 start/delta，后续真 id 到来后改 existing.id
+    // 再发 delta/stop，会导致 start/delta 与 stop 的 id 不一致 → 消费者配对断裂
+    //（CODE_AUDIT 断言 1.2）。修：首帧无 id 时「挂起」——记 name/args 但不发 start/delta，
+    // 等真 id 到了再补发 start + 累积 args；真 id 全程不到则用合成 id 兜底（聚合阶段发 stop）。
+    // started 标记：是否已对消费者 emit 过 tool_use_start（保证 start→delta→stop 顺序）。
+    const toolCallMap = new Map<
+      number,
+      { id: string; name: string; args: string; started: boolean }
+    >()
     let stopReason: string | null = null
     let streamUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
 
@@ -161,25 +169,41 @@ export class OpenAILLMClient implements LLMProtocol {
               for (const tc of delta.tool_calls) {
                 const existing = toolCallMap.get(tc.index)
                 if (!existing) {
-                  // 新工具调用
+                  // 新工具调用：先记 name/args，id 可能本帧就有也可能后续补。
                   const id = tc.id ?? `call_${tc.index}`
                   const name = tc.function?.name ?? ''
                   const args = tc.function?.arguments ?? ''
-                  toolCallMap.set(tc.index, { id, name, args })
-                  req.onDelta?.({ type: 'tool_use_start', id, name })
-                  if (args) {
-                    req.onDelta?.({ type: 'tool_use_delta', id, partial_json: args })
+                  const started = !!tc.id // 有真 id 才立即发 start，否则挂起等真 id
+                  toolCallMap.set(tc.index, { id, name, args, started })
+                  if (started) {
+                    req.onDelta?.({ type: 'tool_use_start', id, name })
+                    if (args) {
+                      req.onDelta?.({ type: 'tool_use_delta', id, partial_json: args })
+                    }
                   }
+                  // 无 id 时挂起：name/args 已进 entry，等后续 chunk 带 tc.id 时补发
                 } else {
-                  // 部分网关先给 id、后给 name：补写 name
+                  // 后续 chunk：补写 name（部分网关先 id 后 name）与 id（先 args 后 id）
                   if (tc.function?.name) existing.name = tc.function.name
+                  const idJustArrived = !!tc.id && !existing.started
                   if (tc.id) existing.id = tc.id
                   // 增量参数
                   const argsChunk = tc.function?.arguments ?? ''
                   if (argsChunk) {
                     existing.args += argsChunk
+                  }
+                  // 若之前挂起、现在真 id 到了：补发 start + 全部累积 args（一次性）
+                  if (idJustArrived) {
+                    existing.started = true
+                    req.onDelta?.({ type: 'tool_use_start', id: existing.id, name: existing.name })
+                    if (existing.args) {
+                      req.onDelta?.({ type: 'tool_use_delta', id: existing.id, partial_json: existing.args })
+                    }
+                  } else if (existing.started && argsChunk) {
+                    // 已在发流：正常增量转发
                     req.onDelta?.({ type: 'tool_use_delta', id: existing.id, partial_json: argsChunk })
                   }
+                  // 仍挂起（无 id 且未 started）：args 继续累积，不发 delta
                 }
               }
             }
@@ -205,6 +229,13 @@ export class OpenAILLMClient implements LLMProtocol {
         input = tc.args ? JSON.parse(tc.args) : {}
       } catch {
         input = { _raw: tc.args }
+      }
+      // 兜底：真 id 全程未到（极端网关）→ 用合成 id 补发 start（保证 stop 有配对的 start）
+      if (!tc.started) {
+        req.onDelta?.({ type: 'tool_use_start', id: tc.id, name: tc.name })
+        if (tc.args) {
+          req.onDelta?.({ type: 'tool_use_delta', id: tc.id, partial_json: tc.args })
+        }
       }
       req.onDelta?.({ type: 'tool_use_stop', id: tc.id })
       contentBlocks.push({

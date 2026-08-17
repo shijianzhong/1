@@ -314,4 +314,83 @@ describe('orchestra/reducer applyOrchEvent', () => {
     expect(msgs).toHaveLength(1)
     expect(msgs[0]).toMatchObject({ text: '完整输出', streaming: false })
   })
+
+  it('retry 事件：清空同 speaker 已发 text/thinking 增量，防重试翻倍（CODE_AUDIT 断言 1.1）', () => {
+    // 第一轮流式：text + thinking 已累加
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '你好' })
+    msgs = applyOrchEvent(msgs, { type: 'thinking', node_id: 'a1', speaker: 'a1', text: '思考' })
+    expect(msgs[0]).toMatchObject({ text: '你好', thinking: '思考', streaming: true })
+
+    // 重试：清空 text/thinking，置 retrying 态
+    msgs = applyOrchEvent(msgs, {
+      type: 'retry',
+      node_id: 'a1',
+      speaker: 'a1',
+      attempt: 1,
+      maxRetries: 3,
+      delayMs: 1000,
+      reason: 'network',
+    })
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0]).toMatchObject({ text: '', thinking: undefined, streaming: false, retrying: '1' })
+    expect(msgs[0].retryInfo).toMatchObject({ attempt: 1, maxRetries: 3, delayMs: 1000, reason: 'network' })
+
+    // 第二轮重放：从空气泡重新累加，不翻倍
+    msgs = applyOrchEvent(msgs, { type: 'output', node_id: 'a1', speaker: 'a1', text: '你好' })
+    expect(msgs[0].text).toBe('你好') // 不是「你好你好」
+  })
+
+  it('retry 事件：不同 speaker 不受影响（只清当前 speaker 末条气泡）', () => {
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'a1', speaker: 'a1', text: '甲' })
+    // 注意：a1 已完成 streaming 后新气泡 b2
+    msgs = applyOrchEvent(msgs, { type: 'output', node_id: 'b2', speaker: 'b2', text: '乙' })
+    // retry 来自 a1，但末条是 b2 的气泡 → 不匹配，不应改动
+    const after = applyOrchEvent(msgs, {
+      type: 'retry',
+      node_id: 'a1',
+      speaker: 'a1',
+      attempt: 1,
+      maxRetries: 3,
+      delayMs: 500,
+      reason: 'timeout',
+    })
+    expect(after).toBe(msgs) // 同引用，未变
+  })
+
+  // —— 断言 1.3 修复：tool_call 按 speaker 归属，不误挂到末条别的 peer 气泡 ——
+  it('tool_call 跨 speaker：A 的 toolCall 不误挂到末条 B 的流式气泡（断言 1.3）', () => {
+    // 旧实现 tool_call case 只看 last.streaming 不判 speaker：A 建 streaming 气泡、
+    // B 增量建 streaming 气泡（B 末条）后，A 的 tool_call 到达 → last.streaming===true
+    // 属于 B → 旧逻辑把 A 的 toolCall 错挂到 B 气泡（cross-attach，确认的坏数据 bug）。
+    // 修后按 node_id='A' 查 A 的气泡：A 已被 B 起泡时的 closeStreaming 定格 →
+    // findStreamingBubbleForSpeaker 查不到（streaming||retrying 才可续）→ return prev，
+    // A 的 toolCall 不会误挂 B。防错挂优先于防丢失（错挂会污染 B 的展示，丢失只是少了一个 chip）。
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'A', speaker: 'A', text: '甲' })
+    msgs = applyOrchEvent(msgs, { type: 'output', node_id: 'B', speaker: 'B', text: '乙' })
+    msgs = applyOrchEvent(msgs, {
+      type: 'tool_call',
+      node_id: 'A',
+      tool: 'web_search',
+      args: { q: 'x' },
+    })
+    const bMsg = msgs.find((m) => m.speaker === 'B')
+    // B 气泡绝不被 A 的 toolCall 污染（旧实现会 cross-attach 错挂 B）
+    expect(bMsg?.toolCalls).toBeUndefined()
+    expect(bMsg?.orbState).not.toBe('searching')
+  })
+
+  it('tool_call 同 speaker：A 仍 streaming 时 toolCall 落到 A 气泡', () => {
+    // A 增量后直接发 tool_call（末条即 A 的 streaming 气泡）→ 落到 A 气泡，正常路径。
+    let msgs = applyOrchEvent([], { type: 'output', node_id: 'A', speaker: 'A', text: '甲' })
+    msgs = applyOrchEvent(msgs, {
+      type: 'tool_call',
+      node_id: 'A',
+      tool: 'web_search',
+      args: { q: 'x' },
+    })
+    const aMsg = msgs.find((m) => m.speaker === 'A')
+    expect(aMsg?.toolCalls).toHaveLength(1)
+    expect(aMsg?.toolCalls?.[0].tool).toBe('web_search')
+    expect(aMsg?.orbState).toBe('searching')
+  })
 })

@@ -143,16 +143,49 @@ describe('tools/registry', () => {
     expect(handler).toHaveBeenCalledTimes(1)
   })
 
-  it('approvalMode=always + onApprove denied → approval_denied', async () => {
+  it('approvalMode=always + onApprove denied → approval_denied（reason 分流 i18n key）', async () => {
     const schema = z.object({ cmd: z.string() })
     const handler = vi.fn().mockResolvedValue('should_not_reach')
     registerTool('denied_tool', 'needs approval', schema, handler, 'always')
 
-    const onApprove = vi.fn().mockResolvedValue({ approved: false, reason: 'user said no' })
+    const onApprove = vi.fn().mockResolvedValue({ approved: false, reason: 'denied' })
     const result = await executeTool('denied_tool', { cmd: 'echo hi' }, 'tu_9', { onApprove })
 
     expect(result.isError).toBe(true)
     expect(result.content).toContain('approval_denied')
+    expect(result.content).toContain('errors.tools.approval_denied')
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('断言 5.5：onApprove reason=timeout → approval_timeout（不混入 denied）', async () => {
+    const schema = z.object({ cmd: z.string() })
+    const handler = vi.fn().mockResolvedValue('should_not_reach')
+    registerTool('timeout_reason_tool', 'needs approval', schema, handler, 'always')
+
+    // 旧实现：reason 硬编码 'timeout or cancelled' 且 registry 不读 reason →
+    // approved:false 全走 approval_denied，超时/取消/拒绝无法区分（断言 5.5）。
+    // 修后：registry 按 reason 分流 → timeout 命中 approval_timeout。
+    const onApprove = vi.fn().mockResolvedValue({ approved: false, reason: 'timeout' })
+    const result = await executeTool('timeout_reason_tool', { cmd: 'echo hi' }, 'tu_9b', { onApprove })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('approval_timeout')
+    expect(result.content).toContain('errors.tools.approval_timeout')
+    expect(result.content).not.toContain('approval_denied')
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('断言 5.5：onApprove reason=aborted → approval_aborted（运行被取消/顶替）', async () => {
+    const schema = z.object({ cmd: z.string() })
+    const handler = vi.fn().mockResolvedValue('should_not_reach')
+    registerTool('aborted_tool', 'needs approval', schema, handler, 'always')
+
+    const onApprove = vi.fn().mockResolvedValue({ approved: false, reason: 'aborted' })
+    const result = await executeTool('aborted_tool', { cmd: 'echo hi' }, 'tu_9c', { onApprove })
+
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('approval_aborted')
+    expect(result.content).toContain('errors.tools.approval_aborted')
     expect(handler).not.toHaveBeenCalled()
   })
 
@@ -288,6 +321,25 @@ describe('tools/registry', () => {
     expect(handler).toHaveBeenCalledTimes(1)
     expect(result.isError).toBe(true)
     expect(result.content).toContain('boom')
+  })
+
+  it('ctx.signal.aborted=true → handler throw 不重试，立即返回 aborted 错误（P1-5）', async () => {
+    const schema = z.object({})
+    const handler = vi.fn().mockRejectedValue(new Error('would retry'))
+    registerTool('abort_tool', 'x', schema, handler)
+
+    // 构造已 abort 的 AbortSignal（用户已停止 / 运行已取消）
+    const ac = new AbortController()
+    ac.abort()
+
+    const result = await executeTool('abort_tool', {}, 'tu_ab', { signal: ac.signal })
+
+    // 只调一次，没有 3 轮重试（对比上面的 flaky 用例会调 4 次）
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('aborted')
+    // 不应包含原始 throw 的 'would retry'（说明没走 tool_failed 分支）
+    expect(result.content).not.toContain('would retry')
   })
 
   it('listBuiltinToolDefs 排除 mcp__*；listAgentToolDefs 按 expose 白名单注入（R1/R2）', () => {

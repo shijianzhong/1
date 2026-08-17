@@ -45,29 +45,11 @@ export interface RuntimeWorkflow {
   nodes: Map<string, GraphNode>
 }
 
-/** 输入消息（runner 初始投递） */
-export interface WorkflowInput {
-  text: string
-  sessionId?: string
-}
-
-/** builder 工厂函数签名（各 pattern 实现） */
-export type PatternBuilder = (
-  node: GraphNode,
-  participants: Map<string, Executor>,
-  ctx: BuilderContext,
-) => void
-
 export interface BuilderContext {
   /** 注册 executor 到 workflow */
   addExecutor(e: Executor): void
   /** 配普通边 */
   addEdge(source: string, target: string): void
-  /** 配条件边（source 聚合 → 多个 case，§三 C） */
-  addSwitchCaseEdgeGroup(
-    source: string,
-    cases: Array<{ predicate: string; target: string }>,
-  ): void
   /** 配单条条件边（source → target，谓词如 `contains:X`） */
   addCondition(source: string, target: string, predicate: string): void
 }

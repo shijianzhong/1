@@ -53,7 +53,7 @@ export function MessageItem({
   /** propose_* 失败卡「让助手重试」 */
   onRetryProposalError?: (msg: ChatMessage) => void
 }) {
-  const { t } = useTranslation(['common'])
+  const { t } = useTranslation(['common', 'home'])
   const m = msg
 
   // —— ThinkingOrb 双阶段逻辑 ——
@@ -102,7 +102,16 @@ export function MessageItem({
         ) : m.retrying && !m.text ? (
           <div className="message__orb-header">
             <ThinkingOrb state={orbState} size={64} theme="auto" />
-            <span className="message__orb-label">{m.retrying}</span>
+            <span className="message__orb-label">
+              {m.retryInfo
+                ? t('home:retry.waiting', {
+                    attempt: m.retryInfo.attempt,
+                    maxRetries: m.retryInfo.maxRetries,
+                    delay: (m.retryInfo.delayMs / 1000).toFixed(1),
+                    reason: m.retryInfo.reason,
+                  })
+                : m.retrying}
+            </span>
           </div>
         ) : m.role === 'assistant' ? (
           <>

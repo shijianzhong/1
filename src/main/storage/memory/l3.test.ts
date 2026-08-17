@@ -107,6 +107,26 @@ describe('searchL3 中文语义召回（FTS 主路）', () => {
     for (let i = 0; i < 10; i++) saveL3(U, `extra_${i}`, `共同词 测试 ${i}`)
     expect(searchL3(U, '共同词', 3).length).toBeLessThanOrEqual(3)
   })
+
+  it('含 % 的查询按字面量匹配，不当通配符全表扫（断言 4.5 LIKE 转义）', () => {
+    saveL3(U, 'fact_折扣', '折扣 50% 限时')
+    saveL3(U, 'identity_职业', '用户是工程师')
+    // 含 % 的查询：未转义时 % 是通配符会全表命中（两条都返回）；
+    // 转义后只命中真正含「50%」字面量的那条。
+    const hits = searchL3(U, '50%')
+    expect(hits.map((h) => h.key)).toContain('fact_折扣')
+    expect(hits.map((h) => h.key)).not.toContain('identity_职业')
+  })
+
+  it('含 _ 的查询按字面量匹配，不当单字通配符（断言 4.5 LIKE 转义）', () => {
+    saveL3(U, 'project_命名', '变量名 user_name 很清晰')
+    saveL3(U, 'fact_其它', '完全无关的内容 xyz')
+    // 未转义时「user_name」里的 _ 是单字通配符，会命中「userXname」类串；
+    // 转义后按字面下划线匹配，只命中真正含「user_name」的那条。
+    const hits = searchL3(U, 'user_name')
+    expect(hits.map((h) => h.key)).toContain('project_命名')
+    expect(hits.map((h) => h.key)).not.toContain('fact_其它')
+  })
 })
 
 describe('splitAtomicMemories 原子拆分', () => {

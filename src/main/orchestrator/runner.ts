@@ -161,7 +161,7 @@ export async function runWorkflow(
   input: { text: string; sessionId?: string },
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
-): Promise<{ output: string }> {
+): Promise<{ output: string; stopReason: 'converged' | 'max_supersteps' | 'aborted' }> {
   const ctx = createWorkflowContext(wf, onEvent)
   const edgeCount = [...wf.edges.values()].reduce((n, arr) => n + arr.length, 0)
   logger.info(
@@ -194,7 +194,7 @@ export async function runWorkflow(
       stopReason = 'aborted'
       logger.warn(`[trace:cap] runner.abort superstep=${iteration} pending=${ctx.pending.length}`)
       onEvent({ type: 'failed', error: 'aborted' })
-      return { output: ctx.output.join('\n') }
+      return { output: ctx.output.join('\n'), stopReason: 'aborted' }
     }
 
     if (ctx.pending.length === 0) {
@@ -303,7 +303,7 @@ export async function runWorkflow(
         : ''),
   )
   onEvent({ type: 'done' })
-  return { output: ctx.output.join('\n') }
+  return { output: ctx.output.join('\n'), stopReason }
 }
 
 /** 把消息投递给 executor（fan-out 处理 + 条件边路由） */

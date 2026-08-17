@@ -33,12 +33,19 @@ export function splitAtomicMemories(text: string): string[] {
     .filter((s) => [...s].length >= 4) // 过短（<4 字）不成记忆，丢弃
 }
 
+/** key 最大长度（含类别前缀 + 原子序号），防 LLM 生成超长 key 撑爆索引（断言 4.5） */
+const KEY_MAX = 200
+/** 单条 value 最大长度，防 LLM 把整段长文塞一个 key 撑爆 FTS 与 LIKE 检索（断言 4.5） */
+const VALUE_MAX = 8_000
+/** 检索词最大长度，防超长 query 生成大量 OR 项拖慢 FTS / 全表 LIKE（断言 4.5） */
+const QUERY_MAX = 500
+
 /** 注册内置记忆工具 */
 export function registerMemoryTools(): void {
   registerTool(
     'memory_recall',
     '按 key 精确取回一条长期记忆。仅当你确切知道 key 时用；不确定 key 或按内容找，用 memory_search。',
-    z.object({ key: z.string().describe('记忆键名（含类别前缀，如 preference_运动）') }),
+    z.object({ key: z.string().max(KEY_MAX).describe('记忆键名（含类别前缀，如 preference_运动）') }),
     async (args, ctx) => {
       const { key } = args as { key: string }
       const value = getL3(userIdOf(ctx), key)
@@ -50,7 +57,7 @@ export function registerMemoryTools(): void {
     'memory_search',
     '语义检索长期记忆。当用户提到「我之前说过/我喜欢/你还记得」等引用过往信息，或回答需要结合用户偏好、身份、项目背景时主动调用，传入相关关键词（如「运动」「职业」「技术栈」）。',
     z.object({
-      query: z.string().describe('检索关键词（越贴近记忆内容的措辞越准，可多词）'),
+      query: z.string().max(QUERY_MAX).describe('检索关键词（越贴近记忆内容的措辞越准，可多词）'),
       limit: z.number().optional().describe('返回上限，默认 5'),
     }),
     async (args, ctx) => {
@@ -69,9 +76,11 @@ export function registerMemoryTools(): void {
         .describe('记忆类别：preference 偏好 / identity 身份 / project 项目约定 / goal 目标 / fact 其它事实'),
       key: z
         .string()
+        .max(KEY_MAX)
         .describe('记忆主题（简短中文词，如「运动偏好」「职业」「技术栈」；会自动加类别前缀）'),
       value: z
         .string()
+        .max(VALUE_MAX)
         .describe('要记住的内容，一条一个事实；多条用换行或句号分隔，系统会自动拆分成原子记忆'),
     }),
     async (args, ctx) => {

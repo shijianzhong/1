@@ -8,7 +8,7 @@ import type {
   LlmMessage,
   LlmResponse,
 } from '@shared/types'
-import { executeTool, getToolDefs } from '../tools/registry'
+import { executeTool, getToolDefs, type ApprovalDecision } from '../tools/registry'
 import { buildSystemPrefix } from '../tools/system-prefix'
 import { getClient } from '../llm/retry'
 import type { LLMClientOptions } from '../llm/client'
@@ -51,7 +51,7 @@ export interface AgentDeps {
     signal?: AbortSignal
     onPropose?: (draft: import('@shared/types').CreateDraft) => void
     onAskUser?: (req: { question: string; context?: string }) => Promise<string>
-    onApprove?: (req: { toolName: string; args: unknown }) => Promise<{ approved: boolean; reason?: string }>
+    onApprove?: (req: { toolName: string; args: unknown }) => Promise<ApprovalDecision>
     /** update_plan 计划更新回调（home/orchestrate 注入 → emitStream/emitEvent，渲染层展示计划进度） */
     onPlanUpdate?: (plan: { explanation?: string; plan: Array<{ step: string; status: string }> }) => void
   }

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/Dialog'
 import { Button } from './ui/Button'
@@ -7,6 +8,10 @@ import { unwrap } from '@renderer/api/client'
 // —— 崩溃恢复对话框（§11.7）——
 // 主进程启动时检测 .running 哨兵 → 推 app:crashRecovery 事件；
 // preload 缓存 + listDrafts pull 双通道，避免 React 订阅晚于 did-finish-load 丢事件。
+//
+// 「恢复」按钮（CODE_AUDIT 断言 2 闭环）：跳转到草稿归属页面（home-composer→/、
+// editor-{capabilityId}→/capability/{capabilityId}），由该页面挂载时的草稿灌回
+// effect 自动回填 composer/画布——保持灌回逻辑在页面侧集中，对话框只负责导航。
 
 interface DraftItem {
   name: string
@@ -18,8 +23,17 @@ function isComposerOrEditorDraft(name: string): boolean {
   return !name.startsWith('create-')
 }
 
+/** 从草稿名解析恢复目标路由：home-composer → '/'；editor-{id} → '/capability/{id}' */
+function draftRestorePath(name: string): string | null {
+  if (name === 'home-composer.json') return '/'
+  const m = name.match(/^editor-(.+)\.json$/)
+  if (m) return `/capability/${m[1]}`
+  return null
+}
+
 export function CrashRecoveryDialog(): React.JSX.Element {
   const { t } = useTranslation('common')
+  const navigate = useNavigate()
   const [drafts, setDrafts] = useState<DraftItem[]>([])
 
   useEffect(() => {
@@ -66,6 +80,17 @@ export function CrashRecoveryDialog(): React.JSX.Element {
     navigator.clipboard.writeText(content).catch(() => {})
   }, [])
 
+  const handleRestore = useCallback(
+    (name: string) => {
+      const path = draftRestorePath(name)
+      if (!path) return // 非可恢复草稿（未来扩展类型），无操作
+      // 关闭弹窗后导航：目标页面挂载 effect 会读对应草稿并自动灌回
+      setDrafts([])
+      navigate(path)
+    },
+    [navigate],
+  )
+
   const open = drafts.length > 0
 
   return (
@@ -94,6 +119,15 @@ export function CrashRecoveryDialog(): React.JSX.Element {
                   >
                     {t('crashRecovery.copy')}
                   </Button>
+                  {draftRestorePath(draft.name) ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleRestore(draft.name)}
+                    >
+                      {t('crashRecovery.restore')}
+                    </Button>
+                  ) : null}
                   <Button
                     variant="ghost"
                     size="sm"

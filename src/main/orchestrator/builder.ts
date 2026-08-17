@@ -50,9 +50,6 @@ export function buildWorkflow(graph: WorkflowGraph, deps: BuildDeps): RuntimeWor
       }
       edges.set(source, list)
     },
-    addSwitchCaseEdgeGroup(source, cases) {
-      conditions.set(source, cases)
-    },
     addCondition(source, target, predicate) {
       const list = conditions.get(source) ?? []
       // 去重：同 source+target+predicate 不重复加
@@ -181,8 +178,11 @@ export function resolveStartExecutor(graph: WorkflowGraph): string {
         const child = nodeById.get(pid)
         if (child) return resolve(child)
       }
-      // sequential 无有效 participant → 找图中首个 agent 兜底
-      return graph.nodes.find((n) => n.type === 'agent')?.id ?? node.id
+      // sequential 无有效 participant（引用已删除/未连接）→ 显式抛错而非静默兜底。
+      // 旧行为兜底到无关 agent 或容器自身 id（无 executor），runner 会 warn 跳过 →
+      // 静默返回空 output，前端无法区分「图空」与「解析失败」（CODE_AUDIT 断言 5.2，
+      // 最严重隐患）。抛 errors.graph.empty 让 withHandler 转结构化错误回前端。
+      throw new IpcErrorThrow('errors.graph.empty')
     }
     // concurrent/groupchat/handoff 容器自身是 executor；agent 即自身
     return node.id
