@@ -8,7 +8,7 @@ import type {
   LlmMessage,
   LlmResponse,
 } from '@shared/types'
-import { executeTool, getToolDefs, type ApprovalDecision } from '../tools/registry'
+import { executeTool, getToolDefs, type ToolContext } from '../tools/registry'
 import { buildSystemPrefix } from '../tools/system-prefix'
 import { getClient } from '../llm/retry'
 import type { LLMClientOptions } from '../llm/client'
@@ -44,17 +44,9 @@ export function injectRuntimeContext(instructions: string): string {
 export interface AgentDeps {
   /** LLM client 选项（apiKey/baseURL，从 vault + model config 解析） */
   llmOpts: LLMClientOptions
-  /** 工具执行上下文（sessionId / workspaceRoot / 创建提案回调 / HITL 提问桥 / 工具审批桥等） */
-  toolCtx?: {
-    sessionId?: string
-    workspaceRoot?: string
-    signal?: AbortSignal
-    onPropose?: (draft: import('@shared/types').CreateDraft) => void
-    onAskUser?: (req: { question: string; context?: string }) => Promise<string>
-    onApprove?: (req: { toolName: string; args: unknown }) => Promise<ApprovalDecision>
-    /** update_plan 计划更新回调（home/orchestrate 注入 → emitStream/emitEvent，渲染层展示计划进度） */
-    onPlanUpdate?: (plan: { explanation?: string; plan: Array<{ step: string; status: string }> }) => void
-  }
+  /** 工具执行上下文（sessionId / workspaceRoot / runId / 创建提案回调 / HITL 提问桥 / 工具审批桥等），
+   *  字段语义见 registry.ToolContext（单点定义，不再内联重复） */
+  toolCtx?: ToolContext
 }
 
 export class Agent {
@@ -184,6 +176,9 @@ export class Agent {
               sessionId: this.deps.toolCtx?.sessionId,
               workspaceRoot: this.deps.toolCtx?.workspaceRoot,
               signal: input.signal,
+              // run_events 事实流：runId 由编排入口透传；nodeId = config.name（铁律20）
+              runId: this.deps.toolCtx?.runId,
+              nodeId: this.config.name,
               onPropose: this.deps.toolCtx?.onPropose,
               onAskUser: this.deps.toolCtx?.onAskUser,
               onApprove: this.deps.toolCtx?.onApprove,

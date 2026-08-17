@@ -1144,3 +1144,29 @@ export interface McpServerStatus {
   error?: string
   tools?: Array<{ name: string; description?: string }>
 }
+
+// —— run diagnostics（运行时事实流查询层，DEEPSEEK_HARNESS_LEARNING_PLAN P0）——
+
+/** 一次运行的登记信息（runs 表；home.chat / orchestrate.run 各为一个 run） */
+export interface RunInfo {
+  id: string
+  sessionId: string | null
+  /** 入口：home=首页聊天，editor=编排器试跑 */
+  entry: string
+  /** 路由决策回填：direct/team/directAgent/focusCap（editor 入口无路由，为 null） */
+  route: string | null
+  status: string
+  startedAt: number
+  endedAt: number | null
+}
+
+/** 一条运行事实事件（run_events 表；payload 已在主进程解析为对象） */
+export interface RunEventInfo {
+  id: number
+  runId: string
+  sessionId: string | null
+  seq: number
+  type: string
+  payload: unknown
+  createdAt: number
+}

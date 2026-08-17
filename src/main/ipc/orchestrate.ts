@@ -22,6 +22,7 @@ import {
 import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
 import { addMessage, getSession } from '../storage/sessions'
 import { getDb } from '../storage/db'
+import { endRun, startRun, appendRunEvent } from '../storage/runEvents'
 import { SkillContextProvider } from '../skills/provider'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
@@ -82,12 +83,14 @@ function makeResolveAgent(
   hitlRunId?: string,
   /** 项目根（文件工具/shell 用）；默认从 sessionId 对应 session.cwd 读 */
   workspaceRoot?: string,
+  /** run_events 事实流归属（runs 表 id；无 = 节点工具事件不落库） */
+  eventsRunId?: string,
 ): {
   resolveAgent: (node: GraphNode) => AgentExecutorOptions | null
   /** 本运行创建的全部 SkillContextProvider（运行结束统一 afterRun 审计，铁律22） */
   skillProviders: SkillContextProvider[]
 } {
-  const runId = hitlRunId ?? 'orchestrate_default'
+  const hitlScope = hitlRunId ?? 'orchestrate_default'
   const effectiveWorkspaceRoot = workspaceRoot ?? (sessionId ? getSession(sessionId)?.cwd : undefined)
   // 运行期 skill 缓存：同一次运行内多个节点绑定同一 skill 时只读一次磁盘
   // （每次 run 新建 resolver → 缓存随运行结束丢弃，不会吃到过期内容）
@@ -141,11 +144,18 @@ function makeResolveAgent(
     // 脚本执行经全局注册的 skill_run_script 工具（铁律23 async spawn）。
     const skillProvider = new SkillContextProvider(getSkillCached)
     skillProviders.push(skillProvider)
-    const { instructions } = skillProvider.beforeRun({
+    const { instructions, injected: injectedSkills } = skillProvider.beforeRun({
       agentName,
       skillIds: agentSkillIds,
       instructions: agentInstructions,
     })
+    if (injectedSkills.length > 0) {
+      // 诊断问题 2：节点命中了哪些 skill（含脚本/纪律标记）
+      appendRunEvent(eventsRunId, 'skill.injected', {
+        nodeId: node.id,
+        skills: injectedSkills,
+      }, sessionId)
+    }
 
     // outputConstraints 注入 instructions（运行时才吃得到）
     const finalInstructions = agentOutputConstraints
@@ -176,12 +186,14 @@ function makeResolveAgent(
         sessionId,
         workspaceRoot: effectiveWorkspaceRoot,
         signal,
+        // run_events 事实流归属（registry/runner 事件落库；nodeId 由 Agent 以 config.name 注入）
+        runId: eventsRunId,
         // HITL 提问桥：ask_user → request_info 事件推前端 + 挂起等作答（userInput 队列）
         onAskUser: async ({ question, context }) => {
           const requestId = newRequestId()
           emitStream({ type: 'request_info', request_id: requestId, node_id: node.id, question, context })
           try {
-            const answer = await waitForUserInput(requestId, { nodeId: node.id, question }, signal, runId)
+            const answer = await waitForUserInput(requestId, { nodeId: node.id, question }, signal, hitlScope)
             emitStream({ type: 'request_resolved', request_id: requestId, node_id: node.id, response: answer })
             return answer
           } catch (e) {
@@ -199,7 +211,7 @@ function makeResolveAgent(
               requestId,
               { nodeId: node.id, question: `approve ${toolName}` },
               signal,
-              runId,
+              hitlScope,
             )
             emitStream({ type: 'approval_resolved', request_id: requestId, node_id: node.id, response })
             return resolveApprovalDecision(response, sessionId, toolName)
@@ -271,10 +283,14 @@ export function registerOrchestrateHandlers(): void {
       const hitlRunId = newRunId('orch')
       activeRuns.set(key, { controller, hitlRunId })
       const { signal } = controller
+      // run_events 事实流：editor 入口 run 登记（与 hitlRunId 是两个概念——
+      // 后者是 HITL 队列作用域，前者是诊断事实流归属）
+      const eventsRunId = `run_${randomUUID()}`
+      startRun({ id: eventsRunId, sessionId, entry: 'editor' })
       const agentTools = await listToolsForAgents()
       const { resolveAgent, skillProviders } = makeResolveAgent(
         modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId, hitlRunId,
-        projectPath,
+        projectPath, eventsRunId,
       )
       const deps: BuildDeps = { resolveAgent }
 
@@ -283,9 +299,17 @@ export function registerOrchestrateHandlers(): void {
       // 会话持久化（编辑器运行落 session，与首页 @能力 运行对齐）：用户输入 + 聚合输出
       if (sessionId) addMessage({ sessionId, role: 'user', content: text })
       try {
-        const result = await runWorkflow(wf, { text, sessionId }, emitStream, signal)
+        const result = await runWorkflow(wf, { text, sessionId, runId: eventsRunId }, emitStream, signal)
         // abort / max_supersteps 时只落用户输入，不把半截聚合输出当完整 assistant 消息存库
         //（CODE_AUDIT 断言 1.4：abort 被当成功存部分输出）。事件流已发 failed，前端区分。
+        endRun(
+          eventsRunId,
+          result.stopReason === 'converged'
+            ? 'completed'
+            : result.stopReason === 'aborted'
+              ? 'aborted'
+              : 'error',
+        )
         if (sessionId && result.output && result.stopReason === 'converged') {
           addMessage({ sessionId, role: 'assistant', content: result.output })
         }
@@ -294,6 +318,10 @@ export function registerOrchestrateHandlers(): void {
           output: result.output,
           stopReason: result.stopReason,
         }
+      } catch (e) {
+        // runWorkflow 抛出（LLM 网络异常等）：收口 run 状态再向上抛
+        endRun(eventsRunId, signal.aborted ? 'aborted' : 'error')
+        throw e
       } finally {
         // 仅驳回本 run 的挂起提问，避免误伤首页 home 通道
         rejectUserInputsForRun(hitlRunId, 'run_finished')

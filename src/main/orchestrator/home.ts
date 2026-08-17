@@ -763,6 +763,8 @@ export async function runTeam(
   deps: BuildDeps,
   onEvent: (e: HomeStreamEvent) => void,
   signal?: AbortSignal,
+  /** run_events 事实流归属（由 home.chat 入口生成并透传） */
+  runId?: string,
 ): Promise<{ output: string }> {
   const nodeSummary = graph.nodes
     .map((n) => `${n.id}:${n.type}`)
@@ -775,7 +777,7 @@ export async function runTeam(
   const wf = buildWorkflow(graph, deps)
   const result = await runWorkflow(
     wf,
-    { text: inputText, sessionId },
+    { text: inputText, sessionId, runId },
     (e: StreamEvent) => {
       if (e.type === 'failed' || e.type === 'node_error' || e.type === 'done') {
         logger.info(`[trace:cap] runTeam.event type=${e.type} ${JSON.stringify(e).slice(0, 240)}`)

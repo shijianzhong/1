@@ -10,6 +10,7 @@ import { AgentExecutor } from './patterns/agent'
 import { logger } from '../logger'
 import { approxTokenCount } from '../llm/token-count'
 import { stripPseudoToolMarkers } from './constraints'
+import { appendRunEvent } from '../storage/runEvents'
 
 // —— Pregel superstep 执行模型（§三之三 E + 铁律7）——
 // N emit / N+1 deliver；同 superstep 内所有收到消息的 executor 并发（Promise.all）。
@@ -155,10 +156,12 @@ function toOrchMessage(data: unknown): OrchMessage {
 /**
  * 运行 workflow（Pregel 主循环，非递归）。
  * @param onEvent 推 StreamEvent 给前端
+ * @param input.runId 有值时把节点生命周期事实写入 run_events（诊断问题 3：
+ *   「为什么某节点没跑只是 cache extend」靠 node.cache_extended 回答）
  */
 export async function runWorkflow(
   wf: RuntimeWorkflow,
-  input: { text: string; sessionId?: string },
+  input: { text: string; sessionId?: string; runId?: string },
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<{ output: string; stopReason: 'converged' | 'max_supersteps' | 'aborted' }> {
@@ -220,6 +223,11 @@ export async function runWorkflow(
       `[trace:cap] runner.superstep=${iteration} deliver=[${[...byTarget.keys()].join(',')}] ` +
         `envelopes=${pending.length}`,
     )
+    appendRunEvent(input.runId, 'node.scheduled', {
+      superstep: iteration,
+      targets: [...byTarget.keys()],
+      envelopes: pending.length,
+    }, input.sessionId)
 
     // 同 superstep 内所有 target executor 并发 deliver（Promise.all，铁律7）
     await Promise.all(
@@ -231,7 +239,7 @@ export async function runWorkflow(
         }
         // 为每个并发 executor 创建独立子上下文，避免 source 互相覆盖
         const executorCtx = createChildContext(ctx, targetId)
-        await deliverToExecutor(executor, envelopes, executorCtx, wf, onEvent, failedNodes, signal)
+        await deliverToExecutor(executor, envelopes, executorCtx, wf, onEvent, failedNodes, signal, input.runId, input.sessionId)
       }),
     )
 
@@ -315,6 +323,8 @@ async function deliverToExecutor(
   onEvent: (e: StreamEvent) => void,
   failedNodes: Map<string, string>,
   signal?: AbortSignal,
+  runId?: string,
+  sessionId?: string,
 ): Promise<void> {
   onEvent({ type: 'node_started', node_id: executor.id })
   const deliverStarted = Date.now()
@@ -332,9 +342,13 @@ async function deliverToExecutor(
   // context window。超限保留首条（原始任务锚点）+ 最近 N 条——对应 CLAUDE.md
   // 「compaction 先用简单截断保留最近 N 条」的 MVP 取舍，完整 compaction 后置。
   if (executor.cache.length > CACHE_SOFT_CAP) {
+    const before = executor.cache.length
     executor.cache = [executor.cache[0], ...executor.cache.slice(-(CACHE_SOFT_CAP - 1))]
     // 截断后 cache 变化，重算 token（条数截断不频繁，O(n) 一次可接受）
     executor.cacheTokens = calcCacheTokens(executor.cache)
+    appendRunEvent(runId, 'node.cache_truncated', {
+      nodeId: executor.id, reason: 'count_cap', before, after: executor.cache.length,
+    }, sessionId)
   }
   // token 感知截断（Task 7）：超 token 上限时保留首条 + 尾部窗口
   // 只在 executor.cacheTokens 超阈值时才扫（避免每次 deliver 都全量 reduce）
@@ -349,9 +363,13 @@ async function deliverToExecutor(
       tailTokens += t
       tailStart = i
     }
+    const before = executor.cache.length
     executor.cache = [executor.cache[0], ...executor.cache.slice(tailStart)]
     // 截断后重算 token
     executor.cacheTokens = calcCacheTokens(executor.cache)
+    appendRunEvent(runId, 'node.cache_truncated', {
+      nodeId: executor.id, reason: 'token_cap', before, after: executor.cache.length,
+    }, sessionId)
   }
 
   // shouldRespond 双语义（铁律15）：任一 envelope 显式 false 且全部显式 false
@@ -364,6 +382,16 @@ async function deliverToExecutor(
     `[trace:cap] node.start id=${executor.id} shouldRespond=${shouldRespond} ` +
       `cache=${executor.cache.length} envelopes=${envelopes.length}`,
   )
+  // 诊断问题 3 核心事实：broadcast 投递只扩 cache 不触发 handle——「节点没跑」由此可查
+  if (!shouldRespond) {
+    appendRunEvent(runId, 'node.cache_extended', {
+      nodeId: executor.id, envelopes: envelopes.length, cacheSize: executor.cache.length,
+    }, sessionId)
+  } else {
+    appendRunEvent(runId, 'node.started', {
+      nodeId: executor.id, envelopes: envelopes.length, cacheSize: executor.cache.length,
+    }, sessionId)
+  }
 
   try {
     const req = { messages, shouldRespond }
@@ -381,6 +409,9 @@ async function deliverToExecutor(
     logger.info(
       `[trace:cap] node.done id=${executor.id} ms=${Date.now() - deliverStarted} aborted=${!!signal?.aborted}`,
     )
+    appendRunEvent(runId, 'node.completed', {
+      nodeId: executor.id, ms: Date.now() - deliverStarted,
+    }, sessionId)
 
     // 已取消：不再 fan-out 触发下游——否则 abort 在 handle 期间到达时，
     // 下游仍会被这次投递点燃，取消语义漏到下一个 superstep 顶部才生效
@@ -452,6 +483,9 @@ async function deliverToExecutor(
     logger.error(
       `[trace:cap] node.error id=${executor.id} ms=${Date.now() - deliverStarted} err=${message}`,
     )
+    appendRunEvent(runId, 'node.failed', {
+      nodeId: executor.id, error: message, ms: Date.now() - deliverStarted,
+    }, sessionId)
     onEvent({ type: 'node_error', node_id: executor.id, error: message })
   }
 }

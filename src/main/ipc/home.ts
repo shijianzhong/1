@@ -70,6 +70,8 @@ import {
   waitForUserInput,
 } from '../orchestrator/userInput'
 import { listDrafts, removeDraft, writeDraft } from '../crash-recovery'
+import { appendRunEvent, endRun, setRunRoute, startRun } from '../storage/runEvents'
+import { randomUUID } from 'node:crypto'
 import type { BuildDeps } from '../orchestrator/builder'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -224,6 +226,11 @@ export function registerHomeHandlers(): void {
       getDb().prepare('UPDATE sessions SET cwd = ?, updated_at = ? WHERE id = ?').run(projectPath, Date.now(), sessionId)
     }
 
+    // —— run_events 事实流：run 登记（session 确定即 run 开始）——
+    // eventsRunId 与后续 hitlRunId 是两个概念：后者是 HITL 队列作用域，前者是诊断事实流归属。
+    const eventsRunId = `run_${randomUUID()}`
+    startRun({ id: eventsRunId, sessionId: sid, entry: 'home' })
+
     // 2. persona + provider + key（cc switch：从 provider 取凭据 + modelId）
     const persona = getPersona()
     const provider = getDefaultProvider()
@@ -341,11 +348,18 @@ export function registerHomeHandlers(): void {
       (sid) => (mentionSkillIds.has(sid) ? getSkill(sid) : null),
     )
     skillProviders.push(homeSkillProvider)
-    const { instructions: instructionsWithSkills } = homeSkillProvider.beforeRun({
+    const { instructions: instructionsWithSkills, injected: homeInjectedSkills } = homeSkillProvider.beforeRun({
       agentName: 'home',
       skillIds: [...mentionSkillIds],
       instructions: instructionsWithL0,
     })
+    if (homeInjectedSkills.length > 0) {
+      // 诊断问题 2：命中了哪些 skill（含脚本/纪律标记）
+      appendRunEvent(eventsRunId, 'skill.injected', {
+        nodeId: 'home',
+        skills: homeInjectedSkills,
+      }, sid)
+    }
 
     // —— 意图路由指令段（§三之三 M + 铁律24）：注入角色/能力清单 + 组队 JSON 约定 ——
     // 主 Agent 据此判断直答 vs 输出组队 JSON；无可用角色/能力时不注入（不打扰人设）。
@@ -422,6 +436,7 @@ export function registerHomeHandlers(): void {
         sessionId: sid,
         workspaceRoot: getSession(sid)?.cwd,
         signal,
+        runId: eventsRunId,
         // propose_* 工具产出草稿 → 经此桥 emitStream proposal → 前端确认卡（不落库）
         // 打上 sessionId：回合结束清 streamMsgs 后仍可按会话重挂，避免确认卡闪没
         onPropose: (draft) => {
@@ -519,11 +534,17 @@ export function registerHomeHandlers(): void {
         // （此前首页组队节点完全没注入 skill，与编辑器编排行为不齐）
         const nodeSkillProvider = new SkillContextProvider((sid) => getSkill(sid))
         skillProviders.push(nodeSkillProvider)
-        const { instructions: nodeInstructions } = nodeSkillProvider.beforeRun({
+        const { instructions: nodeInstructions, injected: nodeInjectedSkills } = nodeSkillProvider.beforeRun({
           agentName: node.id,
           skillIds: d.skillIds ?? [],
           instructions: d.instructions ?? '',
         })
+        if (nodeInjectedSkills.length > 0) {
+          appendRunEvent(eventsRunId, 'skill.injected', {
+            nodeId: node.id,
+            skills: nodeInjectedSkills,
+          }, sid)
+        }
         // outputConstraints 注入 instructions（与编辑器编排对齐，运行时才吃得到）
         const finalNodeInstructions = d.outputConstraints
           ? `${nodeInstructions}\n\n【输出约束】\n${d.outputConstraints}`
@@ -556,6 +577,7 @@ export function registerHomeHandlers(): void {
             sessionId: sid,
             workspaceRoot: getSession(sid)?.cwd,
             signal,
+            runId: eventsRunId,
             // HITL 提问桥：事件经 orch_event 包装（与 runTeam 的流式事件同路），
             // respond 收口在 orchestrate:respond（同一 userInput 队列）
             onAskUser: async ({ question, context }) => {
@@ -634,11 +656,25 @@ export function registerHomeHandlers(): void {
       () => logger.warn(`[trace:cap] home.signal.abort session=${sid}`),
       { once: true },
     )
+    // —— run_events 起步事实（诊断问题 1/2）：mentions 初判路由 ——
+    appendRunEvent(eventsRunId, 'home.run.started', {
+      sessionId: sid,
+      msgLen: message.length,
+      mentionAgents: mentions.agents.map((a) => a.id),
+      mentionCaps: mentions.capabilities.map((c) => c.id),
+      mentionSkills: mentions.skills.map((s) => s.id),
+      preRoute: focusCap ? 'focusCap' : directAgent ? 'directAgent' : 'main',
+    }, sid)
     emit({ type: 'run_id', sessionId: sid })
 
     try {
       if (directAgent) {
         // 单/多角色：拼图跑（单角色单 agent 图；多角色 groupchat）
+        setRunRoute(eventsRunId, 'directAgent')
+        appendRunEvent(eventsRunId, 'home.route.decided', {
+          decision: 'directAgent',
+          agents: directAgent.map((a) => a.id),
+        }, sid)
         const graph = buildTeamGraph(
           { role_ids: directAgent.map((a) => a.id) },
           getAgent,
@@ -648,7 +684,7 @@ export function registerHomeHandlers(): void {
         const question = mentions.cleanText || message
         logger.info(`[trace:cap] home.directAgent → runTeam agents=${directAgent.map((a) => a.id).join(',')}`)
         const teamTurnStart = Date.now()
-        const result = await runTeam(graph, question, sid, buildDeps, emit, signal)
+        const result = await runTeam(graph, question, sid, buildDeps, emit, signal, eventsRunId)
         const teamTurnEnd = Date.now()
         addMessage({
           sessionId: sid,
@@ -659,6 +695,10 @@ export function registerHomeHandlers(): void {
           },
         })
         emit({ type: 'message_stop', stop_reason: 'end_turn' })
+        endRun(eventsRunId, 'completed')
+        appendRunEvent(eventsRunId, 'home.run.completed', {
+          stopReason: 'end_turn', outputLen: result.output.length, ms: teamTurnEnd - teamTurnStart,
+        }, sid)
         logger.info(`[trace:cap] home.directAgent.end session=${sid} outputLen=${result.output.length}`)
         return { runId: sid }
       }
@@ -868,6 +908,13 @@ export function registerHomeHandlers(): void {
         `[trace:cap] home.router.decide session=${sid} kind=${decision.kind}` +
           (decision.kind === 'team' ? ` json=${JSON.stringify(decision.json)}` : ''),
       )
+      // 终判路由回填 + 事实事件（诊断问题 1：本次到底直答还是转 team 了）
+      setRunRoute(eventsRunId, decision.kind === 'team' ? 'team' : 'direct')
+      appendRunEvent(eventsRunId, 'home.route.decided', {
+        decision: decision.kind,
+        focusCapId: focusCap?.id,
+        ...(decision.kind === 'team' ? { team: decision.json } : {}),
+      }, sid)
       if (decision.kind === 'team') {
         // 组队：拼编排图跑 runner，事件经 orch_event 转前端
         logger.info('[home-router] 判为组队:', JSON.stringify(decision.json))
@@ -877,7 +924,7 @@ export function registerHomeHandlers(): void {
             `[trace:cap] home.team.run session=${sid} graphNodes=${graph.nodes.length} ` +
               `types=[${graph.nodes.map((n) => `${n.id}:${n.type}`).join(',')}]`,
           )
-          const teamResult = await runTeam(graph, message, sid, buildDeps, emit, signal)
+          const teamResult = await runTeam(graph, message, sid, buildDeps, emit, signal, eventsRunId)
           logger.info(
             `[trace:cap] home.team.done session=${sid} outputLen=${teamResult.output.length} ` +
               `tail=${JSON.stringify(teamResult.output.slice(-80))}`,
@@ -943,6 +990,13 @@ export function registerHomeHandlers(): void {
       // 10. 结束事件：触顶收尾用 max_iterations，便于前端/日志区分假 end_turn
       const stopReason = result.hitIterationLimit ? 'max_iterations' : 'end_turn'
       logger.info(`[trace:cap] home.message_stop session=${sid} reason=${stopReason} aborted=${signal.aborted} usage=${turnUsage ? JSON.stringify(turnUsage) : 'none'}`)
+      endRun(eventsRunId, 'completed')
+      appendRunEvent(eventsRunId, 'home.run.completed', {
+        stopReason,
+        route: decision.kind,
+        ms: turnEnd - turnStart,
+        ...(turnUsage ? { usage: turnUsage } : {}),
+      }, sid)
       emit({
         type: 'message_stop',
         stop_reason: stopReason,
@@ -952,6 +1006,8 @@ export function registerHomeHandlers(): void {
       // 错误推到 AI 气泡位置（而非聊天区上方），含可重试提示
       const msg = e instanceof Error ? e.message : String(e)
       logger.error(`[trace:cap] home.error session=${sid} aborted=${signal.aborted} err=${msg}`, e)
+      endRun(eventsRunId, signal.aborted ? 'aborted' : 'error')
+      appendRunEvent(eventsRunId, 'home.run.failed', { error: msg, aborted: signal.aborted }, sid)
       emit({ type: 'error', error: msg })
       emit({ type: 'message_stop', stop_reason: 'error' })
       throw e

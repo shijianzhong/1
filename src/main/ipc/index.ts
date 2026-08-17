@@ -27,6 +27,7 @@ import { registerRegistryHandlers } from './registry'
 import { registerMcpHandlers } from './mcp'
 import { registerTopicsHandlers } from './topics'
 import { registerReviewsHandlers } from './reviews'
+import { registerRunsHandlers } from './runs'
 import { registerStyleProfilesHandlers } from './styleProfiles'
 import { registerSampleArticlesHandlers } from './sampleArticles'
 import { registerUpdaterHandlers } from '../updater'
@@ -280,6 +281,7 @@ export function registerIpcHandlers(): void {
   registerReviewsHandlers()
   registerStyleProfilesHandlers()
   registerSampleArticlesHandlers()
+  registerRunsHandlers()
 }
 
 /** 递归生成目录树摘要（用于 folder 附件） */

@@ -183,6 +183,41 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_reviews_score ON reviews(score);
     `,
   },
+  {
+    // v9：运行时事实流（docs/DEEPSEEK_HARNESS_LEARNING_PLAN.md P0）——
+    // runs：一次 home.chat / orchestrate.run = 一个 run（与 session 非 1:1，同会话可多 run）。
+    //   entry=入口（home/editor），route=路由决策回填（direct/team/directAgent/focusCap）。
+    // run_events：run 内按 seq 单调追加的事实事件（路由决策/节点生命周期/工具/HITL/skill 注入）。
+    //   故意不加外键：观测层与业务松耦合——runs 行创建失败时事件仍可落库（孤儿可诊断），
+    //   删会话不级联清事件（诊断数据独立生命周期，清理策略后续单独定）。
+    version: 9,
+    sql: `
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        entry TEXT NOT NULL,
+        route TEXT,
+        status TEXT NOT NULL DEFAULT 'running',
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id, started_at);
+      CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);
+
+      CREATE TABLE IF NOT EXISTS run_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL,
+        session_id TEXT,
+        seq INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        payload TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_run_events_run_seq ON run_events(run_id, seq);
+      CREATE INDEX IF NOT EXISTS idx_run_events_session ON run_events(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_run_events_type ON run_events(run_id, type);
+    `,
+  },
 ]
 
 /**

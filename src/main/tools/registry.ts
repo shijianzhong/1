@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { LlmToolDef } from '@shared/types'
 import { logger } from '../logger'
 import { isSessionToolApproved } from './sessionApprovals'
+import { appendRunEvent } from '../storage/runEvents'
 
 // —— 工具注册表（§三之三 J + 铁律11）——
 // registerTool 把普通函数包成 FunctionTool，**必须显式构造 JSON Schema
@@ -52,6 +53,13 @@ export interface ToolContext {
   /** 当前项目根绝对路径——文件工具扩展围栏、shell 默认 cwd 用。无 = 无项目上下文 */
   workspaceRoot?: string
   signal?: AbortSignal
+  /** 当前运行 id（run_events 事实流归属；由编排入口经 toolCtx 透传，无 = 不记事件） */
+  runId?: string
+  /** 当前节点/executor id（铁律20：agent config.name；由 Agent 执行工具时注入） */
+  nodeId?: string
+  /** 本次工具调用 id（由 registry.executeTool 注入，工具 handler 只读；
+   *  ask_user 等需要把 HITL 事件关联到具体 tool call 的工具用） */
+  toolUseId?: string
   /** 创建提案回调（propose_* 工具 → home IPC emitStream 桥，由 home.ts 注入） */
   onPropose?: (draft: import('@shared/types').CreateDraft) => void
   /** HITL 提问桥（ask_user 工具 → request_info 事件 + 挂起等待，由编排 IPC 注入）；
@@ -113,13 +121,31 @@ export function registerTool(
   return entry
 }
 
-/** 执行工具：校验入参 + preCheck 硬拦截 + approvalMode 审批闸门 + 失败重试 3 次后返回错误 JSON 不抛（铁律11） */
+/** 事件 payload 里的 args 摘要长度上限（诊断定位用，全文由 runEvents 8KB 护栏再兜一层） */
+const ARGS_SUMMARY_CAP = 500
+
+function summarizeArgs(args: unknown): string {
+  try {
+    return JSON.stringify(args)?.slice(0, ARGS_SUMMARY_CAP) ?? ''
+  } catch {
+    return '[unserializable]'
+  }
+}
+
+/** 执行工具：校验入参 + preCheck 硬拦截 + approvalMode 审批闸门 + 失败重试 3 次后返回错误 JSON 不抛（铁律11）
+ *
+ *  run_events 事实流注入点（ctx.runId 存在时）：
+ *  - tool.prechecked：preCheck 硬拦截（不弹审批的拒绝）
+ *  - tool.approval.requested / decided：审批弹窗与决议（含 via=session_bypass 的会话放行命中）
+ *  - tool.started / completed / failed：handler 执行生命周期
+ */
 export async function executeTool(
   name: string,
   args: unknown,
   toolUseId: string,
   ctx: ToolContext,
 ): Promise<ToolResult> {
+  const { runId, sessionId, nodeId } = ctx
   const entry = registry.get(name)
   if (!entry) {
     return {
@@ -132,6 +158,9 @@ export async function executeTool(
   // 入参校验（Zod）
   const r = entry.zodSchema.safeParse(args)
   if (!r.success) {
+    appendRunEvent(runId, 'tool.failed', {
+      tool: name, toolUseId, nodeId, error: 'invalid_args', detail: r.error.issues,
+    }, sessionId)
     return {
       toolUseId,
       content: JSON.stringify({
@@ -149,6 +178,10 @@ export async function executeTool(
   if (entry.def.preCheck) {
     const check = entry.def.preCheck(r.data)
     if (!check.ok) {
+      appendRunEvent(runId, 'tool.prechecked', {
+        tool: name, toolUseId, nodeId, blocked: true,
+        error: check.error ?? 'precheck_failed', argsSummary: summarizeArgs(r.data),
+      }, sessionId)
       return {
         toolUseId,
         content: JSON.stringify({
@@ -162,49 +195,70 @@ export async function executeTool(
 
   // —— 2. approvalMode 闸门 —— 'always' 工具必须经用户确认才能执行
   // 「本会话允许」后同 sessionId + 同工具名跳过弹窗；preCheck 已在上方执行，危险命令仍硬拦。
-  if (entry.def.approvalMode === 'always' && !isSessionToolApproved(ctx.sessionId, name)) {
-    if (!ctx.onApprove) {
-      return {
-        toolUseId,
-        content: JSON.stringify({
-          error: 'approval_unavailable',
-          messageKey: 'errors.tools.approval_unavailable',
-        }),
-        isError: true,
+  if (entry.def.approvalMode === 'always') {
+    if (isSessionToolApproved(ctx.sessionId, name)) {
+      // 会话放行命中：不弹窗——这也是审批事实，诊断「为什么没弹审批」要靠它
+      appendRunEvent(runId, 'tool.approval.decided', {
+        tool: name, toolUseId, nodeId, approved: true,
+        reason: 'approved_session', via: 'session_bypass',
+      }, sessionId)
+    } else {
+      if (!ctx.onApprove) {
+        appendRunEvent(runId, 'tool.failed', {
+          tool: name, toolUseId, nodeId, error: 'approval_unavailable',
+        }, sessionId)
+        return {
+          toolUseId,
+          content: JSON.stringify({
+            error: 'approval_unavailable',
+            messageKey: 'errors.tools.approval_unavailable',
+          }),
+          isError: true,
+        }
       }
-    }
-    // 300s 超时 → 视为拒绝（避免用户离开电脑弹窗无限等待）
-    const result = await withTimeout(
-      ctx.onApprove({ toolName: name, args: r.data }),
-      300_000,
-    )
-    if (result === null) {
-      return {
-        toolUseId,
-        content: JSON.stringify({
-          error: 'approval_timeout',
-          messageKey: 'errors.tools.approval_timeout',
-        }),
-        isError: true,
+      appendRunEvent(runId, 'tool.approval.requested', {
+        tool: name, toolUseId, nodeId, argsSummary: summarizeArgs(r.data),
+      }, sessionId)
+      // 300s 超时 → 视为拒绝（避免用户离开电脑弹窗无限等待）
+      const result = await withTimeout(
+        ctx.onApprove({ toolName: name, args: r.data }),
+        300_000,
+      )
+      const decision = result === null
+        ? { approved: false, reason: 'timeout' as const }
+        : { approved: result.approved, reason: result.reason ?? (result.approved ? 'approved' as const : 'denied' as const) }
+      appendRunEvent(runId, 'tool.approval.decided', {
+        tool: name, toolUseId, nodeId, approved: decision.approved,
+        reason: decision.reason, via: 'prompt',
+      }, sessionId)
+      if (result === null) {
+        return {
+          toolUseId,
+          content: JSON.stringify({
+            error: 'approval_timeout',
+            messageKey: 'errors.tools.approval_timeout',
+          }),
+          isError: true,
+        }
       }
-    }
-    if (!result.approved) {
-      // 按 reason 分流 i18n key：timeout（超时）/ aborted（运行被取消/顶替）/ denied（用户拒绝）
-      // 旧实现 reason 硬编码且不读 → 全混 approval_denied，前端无法区分（CODE_AUDIT 断言 5.5）
-      const reason = result.reason ?? 'denied'
-      const messageKey =
-        reason === 'timeout'
-          ? 'errors.tools.approval_timeout'
-          : reason === 'aborted'
-            ? 'errors.tools.approval_aborted'
-            : 'errors.tools.approval_denied'
-      return {
-        toolUseId,
-        content: JSON.stringify({
-          error: reason === 'timeout' ? 'approval_timeout' : reason === 'aborted' ? 'approval_aborted' : 'approval_denied',
-          messageKey,
-        }),
-        isError: true,
+      if (!result.approved) {
+        // 按 reason 分流 i18n key：timeout（超时）/ aborted（运行被取消/顶替）/ denied（用户拒绝）
+        // 旧实现 reason 硬编码且不读 → 全混 approval_denied，前端无法区分（CODE_AUDIT 断言 5.5）
+        const reason = result.reason ?? 'denied'
+        const messageKey =
+          reason === 'timeout'
+            ? 'errors.tools.approval_timeout'
+            : reason === 'aborted'
+              ? 'errors.tools.approval_aborted'
+              : 'errors.tools.approval_denied'
+        return {
+          toolUseId,
+          content: JSON.stringify({
+            error: reason === 'timeout' ? 'approval_timeout' : reason === 'aborted' ? 'approval_aborted' : 'approval_denied',
+            messageKey,
+          }),
+          isError: true,
+        }
       }
     }
   }
@@ -215,10 +269,16 @@ export async function executeTool(
   // 其他工具重试 3 次，失败返回错误 JSON 不抛（铁律11）。
   const skipRetry = entry.def.approvalMode === 'always'
   const maxAttempts = skipRetry ? 1 : RETRY_DELAYS_MS.length + 1
+  // 注入 toolUseId：ask_user 等工具需要把 HITL 事件关联回本次 tool call（诊断问题 5）
+  const handlerCtx: ToolContext = { ...ctx, toolUseId }
+  const toolStarted = Date.now()
+  appendRunEvent(runId, 'tool.started', {
+    tool: name, toolUseId, nodeId, argsSummary: summarizeArgs(r.data),
+  }, sessionId)
   let lastError: unknown
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const result = await entry.handler(r.data, ctx)
+      const result = await entry.handler(r.data, handlerCtx)
       const content = typeof result === 'string' ? result : JSON.stringify(result)
       // 工具业务失败（{ ok: false }）→ 标记 is_error=true（协议语义）
       // 让 LLM 明确感知工具失败，而非从 JSON 内容自行推断
@@ -227,6 +287,10 @@ export async function executeTool(
         result !== null &&
         'ok' in result &&
         (result as Record<string, unknown>).ok === false
+      appendRunEvent(runId, 'tool.completed', {
+        tool: name, toolUseId, nodeId, ms: Date.now() - toolStarted,
+        isError, resultLen: content.length, attempts: attempt + 1,
+      }, sessionId)
       return { toolUseId, content, isError }
     } catch (error) {
       lastError = error
@@ -235,6 +299,9 @@ export async function executeTool(
       // 多半仍会再次 abort。立即返回结构化 abort 错误，让 agent loop 尽快收尾。
       if (ctx.signal?.aborted) {
         logger.info(`[tool:${name}] 执行被 abort 取消，跳过重试`)
+        appendRunEvent(runId, 'tool.failed', {
+          tool: name, toolUseId, nodeId, error: 'aborted', ms: Date.now() - toolStarted,
+        }, sessionId)
         return {
           toolUseId,
           content: JSON.stringify({
@@ -251,6 +318,10 @@ export async function executeTool(
     }
   }
   const message = lastError instanceof Error ? lastError.message : String(lastError)
+  appendRunEvent(runId, 'tool.failed', {
+    tool: name, toolUseId, nodeId, error: message, ms: Date.now() - toolStarted,
+    attempts: maxAttempts,
+  }, sessionId)
   return {
     toolUseId,
     content: JSON.stringify({ error: 'tool_failed', message }),
