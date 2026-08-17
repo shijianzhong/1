@@ -36,8 +36,8 @@ import {
 } from './native-menu'
 import { setupAutoUpdater, stopAutoUpdater } from './updater'
 import {
+  captureLastRunCrashed,
   clearRunning,
-  hadCrashedLastRun,
   listDrafts,
   markRunning,
 } from './crash-recovery'
@@ -133,7 +133,7 @@ if (!gotLock) {
     startupMark('main:whenReady')
 
     // —— 崩溃恢复（§11.5/.7）：启动检测上次崩溃 + 写哨兵 ——
-    const crashed = hadCrashedLastRun()
+    const crashed = captureLastRunCrashed()
     markRunning()
     startupMark('main:crash-sentinel', { crashed })
     if (crashed) {

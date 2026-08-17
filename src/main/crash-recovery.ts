@@ -46,9 +46,25 @@ export function clearRunning(): void {
 
 /**
  * 启动时检查哨兵：存在=上次异常退出 → 返回 true 供渲染层提示恢复草稿。
+ * 仅在 markRunning() 之前调用有效（之后哨兵已写，恒为 true）。
  */
 export function hadCrashedLastRun(): boolean {
   return existsSync(getSentinelPath())
+}
+
+// markRunning 之后哨兵恒存在，hadCrashedLastRun() 失去判别力——
+// 故启动时（markRunning 前）把判定结果捕获到模块状态，供运行期 IPC 查询。
+let lastRunCrashed = false
+
+/** 启动早期（markRunning 前）捕获「上次是否崩溃」，返回判定结果 */
+export function captureLastRunCrashed(): boolean {
+  lastRunCrashed = hadCrashedLastRun()
+  return lastRunCrashed
+}
+
+/** 运行期查询：上次是否异常退出（captureLastRunCrashed 捕获的值） */
+export function didLastRunCrash(): boolean {
+  return lastRunCrashed
 }
 
 /**

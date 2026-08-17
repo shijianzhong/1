@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
+import { logger } from '../logger'
 
 // —— 子进程组终止辅助（§11 / CODE_AUDIT P1-6）——
 // opencli / skill_run_script 的子进程会再 spawn 自己的子进程（opencli 起 Chrome、
@@ -21,9 +22,12 @@ export function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals = '
     try {
       process.kill(-pid, signal)
     } catch (e) {
-      // EPERM：不是本用户进程（极少见，跨用户 spawn）→ 降级只杀直接子进程
-      if ((e as NodeJS.ErrnoException).code !== 'ESRCH' && (e as NodeJS.ErrnoException).code !== 'EPERM') {
-        throw e
+      // 负 pid 进程组信号是 POSIX 语义：Windows 无此概念，kill(-pid) 可能抛 EINVAL 等
+      // 非预期错误码。此处绝不能 rethrow——调用方在超时/abort 路径上，rethrow 会把
+      // 「杀进程」变成新异常源。任何失败一律降级为 warn + 只杀直接子进程（下方兜底）。
+      const code = (e as NodeJS.ErrnoException).code
+      if (code !== 'ESRCH' && code !== 'EPERM') {
+        logger.warn(`[processKill] 进程组信号失败（pid=${pid}, code=${code ?? 'unknown'}），降级只杀直接子进程`, e)
       }
     }
   }

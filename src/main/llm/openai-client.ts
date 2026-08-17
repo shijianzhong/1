@@ -186,7 +186,9 @@ export class OpenAILLMClient implements LLMProtocol {
                   // 后续 chunk：补写 name（部分网关先 id 后 name）与 id（先 args 后 id）
                   if (tc.function?.name) existing.name = tc.function.name
                   const idJustArrived = !!tc.id && !existing.started
-                  if (tc.id) existing.id = tc.id
+                  // 仅未 started 时允许写入 id：已开始发流后若网关中途换 id（极端），
+                  // 无条件覆盖会导致 start/delta 与 stop 的 id 不一致、消费者配对断裂
+                  if (tc.id && !existing.started) existing.id = tc.id
                   // 增量参数
                   const argsChunk = tc.function?.arguments ?? ''
                   if (argsChunk) {

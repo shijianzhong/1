@@ -1,7 +1,7 @@
 import { app, nativeTheme, Notification, type BrowserWindow } from 'electron'
 import { IpcErrorThrow } from '@shared/types'
 import { withHandler } from './handler'
-import { listDrafts, removeDraft, writeDraft } from '../crash-recovery'
+import { didLastRunCrash, listDrafts, removeDraft, writeDraft } from '../crash-recovery'
 
 // —— 原生能力 IPC（§六）——
 // 通知 + 开机自启 + nativeTheme 明暗跟随。
@@ -60,6 +60,11 @@ export function registerNativeHandlers(getMainWindow: () => BrowserWindow | null
 
   // —— 崩溃恢复：列出 / 写入 / 删除草稿 ——
   withHandler<Array<{ name: string; content: string }>>('app:listDrafts', () => listDrafts())
+
+  // 上次是否异常退出（启动时 captureLastRunCrashed 捕获的哨兵判定）：渲染层崩溃
+  // 恢复弹窗的 pull 通道据此过滤——正常退出时即便 drafts/ 有草稿（用户打着字正常
+  // 退出）也不弹「上次异常退出」，草稿由 HomePage/EditorPage 灌回 effect 静默回填。
+  withHandler<boolean>('app:hadCrashedLastRun', () => didLastRunCrash())
 
   withHandler<void>('app:writeDraft', (_e, inputRaw) => {
     const input = inputRaw as { name?: unknown; content?: unknown }

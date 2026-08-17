@@ -71,15 +71,18 @@ describe('tools/processKill killProcessGroup', () => {
     expect(childKill).toHaveBeenCalledWith('SIGKILL')
   })
 
-  it('进程组信号其他 errno → 向上抛（非预期错误不静默吞）', () => {
-    const child = fakeChild(777)
+  it('进程组信号其他 errno（如 Windows EINVAL）→ 不抛，降级 warn + 兜底 child.kill', () => {
+    const childKill = vi.fn()
+    const child = { pid: 777, kill: childKill } as unknown as ChildProcess
     killSpy.mockImplementation(() => {
-      const e = new Error('perm') as NodeJS.ErrnoException
-      e.code = 'EACCES'
+      const e = new Error('invalid') as NodeJS.ErrnoException
+      e.code = 'EINVAL'
       throw e
     })
 
-    expect(() => killProcessGroup(child)).toThrow('perm')
+    // 超时/abort 路径绝不能因杀进程抛出新异常
+    expect(() => killProcessGroup(child)).not.toThrow()
+    expect(childKill).toHaveBeenCalledWith('SIGKILL')
   })
 
   it('默认信号为 SIGKILL', () => {

@@ -54,6 +54,7 @@ type CrashCb = (payload: { drafts: Array<{ name: string; content: string }> }) =
 let crashRecoveryCb: CrashCb | null = null
 const mockRemoveDraft = vi.fn().mockResolvedValue({ ok: true, data: undefined })
 const mockListDrafts = vi.fn().mockResolvedValue({ ok: true, data: [] as Array<{ name: string; content: string }> })
+const mockHadCrashed = vi.fn().mockResolvedValue({ ok: true, data: true })
 const mockUnsub = vi.fn()
 
 /** 辅助：模拟主进程推送 crashRecovery 事件（包裹 act 确保重渲染） */
@@ -68,6 +69,8 @@ beforeEach(() => {
   mockRemoveDraft.mockClear()
   mockListDrafts.mockClear()
   mockListDrafts.mockResolvedValue({ ok: true, data: [] })
+  mockHadCrashed.mockClear()
+  mockHadCrashed.mockResolvedValue({ ok: true, data: true })
   mockUnsub.mockClear()
 
   Object.defineProperty(window, 'one', {
@@ -78,6 +81,7 @@ beforeEach(() => {
           return mockUnsub
         },
         listDrafts: mockListDrafts,
+        hadCrashedLastRun: mockHadCrashed,
         removeDraft: mockRemoveDraft,
       },
     },
@@ -231,5 +235,38 @@ describe('CrashRecoveryDialog', () => {
     })
 
     expect(screen.queryByTestId('dialog')).toBeNull()
+  })
+
+  it('pull 通道：上次崩溃（hadCrashedLastRun=true）且有草稿 → 显示对话框', async () => {
+    mockHadCrashed.mockResolvedValue({ ok: true, data: true })
+    mockListDrafts.mockResolvedValue({
+      ok: true,
+      data: [{ name: 'home-composer.json', content: '{"text":"hi"}' }],
+    })
+
+    renderDialog()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dialog')).toBeDefined()
+    })
+    expect(screen.getByText('home-composer.json')).toBeDefined()
+  })
+
+  it('pull 通道：上次正常退出（hadCrashedLastRun=false）→ 有草稿也不弹窗（草稿由页面静默灌回）', async () => {
+    mockHadCrashed.mockResolvedValue({ ok: true, data: false })
+    mockListDrafts.mockResolvedValue({
+      ok: true,
+      data: [{ name: 'home-composer.json', content: '{"text":"hi"}' }],
+    })
+
+    renderDialog()
+
+    // 等待 hadCrashedLastRun 被调用后仍不显示
+    await waitFor(() => {
+      expect(mockHadCrashed).toHaveBeenCalled()
+    })
+    expect(screen.queryByTestId('dialog')).toBeNull()
+    // 正常退出时甚至不拉草稿列表
+    expect(mockListDrafts).not.toHaveBeenCalled()
   })
 })

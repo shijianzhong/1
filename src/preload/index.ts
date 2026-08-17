@@ -207,6 +207,8 @@ export interface OneApi {
     onCrashRecovery: (cb: (payload: { drafts: Array<{ name: string; content: string }> }) => void) => () => void
     /** 崩溃恢复：拉取当前草稿（mount 时 pull，防 push 竞态） */
     listDrafts: () => Promise<IpcResult<Array<{ name: string; content: string }>>>
+    /** 崩溃恢复：上次是否异常退出（弹窗据此过滤，正常退出不弹） */
+    hadCrashedLastRun: () => Promise<IpcResult<boolean>>
     /** 崩溃恢复：debounce 写盘 */
     writeDraft: (input: { name: string; content: string }) => Promise<IpcResult<void>>
     /** 崩溃恢复：删除指定草稿 */
@@ -391,6 +393,7 @@ const api: OneApi = {
       return () => ipcRenderer.off('app:crashRecovery', handler)
     },
     listDrafts: () => ipcRenderer.invoke('app:listDrafts'),
+    hadCrashedLastRun: () => ipcRenderer.invoke('app:hadCrashedLastRun'),
     writeDraft: (input) => ipcRenderer.invoke('app:writeDraft', input),
     removeDraft: (name) => ipcRenderer.invoke('app:removeDraft', name),
   },

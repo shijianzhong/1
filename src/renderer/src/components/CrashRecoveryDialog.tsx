@@ -38,11 +38,18 @@ export function CrashRecoveryDialog(): React.JSX.Element {
 
   useEffect(() => {
     let cancelled = false
-    // pull：不依赖 push 时序
+    // pull：不依赖 push 时序。但必须先确认上次是异常退出——正常退出时 drafts/
+    // 也可能有草稿（用户打着字直接退出），此时弹「上次异常退出」是误报；
+    // 草稿由 HomePage/EditorPage 的灌回 effect 静默回填，无需打扰用户。
     void window.one.app
-      .listDrafts()
+      .hadCrashedLastRun()
       .then(unwrap)
+      .then((crashed) => {
+        if (!crashed) return undefined
+        return window.one.app.listDrafts().then(unwrap)
+      })
       .then((list) => {
+        if (!list) return
         const filtered = list.filter((d) => isComposerOrEditorDraft(d.name))
         if (!cancelled && filtered.length > 0) setDrafts(filtered)
       })
