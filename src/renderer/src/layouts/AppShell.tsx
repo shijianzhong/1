@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Activity,
   Bot,
   Boxes,
   Cable,
@@ -30,6 +31,7 @@ const navItems = [
   { to: '/models', key: 'models', icon: Cable },
   { to: '/mcp', key: 'mcp', icon: Plug },
   { to: '/tasks', key: 'tasks', icon: Command },
+  { to: '/runs', key: 'runs', icon: Activity },
   { to: '/settings', key: 'settings', icon: Settings },
 ] as const
 

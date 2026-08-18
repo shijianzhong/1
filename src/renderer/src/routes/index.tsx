@@ -5,6 +5,9 @@ import { AppShell } from '@renderer/layouts/AppShell'
 // 其中 EditorPage 带走 reactflow/d3 大图依赖，是冷启动首包减负的大头。
 import { HomePage } from '@renderer/pages/HomePage'
 
+const RunsPage = lazy(() =>
+  import('@renderer/pages/RunsPage').then((m) => ({ default: m.RunsPage })),
+)
 const EditorPage = lazy(() =>
   import('@renderer/pages/EditorPage').then((m) => ({ default: m.EditorPage })),
 )
@@ -47,6 +50,7 @@ export function AppRoutes() {
         <Route path="/models" element={<ListPage i18nKey="models" />} />
         <Route path="/mcp" element={<McpPage />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/runs" element={<RunsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

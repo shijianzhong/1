@@ -13,6 +13,8 @@ import type {
   RegistryConfig,
   RegistryExportConfirmItem,
   ReviewRecord,
+  RunInfo,
+  RunEventInfo,
   SampleArticle,
   Skill,
   SkillMeta,
@@ -505,4 +507,23 @@ export function useRemoveSampleArticle() {
   })
 }
 
-export type { ReviewRecord, SampleArticle, StyleProfile, Topic }
+// —— 运行诊断（runs / run_events 事实流）——
+export function useRuns(opts?: { sessionId?: string }) {
+  return useQuery({
+    queryKey: ['runs', opts?.sessionId ?? null],
+    queryFn: () =>
+      thenUnwrap(
+        window.one.runs.list(opts?.sessionId ? { sessionId: opts.sessionId } : undefined),
+      ),
+  })
+}
+
+export function useRunDetail(runId?: string) {
+  return useQuery({
+    queryKey: ['run', runId],
+    queryFn: () => thenUnwrap(window.one.runs.detail({ runId: runId! })),
+    enabled: !!runId,
+  })
+}
+
+export type { ReviewRecord, RunInfo, RunEventInfo, SampleArticle, StyleProfile, Topic }
