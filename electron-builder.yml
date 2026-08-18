@@ -1,14 +1,14 @@
 appId: com.shijianzhong.one
 productName: One
-# 自动更新 feed（生成 app-update.yml）。与 git remote origin 一致（shijianzhong/1）。
+# 自动更新 feed（生成 latest-*.yml）。与 git remote origin 一致（shijianzhong/1）。
 # 注意：CI 打出的 draft release 对 /releases/latest 不可见，需在 GitHub 上 Publish 后 updater 才生效。
-# 灰度发布：stagingPercentage 令 electron-updater 仅按比例放量；观察稳定后把已发布
-# latest-*.yml 中的 stagingPercentage 改为 100 即可全量推送，无需重新出包。
+# 灰度发布（staging/canary）：electron-builder 26 已不支持在配置里设 stagingPercentage，
+# 改为构建后由 scripts/patch-staging.mjs 向各 latest-*.yml 注入顶层 stagingPercentage（默认 25），
+# 观察稳定后把已发布 latest-*.yml 的 stagingPercentage 改为 100 即全量，无需重新出包。
 publish:
   provider: github
   owner: shijianzhong
   repo: '1'
-  stagingPercentage: 25
 directories:
   output: release
 files:

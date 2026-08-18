@@ -21,7 +21,8 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "vendor:opencli": "npm install --prefix vendor/opencli @jackwener/opencli --omit=dev",
-    "package": "npm run build && npm run vendor:opencli && electron-builder"
+    "package": "npm run build && npm run vendor:opencli && electron-builder",
+    "patch:staging": "node scripts/patch-staging.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -76,6 +77,7 @@
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.0",
+    "js-yaml": "^5.3.0",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.8.3",

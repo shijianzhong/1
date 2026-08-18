@@ -51,6 +51,12 @@ jobs:
           # 注：macOS/Windows 代码签名均需付费证书，当前未启用；构建保持未签名。
           # 后续若接入，在此注入对应 secrets 即可（mac: CSC_LINK/CSC_KEY_PASSWORD/APPLE_*；win: 证书）。
 
+      # 自动更新灰度：向 latest-*.yml 注入顶层 stagingPercentage（默认 25，仓库变量 CANARY_PERCENT 可覆盖为 100 全量）。
+      - name: Patch auto-update staging (canary)
+        run: node scripts/patch-staging.mjs
+        env:
+          CANARY_PERCENT: ${{ vars.CANARY_PERCENT }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
