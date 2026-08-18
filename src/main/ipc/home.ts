@@ -231,6 +231,12 @@ export function registerHomeHandlers(): void {
     const eventsRunId = `run_${randomUUID()}`
     startRun({ id: eventsRunId, sessionId: sid, entry: 'home' })
 
+    // 外层 try：兜住 startRun 之后、内层 try(670) 之前这一段（provider 解析 / L0 注入 /
+    // 技能装配 / 意图路由指令等，含 238/243 两个 IpcErrorThrow）的异常——否则这些 throw
+    // 落到内层 catch 之外，run 行永久卡 'running'。外层 catch 不引用 signal/hitlRunId/
+    // skillProviders（它们声明在 388/389/345，238 抛异常时尚未执行到 → ReferenceError），
+    // 只用防御块收口 run 状态。内层 catch 已收口的细分语义不受影响。
+    try {
     // 2. persona + provider + key（cc switch：从 provider 取凭据 + modelId）
     const persona = getPersona()
     const provider = getDefaultProvider()
@@ -1020,6 +1026,15 @@ export function registerHomeHandlers(): void {
       if (active?.controller.signal === signal && active.hitlRunId === hitlRunId) {
         activeRuns.delete(sid)
       }
+    }
+    } catch (e) {
+      // 外层兜底（CODE_REVIEW P0）：startRun 后、内层 try 前抛异常时 run 行收口。
+      // 不引用 signal/hitlRunId/skillProviders（此阶段可能未声明）；
+      // endRun 带 WHERE status='running'，与内层 catch 不冲突，重复收口只首次生效。
+      const errMsg = e instanceof Error ? e.message : String(e)
+      try { endRun(eventsRunId, 'error') } catch { /* 观测层不阻断业务异常向上抛 */ }
+      try { appendRunEvent(eventsRunId, 'home.run.failed', { error: errMsg, phase: 'pre_inner_try' }, sid) } catch {}
+      throw e
     }
 
     return { runId: sid }

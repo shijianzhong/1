@@ -160,6 +160,12 @@ export interface OneApi {
     disconnectServer: (id: string) => Promise<IpcResult<void>>
     testServer: (input: Omit<McpServerConfig, 'id'>) => Promise<IpcResult<{ toolCount: number; tools: Array<{ name: string; description?: string }> }>>
   }
+  runs: {
+    /** 列出 run（可按 session 过滤；默认最近 50 条，按开始时间倒序） */
+    list: (input?: { sessionId?: string; limit?: number }) => Promise<IpcResult<import('@shared/types').RunInfo[]>>
+    /** 单个 run + 完整事件时间线（按 seq 升序；payload 已在主进程解析为对象） */
+    detail: (input: { runId: string }) => Promise<IpcResult<{ run: import('@shared/types').RunInfo | null; events: import('@shared/types').RunEventInfo[] }>>
+  }
   topics: {
     list: (opts?: { status?: Topic['status']; direction?: string; userId?: string }) => Promise<IpcResult<Topic[]>>
     get: (id: string) => Promise<IpcResult<Topic | null>>
@@ -344,6 +350,10 @@ const api: OneApi = {
     connectServer: (id) => ipcRenderer.invoke('mcp:connectServer', id),
     disconnectServer: (id) => ipcRenderer.invoke('mcp:disconnectServer', id),
     testServer: (input) => ipcRenderer.invoke('mcp:testServer', input),
+  },
+  runs: {
+    list: (input) => ipcRenderer.invoke('runs:list', input),
+    detail: (input) => ipcRenderer.invoke('runs:detail', input),
   },
   topics: {
     list: (opts) => ipcRenderer.invoke('topics:list', opts),

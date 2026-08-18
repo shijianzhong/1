@@ -287,18 +287,24 @@ export function registerOrchestrateHandlers(): void {
       // 后者是 HITL 队列作用域，前者是诊断事实流归属）
       const eventsRunId = `run_${randomUUID()}`
       startRun({ id: eventsRunId, sessionId, entry: 'editor' })
+      // try 覆盖 startRun 之后全部步骤（CODE_REVIEW P0）：原 try 只在 runWorkflow 外，
+      // listToolsForAgents/makeResolveAgent/buildWorkflow 抛异常时 run 行卡 'running'。
+      // skillProviders 提前声明为 let——finally 在 try 外引用它，避免提前抛异常时
+      // finally 的 ReferenceError；try 内一次调用 makeResolveAgent 取值。
+      let skillProviders: ReturnType<typeof makeResolveAgent>['skillProviders'] = []
+      try {
       const agentTools = await listToolsForAgents()
-      const { resolveAgent, skillProviders } = makeResolveAgent(
+      const resolved = makeResolveAgent(
         modelId, apiKey, baseURL, authHeader, enableThinking, apiFormat, signal, agentTools, sessionId, hitlRunId,
         projectPath, eventsRunId,
       )
-      const deps: BuildDeps = { resolveAgent }
+      skillProviders = resolved.skillProviders
+      const deps: BuildDeps = { resolveAgent: resolved.resolveAgent }
 
       const wf = buildWorkflow(graph, deps)
 
       // 会话持久化（编辑器运行落 session，与首页 @能力 运行对齐）：用户输入 + 聚合输出
       if (sessionId) addMessage({ sessionId, role: 'user', content: text })
-      try {
         const result = await runWorkflow(wf, { text, sessionId, runId: eventsRunId }, emitStream, signal)
         // abort / max_supersteps 时只落用户输入，不把半截聚合输出当完整 assistant 消息存库
         //（CODE_AUDIT 断言 1.4：abort 被当成功存部分输出）。事件流已发 failed，前端区分。

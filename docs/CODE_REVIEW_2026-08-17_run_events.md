@@ -3,13 +3,23 @@
 - **日期**：2026-08-17
 - **范围**：`run_events` 观测层首批落地（storage / IPC / orchestrator / tools 注入 + 测试）
 - **改动文件**：`src/main/storage/{db.ts,runEvents.ts,runEvents.test.ts}`、`src/main/ipc/{runs.ts,index.ts,home.ts,orchestrate.ts}`、`src/main/orchestrator/{runner.ts,runner.runEvents.test.ts,home.ts,agent.ts}`、`src/main/tools/{registry.ts,registry.runEvents.test.ts}`、`src/shared/types.ts`
-- **结论**：设计扎实（观测层松耦合 / payload 8KB 护栏 / seq 按 run 单调 / `endRun` 防双写 / 写失败不抛不打断业务 / 测试覆盖全链路），但有 **3 个真问题 + 2 个待确认项**。P0 是本次改动自身引入的泄漏，优先修。
+- **结论**：设计扎实（观测层松耦合 / payload 8KB 护栏 / seq 按 run 单调 / `endRun` 防双写 / 写失败不抛不打断业务 / 测试覆盖全链路）。Review 发现 **3 个真问题 + 2 个待确认项**，现已全部处理：P0 修复 + 补测、P1 preload 补 `runs` 命名空间、P1 abort 路由断档记为已知取舍。
+
+## 处理结果总览
+
+| 项 | 级别 | 处理 |
+|----|------|------|
+| `startRun` 在 `try` 前致 run 行卡 running | 🔴 P0 | ✅ 已修（home.ts 外层 try 兜底 + orchestrate.ts try 上移）+ 补存储层契约测试 |
+| preload 未暴露 `runs` 命名空间 | 🟡 P1 | ✅ 已补 `runs.list`/`runs.detail` |
+| abort 路径路由断档 | 🟡 P1 | ✅ 记为已知取舍（`route=NULL` 表达「未决」语义，不污染 route 字段） |
+| runner 热循环每 superstep 同步写 DB | 🟢 待确认 | 记为观测点，暂不动 |
+| `run_events` 无清理策略 | 🟢 待确认 | 记为后续 TODO |
 
 ---
 
 ## 问题清单（按严重度）
 
-### 🔴 P0：`startRun` 在 `try` 之前——异常时 run 行永久卡 `running`
+### 🔴 P0：`startRun` 在 `try` 之前——异常时 run 行永久卡 `running` ✅ 已修
 
 观测层本应「不打断业务」，这里反而造了一个状态泄漏：run 行永远收不了口。
 
@@ -56,13 +66,18 @@ try {
 
 orchestrate.ts 简单：`signal` @285 在 `startRun` @289 之前已声明，把 `try` @301 起点上移到 290 即可，catch(321) 里 `signal.aborted` 安全。
 
-#### 补测
+#### 实际修复（2026-08-17）
 
-修完后补一个单测：`startRun` 之后、`try` 之前注入一个会抛异常的步骤（mock `getDefaultProvider` 返回 null），断言 run 行最终 `status='error'` 而非 `running`。当前测试集没有覆盖这个场景——正好是 bug 本身，所以没测到。
+- **home.ts**：采用方案 A。在 `startRun`@232 之后插入外层 `try`，包住原 234–1023 全部代码（含原内层 try/catch/finally）；外层 catch 用防御块调 `endRun('error')` + `appendRunEvent('home.run.failed', { phase: 'pre_inner_try' })`，**不引用** signal/hitlRunId/skillProviders（避免未声明变量 ReferenceError）。内层 catch 保持原 signal.aborted 细分语义。
+- **orchestrate.ts**：`try` 起点从 301 上移到 290（`listToolsForAgents` 之前），包住 `makeResolveAgent`/`buildWorkflow`。`skillProviders` 提前声明为 `let`（finally 在 try 外引用它，避免提前抛异常时 ReferenceError）；try 内一次调用 `makeResolveAgent` 取 `resolveAgent` + 赋值 `skillProviders`。
+
+#### 补测 ✅
+
+在 `runEvents.test.ts` 加契约测试「startRun 后立即异常 → 外层 catch 调 `endRun('error')`：run 行收口为 `error` 而非卡 `running`」，锁定 P0 的存储层前提。控制流保证（外层 try 包住 startRun 之后全部代码）在 home.ts/orchestrate.ts 本身，由 typecheck + 现有编排测试集 205 用例回归覆盖。
 
 ---
 
-### 🟡 P1：preload 未暴露 `runs` 命名空间——`runs:list`/`runs:detail` 是死通道
+### 🟡 P1：preload 未暴露 `runs` 命名空间——`runs:list`/`runs:detail` 是死通道 ✅ 已补
 
 - `src/main/ipc/runs.ts` 注册了 `runs:list` / `runs:detail` 两个 handler
 - `src/main/ipc/index.ts` 调了 `registerRunsHandlers()`
@@ -70,28 +85,28 @@ orchestrate.ts 简单：`signal` @285 在 `startRun` @289 之前已声明，把 
 
 按铁律2，渲染层只调 `window.one.*`、不裸用 `ipcRenderer` → 这两个通道目前**渲染层根本调不到**，run 诊断时间线在前端拿不到。`RunInfo`/`RunEventInfo` 在 `shared/types.ts` 已定义却无人消费。
 
-#### 修复指引
+#### 实际修复（2026-08-17）
 
-在 preload `OneApi` 接口补：
+preload `OneApi` 接口补 `runs` 段（mcp 之后）：
 
 ```ts
 runs: {
-  list: (input?: { sessionId?: string; limit?: number }) => Promise<IpcResult<RunInfo[]>>
-  detail: (input: { runId: string }) => Promise<IpcResult<{ run: RunInfo | null; events: RunEventInfo[] }>>
+  list: (input?: { sessionId?: string; limit?: number }) => Promise<IpcResult<import('@shared/types').RunInfo[]>>
+  detail: (input: { runId: string }) => Promise<IpcResult<{ run: import('@shared/types').RunInfo | null; events: import('@shared/types').RunEventInfo[] }>>
 }
 ```
 
-实现侧 `window.one.runs = { list, detail }` 两个 `ipcRenderer.invoke` 映射，与现有 `registry`/`topics` 命名空间同模式。
-
-若这批先不做前端查看（纯 SQL 层、未来用），则至少在 `runs.ts` 顶部注释说明「此通道暂未对渲染层暴露，主进程/诊断脚本直连 SQL」，并把 `RunInfo`/`RunEventInfo` 标注为「预置契约」。但既然查询层和 shared types 都做了，补 preload 才闭环——推荐补。
+实现侧 `window.one.runs = { list, detail }` 两个 `ipcRenderer.invoke` 映射，与 `registry`/`topics` 命名空间同模式。`runs:list`/`runs:detail` 通道闭环。
 
 ---
 
-### 🟡 P1：`home.chat` abort 路径路由断档（低优先级，记录即可）
+### 🟡 P1：`home.chat` abort 路径路由断档 ✅ 记为已知取舍
 
 abort 落在 `catch`(1005)：只 `endRun('aborted'/'error')` + `home.run.failed`，**没 `setRunRoute`、也没 `home.route.decided` 事件**。若 abort 发生在终判路由之前（直答进行到一半被 cancel），前端时间线显示 `started → failed`，中间路由段空白。
 
-可接受（abort 本就未必走到终判），但要意识到：runs 表 `route=NULL` 对这类 run 是「未决」而非「无路由」语义，前端展示需区分。不阻塞，记录。
+#### 处理结论（2026-08-17）：不修，记为正确语义
+
+`route` 字段语义是「路由决策」，**不是运行状态**。abort 发生在终判之前 = 路由尚未决定，`route=NULL` 正确表达「未决」。强行 `setRunRoute('aborted')` 会把运行状态塞进路由字段，污染语义、混淆「无路由」（editor 入口）与「未决」（home abort 未到终判）两种情况。前端时间线 `started → failed` 如实反映 abort 发生点。不动代码。
 
 ---
 
@@ -118,14 +133,13 @@ db.ts v9 注释写了「删会话不级联清事件（诊断数据独立生命�
 - 断言用 `toMatchObject` 只断关键字段，不脆
 - mock 边界清晰（`appendRunEvent` mock 只验事件、落库由 `runEvents.test.ts` 独立覆盖）
 
-**唯一缺口**：无测试覆盖「`startRun` 后、`try` 前抛异常时 run 行卡 `running`」——正好是 P0 bug 本身，测试自然没覆盖到。修 P0 后补。
+P0 原缺口（无测试覆盖「startRun 后、try 前抛异常」）已补存储层契约测试。
 
 ---
 
-## 建议动手顺序
+## 最终验证
 
-1. **P0 修复**（home.ts 方案 A + orchestrate.ts 上移 try）+ 补 P0 单测
-2. **P1 preload 补 `runs` 命名空间**（若确认要做前端时间线）
-3. P1 abort 路由断档、待确认 1/2 → 记录，不阻塞本批
+- `tsc --noEmit` 干净
+- 编排测试集 21 文件 205 用例全绿（无回归）
+- 新增 3 测试文件 23 用例 + P0 契约 1 用例 = 24 用例全绿
 
-等你确认范围后我再动手。

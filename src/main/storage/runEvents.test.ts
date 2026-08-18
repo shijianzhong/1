@@ -84,6 +84,25 @@ describe('startRun / getRun / setRunRoute / endRun', () => {
     startRun({ id: 'r1', entry: 'home' })
     expect(() => startRun({ id: 'r1', entry: 'home' })).not.toThrow()
   })
+
+  // CODE_REVIEW P0 契约：startRun 之后、内层 try 之前抛异常（如 home.chat 的
+  // provider 缺失 IpcErrorThrow）时，外层 catch 的 endRun('error') 必须能把 run 行
+  // 从 'running' 收口为 'error'——这是「run 行不永久卡 running」的存储层前提。
+  // 控制流保证（外层 try 包住 startRun 之后全部代码）在 home.ts/orchestrate.ts，
+  // 此处锁定存储层在「startRun 后立即异常 → 补一个 endRun」模式下行为正确。
+  it('startRun 后立即异常 → 外层 catch 调 endRun：run 行收口为 error 而非卡 running', () => {
+    startRun({ id: 'r1', sessionId: 's1', entry: 'home' })
+    expect(getRun('r1')?.status).toBe('running')
+    // 模拟 startRun 之后、内层 try 之前抛异常，外层 catch 的收口调用
+    try {
+      throw new Error('pre_inner_try boom')
+    } catch {
+      endRun('r1', 'error')
+    }
+    const done = getRun('r1')
+    expect(done?.status).toBe('error')
+    expect(done?.ended_at).toBeTypeOf('number')
+  })
 })
 
 describe('appendRunEvent', () => {
