@@ -33,14 +33,8 @@ extraResources:
 mac:
   category: public.app-category.productivity
   icon: build/icons/logo.icns
-  # 代码签名 + 公证：按 CI secrets 自动启用（electron-builder 26 标准 env 检测）。
-  # 需在仓库 Secrets 配置以下 5 项，缺一不可（缺少证书时保持未签名构建，不报错）：
-  #   CSC_LINK                    Developer ID Application 证书导出的 .p12 的 base64
-  #   CSC_KEY_PASSWORD            .p12 的导出密码
-  #   APPLE_ID                    开发者 Apple ID（邮箱）
-  #   APPLE_APP_SPECIFIC_PASSWORD 专用密码（appleid.apple.com 生成）
-  #   APPLE_TEAM_ID               团队 ID（开发者后台获取）
-  # 仅设置 APPLE_* 而缺少 CSC_LINK 会导致 mac 构建签名失败，务必五者同时配置。
+  # 代码签名/公证：当前未启用。需付费 Apple Developer Program（Developer ID 证书）方可，
+  # 故 mac dmg 仍为未签名——Gatekeeper 会拦截「未知开发者」，属已知分发限制，安装时需手动放行。
   target:
     - target: dmg
       arch:

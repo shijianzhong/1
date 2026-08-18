@@ -48,12 +48,8 @@ jobs:
         run: npx electron-builder --publish never
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS 代码签名 + 公证（缺省为空 → 未签名构建，不报错）。五者须同时配置。
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # 注：macOS/Windows 代码签名均需付费证书，当前未启用；构建保持未签名。
+          # 后续若接入，在此注入对应 secrets 即可（mac: CSC_LINK/CSC_KEY_PASSWORD/APPLE_*；win: 证书）。
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
