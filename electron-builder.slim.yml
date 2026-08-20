@@ -1,0 +1,61 @@
+# Slim 安装包（默认下载）：不含模型权重，首调 embed 时从 hf-mirror 下载到 userData/kb-models。
+# 与 electron-builder.full.yml 的唯一差异：无 build/kb-models extraResources（模型由运行时下载）。
+# 详见 docs/VECTOR_KB_PLAN.md §三 + CLAUDE.md 决策（两种安装包）。
+appId: com.shijianzhong.one
+productName: One
+publish:
+  provider: github
+  owner: shijianzhong
+  repo: '1'
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+extraResources:
+  # OpenCLI 随包分发（vendor:opencli 生成）
+  - from: vendor/opencli/node_modules
+    to: opencli/node_modules
+  - from: build/icons/trayTemplate.png
+    to: trayTemplate.png
+  - from: build/icons/tray.png
+    to: trayColor.png
+  # 内置资产（docs/CONTENT_PIPELINE_PLAN.md §2.5）
+  - from: build/builtin
+    to: builtin
+  # —— 向量知识库 worker 运行时（docs/VECTOR_KB_PLAN.md §三）——
+  # worker-embed.cjs：推理子进程脚本（child_process spawn，ELECTRON_RUN_AS_NODE）。
+  # 用绝对路径 require（打包后 cwd 变化，不靠 node 默认解析），故各模块整包随包 ship。
+  - from: src/main/vector/worker-embed.cjs
+    to: vector/worker-embed.cjs
+  # transformers.js v4 web 构建（绕 package.json exports 的 node 条件，用绝对路径 require）
+  - from: node_modules/@huggingface/transformers/dist/transformers.web.js
+    to: vector/node_modules/@huggingface/transformers/dist/transformers.web.js
+  # onnxruntime-web（WASM backend，dist/ort.node.min.js + *.wasm；零原生编译，全平台一致）
+  - from: node_modules/onnxruntime-web
+    to: vector/node_modules/onnxruntime-web
+  # onnxruntime-common（onnxruntime-web 的 peer，worker 显式 require）
+  - from: node_modules/onnxruntime-common
+    to: vector/node_modules/onnxruntime-common
+  # transformers 依赖（tokenizer/jinja）
+  - from: node_modules/@huggingface/jinja
+    to: vector/node_modules/@huggingface/jinja
+  - from: node_modules/@huggingface/tokenizers
+    to: vector/node_modules/@huggingface/tokenizers
+mac:
+  category: public.app-category.productivity
+  icon: build/icons/logo.icns
+  # 代码签名/公证未启用（需付费 Apple Developer Program）；dmg 未签名，Gatekeeper 手动放行。
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+win:
+  icon: build/icons/logo.ico
+  target:
+    - nsis
+linux:
+  icon: build/icons/logo_trans.png
+  target:
+    - AppImage

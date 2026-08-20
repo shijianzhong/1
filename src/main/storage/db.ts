@@ -11,10 +11,20 @@ import {
   getStoredSkillsFtsSignature,
   reindexSkillsFts,
 } from './skills/fts'
+// 同上：reindexKbFts 仅在 getDb() 函数体内调用，vector/kb-fts 此时已完成初始化
+import { countKbChunks, countKbFtsRows, reindexKbFts } from '../vector/kb-fts'
 
 // —— SQLite 连接 + WAL + schema 迁移 + 启动校验 + 损坏恢复（§11.4 + §5.2.3）——
 
 let dbInstance: Database.Database | null = null
+
+/** 写 app_meta（v6 表，通用 key-value）；KB vec_dim 漂移标志 / skills 签名等共用 */
+function setAppMeta(key: string, value: string): void {
+  if (!dbInstance) return
+  dbInstance
+    .prepare('INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)')
+    .run(key, value)
+}
 
 /** 迁移版本号（每次 schema 变更加一条 migration） */
 const MIGRATIONS: Array<{ version: number; sql: string }> = [
@@ -218,6 +228,51 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_run_events_type ON run_events(run_id, type);
     `,
   },
+  {
+    // v10：向量化知识库（docs/VECTOR_KB_PLAN.md §四）——文档分块 + 向量 + 词法 FTS。
+    //   kb_chunks：分块主表，vec BLOB 可 NULL（模型未就绪/离线时新块照常落库只走词法，
+    //              模型就绪后 kb:reindex 补齐向量——配合 §二降级链，功能永不因模型下不来瘫痪）。
+    //              vec_dim 记维度，换 provider/模型维度变时启动自检拦漂移 → 强制 reindex。
+    //              UNIQUE(doc_id, chunk_idx) 防同文档重摄取重复块。
+    //   kb_chunks_fts：词法预过滤（hybrid 用），双列对齐 skills_fts（content_tokenized 喂 MATCH +
+    //              content_raw UNINDEXED 给 LIKE 兜底），tokenizeForFts 中文单字+bigram 预分词。
+    //   kb_docs：文档元信息，embedding_provider 记录用哪个 provider 产向量（dirty 重嵌用）。
+    version: 10,
+    sql: `
+      CREATE TABLE IF NOT EXISTS kb_chunks (
+        id          TEXT PRIMARY KEY,
+        kb_id       TEXT NOT NULL,
+        doc_id      TEXT NOT NULL,
+        chunk_idx   INTEGER NOT NULL,
+        content     TEXT NOT NULL,
+        vec         BLOB,
+        vec_dim     INTEGER,
+        meta        TEXT,
+        created_at  INTEGER NOT NULL,
+        UNIQUE(doc_id, chunk_idx)
+      );
+      CREATE INDEX IF NOT EXISTS idx_kb_chunks_kb ON kb_chunks(kb_id);
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
+        chunk_id UNINDEXED,
+        content_tokenized,
+        content_raw UNINDEXED,
+        doc_id UNINDEXED,
+        tokenize='unicode61'
+      );
+
+      CREATE TABLE IF NOT EXISTS kb_docs (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        source_path TEXT,
+        source_kind TEXT,
+        chunks INTEGER NOT NULL DEFAULT 0,
+        embedding_provider TEXT,
+        created_at INTEGER,
+        updated_at INTEGER
+      );
+    `,
+  },
 ]
 
 /**
@@ -363,6 +418,42 @@ export function getDb(): Database.Database {
     }
   } catch (error) {
     logger.warn('[db] Skill FTS 自检失败（非致命）', error)
+  }
+
+  // KB FTS 索引一致性自检（镜像 L3/Skill FTS 自检）：行数不一致则重建一次（幂等）
+  try {
+    const chunkCount = countKbChunks()
+    const kbFts = countKbFtsRows()
+    if (chunkCount !== kbFts) {
+      reindexKbFts()
+      logger.info(`[db] KB FTS 索引重建（chunks=${chunkCount} fts=${kbFts}）`)
+    }
+  } catch (error) {
+    logger.warn('[db] KB FTS 自检失败（非致命）', error)
+  }
+
+  // vec_dim 漂移自检（§九风险3）：存量向量维度 ≠ 当前 provider 维度 → 标记需重嵌。
+  // 不在此触发重嵌（重嵌是分钟级后台任务，走 kb:reindex），仅写 app_meta 标志 + warn。
+  // BGE_M3_DIM 与 embed.ts 同源（运行时 import，避免此处硬编码维度导致双源漂移）。
+  try {
+    const driftRow = db
+      .prepare(
+        'SELECT DISTINCT vec_dim FROM kb_chunks WHERE vec IS NOT NULL AND vec_dim IS NOT NULL',
+      )
+      .all() as { vec_dim: number }[]
+    const dims = driftRow.map((r) => r.vec_dim)
+    if (dims.length > 1) {
+      // 库内同时存在多种维度 → 必然漂移（换 provider 未重嵌）
+      logger.warn(`[db] KB 向量维度不一致：${dims.join(',')}，需 kb:reindex 重嵌`)
+      setAppMeta('kb_reindex_required', '1')
+    } else if (dims.length === 1) {
+      // 单一维度但与预期不符 → 运行时 embed.ts 比对会判定（此处不硬编码预期维度，
+      // 由 embed.ts 的 dimension() 与库内 vec_dim 比对触发 reindex 标志）
+      // 此处仅记录库内现有维度，供 embed.ts 启动比对
+      setAppMeta('kb_vec_dim', String(dims[0]))
+    }
+  } catch (error) {
+    logger.warn('[db] KB vec_dim 漂移自检失败（非致命）', error)
   }
 
   startPeriodicBackup()

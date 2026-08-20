@@ -88,6 +88,22 @@ export function isIpcFailure<T>(value: IpcResult<T>): value is IpcFailure {
   return typeof value === 'object' && value !== null && value.ok === false
 }
 
+/**
+ * 向量化知识库就绪态（docs/VECTOR_KB_PLAN.md §二降级链）。
+ * kb:status IPC 返回；渲染层据此展示 embedding 状态 + 下载进度。
+ */
+export interface KbStatus {
+  embedding: 'ready' | 'downloading' | 'missing' | 'failed' | 'config-error'
+  /** 当前 provider 的向量维度（默认 multilingual-e5-small=384）；未就绪为 null */
+  dimension: number | null
+  /** 生效的 provider：本地模型 / 远程 API / 无（纯词法兜底） */
+  provider: 'local' | 'remote' | 'none'
+  /** 已入库 chunk 数（含 vec=NULL 的离线块） */
+  chunkCount: number
+  /** 模型存储目录（userData/kb-models） */
+  modelDir: string
+}
+
 export const DEFAULT_THEME: ThemeConfig = {
   preset: 'pure-white',
   mode: 'system',

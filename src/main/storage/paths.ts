@@ -11,6 +11,7 @@ const DB_BACKUP_FILE = 'one.db.bak'
 const CONFIG_DIR = 'config'
 const DRAFTS_DIR = 'drafts'
 const BG_DIR = 'bg'
+const KB_MODEL_DIR = 'kb-models'
 
 export function getUserDataDir(): string {
   // vitest / 纯 Node 环境（无 Electron app）回退到 /tmp
@@ -79,6 +80,14 @@ export function getBackgroundDir(): string {
   return join(getUserDataDir(), BG_DIR)
 }
 
+/**
+ * 向量化知识库模型存储目录（docs/VECTOR_KB_PLAN.md §二）。
+ * 运行时下载或 full 包首启从 resources 复制到此（userData/kb-models）。
+ */
+export function getKbModelDir(): string {
+  return join(getUserDataDir(), KB_MODEL_DIR)
+}
+
 /** registry 下载缓存（index 持久缓存 + skill zip 临时缓存） */
 export function getRegistryCacheDir(): string {
   return join(getUserDataDir(), 'cache', 'registry')
@@ -138,4 +147,39 @@ export function getSampleArticlesPath(): string {
 /** 用户可写层：模板目录（userData/config/templates，首启复制 builtin 基线进此） */
 export function getTemplatesPath(): string {
   return join(getConfigDir(), 'templates')
+}
+
+/**
+ * 向量化推理 worker 脚本路径（docs/VECTOR_KB_PLAN.md §二，铁律23 同类）。
+ * 随包 extraResources 分发（vector/worker-embed.cjs），主进程用 ELECTRON_RUN_AS_NODE
+ * 拉起独立 node 子进程跑 transformers.js，不在主线程同步 encode。
+ */
+export function getKbWorkerScriptPath(): string {
+  // 开发：源码 src/main/vector/worker-embed.cjs（经 electron-vite 后在 out/main 旁）
+  const devPath = join(__dirname, '..', '..', 'src', 'main', 'vector', 'worker-embed.cjs')
+  try {
+    if (app.isPackaged) {
+      const packaged = join(process.resourcesPath, 'vector', 'worker-embed.cjs')
+      return existsSync(packaged) ? packaged : devPath
+    }
+  } catch {
+    // vitest / 纯 Node（无 Electron app）：回退源码路径
+  }
+  return devPath
+}
+
+/**
+ * 向量化推理 worker 的 node_modules 解析目录（packaged 下 worker require 的依赖根）。
+ * 随包 extraResources 分发为 vector/node_modules（@xenova/transformers + onnxruntime-web）。
+ */
+export function getKbWorkerModulesDir(): string {
+  const devPath = join(__dirname, '..', '..', '..', 'node_modules')
+  try {
+    if (app.isPackaged) {
+      return join(process.resourcesPath, 'vector', 'node_modules')
+    }
+  } catch {
+    // vitest / 纯 Node
+  }
+  return devPath
 }

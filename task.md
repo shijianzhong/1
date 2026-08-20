@@ -187,6 +187,15 @@
   - `skills/provider.ts`：`SkillContextProvider.beforeRun`（<skill> XML 块 24000 限长 + scripts 清单行 + `【输出纪律】`discipline 段，三处调用点统一收口：编辑器编排 / 首页主 Agent / **首页组队图节点（此前完全没注入 skill，顺带补齐 outputConstraints 注入对齐）**）；`afterRun` 运行结束审计（orchestrate/home 两侧 finally 统一调）
   - `tools/builtin/skillScript.ts`：`skill_run_script` 全局工具——按 id/name 解析技能 → 路径安全（拒绝对路径/`..` 穿越，resolveScriptsDir 向上定位 scripts/ 祖先）→ 解释器路由（.py→python3 / .sh→bash / .js→ELECTRON_RUN_AS_NODE）→ **async spawn**（铁律23：Promise 化 + 60s SIGKILL + AbortSignal 联动 + stdout 256KB 上限 + stderr 尾 4K + 16K 输出截断，纪律复用 opencli_run）；cwd=技能根目录可相对读 resources/
   - 旧 `orchestrator/home.ts buildSkillBlocks` 删除；provider.test.ts 12 例 + skillScript.test.ts 7 例；typecheck + 256 测试全绿
+- [x] 7.5 向量知识库 P0 地基（[`docs/VECTOR_KB_PLAN.md`](./docs/VECTOR_KB_PLAN.md) P0）✅ 2026-08-19
+  - **决策**：推理 worker = `child_process` + `ELECTRON_RUN_AS_NODE`（铁律23 同类，非 worker_threads）；模型分发 = full（随包带模型）+ slim（运行时下载 hf-mirror）两种包；backend = `onnxruntime-web` (WASM) 全平台通用（不用 `onnxruntime-node`——npm 包只 ship darwin/arm64，Intel Mac 无二进制；WASM 零原生编译零 electron-rebuild，darwin/x64 实测通过）
+  - **transformers.js v4 WASM-in-Node 配方**（实测验证，存记忆 `[[transformers-v4-wasm-node-recipe]]`）：`require(onnxruntime-web)` 设 wasmPaths+proxy=false → `globalThis[Symbol.for('onnxruntime')]=ort` 注入 → `require(transformers.web.js 绝对路径)` 绕 exports node 条件 → `useCustomCache=true` + customCache match+put 喂模型到磁盘 → `AutoTokenizer` + 手动 `InferenceSession` + mean-pool + L2 norm（绕 pipeline device-dispatch 空支持 devices）
+  - **schema**：db.ts v10 migration（`kb_chunks` 含 vec BLOB NULL-able + vec_dim + meta + UNIQUE(doc_id,chunk_idx) / `kb_chunks_fts` 双列 content_tokenized+content_raw UNINDEXED / `kb_docs`）+ 启动自检（FTS 行数一致性 → reindexKbFts；vec_dim 多值/单值漂移 → app_meta `kb_reindex_required=1`）
+  - **核心模块**（`src/main/vector/`）：`embed.ts`（EmbeddingProvider 接口 + LocalProvider facade + `getKbStatus` + `initKbStatus` + `checkVecDimDrift`）/ `worker-embed.cjs`（推理 worker，配方编码，stdio JSON 行协议，pending 计数防 EOF 竞态）/ `worker-client.ts`（spawn 管道，复刻 skillScript 纪律 + 持久单 worker + 64MB stdout cap + 120s 超时 + 失败返 null 降级不抛）/ `store.ts`（vecToBlob/blobToVec byteOffset 安全 + insertKbChunks 双写事务 + 幂等重摄取）/ `flat-index.ts`（Float32Array 拼接 cosine 点积 + HARD_CAP 20000 + 超 cap 分片/降级 + invalidate 重载）/ `kb-fts.ts`（reindexKbFts 镜像 reindexL3Fts）/ `rrf.ts`（倒数排名融合 k=60，NULL-vec 块单路仍参与排名）
+  - **IPC 接线**：`ipc/knowledge.ts`（`kb:status` → `getKbStatus`）+ ipc/index.ts 注册 + preload OneApi `kb.status` 白名单 + index.ts `void initKbStatus()`（whenReady 后非阻塞）+ `before-quit` `terminateEmbedWorker()`（closeDb 前 best-effort）
+  - **打包**：`electron-builder.slim.yml`（worker 脚本 + onnxruntime-web/common + transformers.web.js + jinja/tokenizers 随包 ship，绝对路径 require）+ `electron-builder.full.yml`（+ build/kb-models 预置模型）+ `scripts/fetch-kb-model.mjs`（hf-mirror 下载量化 onnx+tokenizer，幂等缓存）+ package.json `package:full`/`package:slim`/`kb:spike` 脚本
+  - **测试**：v10.test.ts（建表+UNIQUE+双列 FTS+vec NULL）/ store.test.ts（BLOB 往返含 byteOffset + 双写 FTS MATCH + 幂等重摄取 + vec=null）/ flat-index.test.ts（Top1 score≈1.0 + 排序 + 空库 + 维度漂移 degraded + 分片注入测真实 searchSharded + invalidate）/ rrf.test.ts（两路融合+去重+k=60+NULL 公平+topN）—— **4 文件 23 例全绿**，全套 627 测试绿，typecheck 绿
+  - **中文质量 spike**（`scripts/kb-spike.mjs`）：可跑骨架 ✅；22 query×66 skill 语料实测——`all-MiniLM-L6-v2`（英文）0%（预期，证模型选型关键），`multilingual-e5-small`（中文，query:/passage: 非对称前缀）Primary Top1 36.4% / Relaxed Top3 50%，**低于 FTS 词法 77.3%/90.9%**——证 skill 匹配场景 FTS 精确词命中仍胜向量，向量应作 RRF 混合补强而非替代（P2 hybrid 决策依据）。P1 出全量结果 + 质量判定
 
 ---
 
@@ -266,6 +275,7 @@
 | ~~P1~~ | ~~自由召唤协议批次~~ ✅ 2026-08-08（`@[kind:id]` token；能力真子图 `embedCapabilityGraph`；HITL `rejectUserInputsForRun`；`allowedToolNames` 白名单字段+运行时过滤；路由指令强化） | docs/PROJECT_REVIEW.md |
 | P2 | 更多 builtin 工具 | 7.1 |
 | ~~P3~~ | ~~AbortController 模块级单例~~ ✅ 2026-08-01（入口检测已有运行自动取消旧运行 + finally 只清自己句柄，home/orchestrate 双侧） | ipc/home / orchestrate |
+| ~~P2~~ | ~~L3 向量检索后置~~ ✅ P0 地基 2026-08-19（[`docs/VECTOR_KB_PLAN.md`](./docs/VECTOR_KB_PLAN.md) P0） | L3 向量 |
 | P3 | win 包 / 编排路径记忆注入 / tasks 落盘 | M6 / M3 尾巴 |
 
 > **2026-08-01 review 误报排除清单（已核实，勿再报）**：① JSON 配置（models/providers/persona）与 vault「读-改-写竞态」——读写全同步（`readFileSync`/`writeFileSync`），事件循环天然原子，加锁为空操作；② `selectSession(result.runId)`——`home:chat` 返回的 runId 按构造即 sessionId；③ `orch_event.done` 与 `message_stop` 间隙——主进程全路径（正常/异常/取消）均配对发送 message_stop（reducer 侧已补 `done` 定格流式态作纵深防御 ✅ 2026-08-01）；④ Magentic 直接 throw——MVP 既定降级设计。

@@ -25,6 +25,7 @@ import { registerNativeHandlers } from './native'
 import { registerProvidersHandlers } from './providers'
 import { registerRegistryHandlers } from './registry'
 import { registerMcpHandlers } from './mcp'
+import { registerKnowledgeHandlers } from './knowledge'
 import { registerTopicsHandlers } from './topics'
 import { registerReviewsHandlers } from './reviews'
 import { registerRunsHandlers } from './runs'
@@ -274,6 +275,7 @@ export function registerIpcHandlers(): void {
   registerProvidersHandlers()
   registerRegistryHandlers()
   registerMcpHandlers()
+  registerKnowledgeHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
   registerUpdaterHandlers()
   // —— 内容生产管线资产（docs/CONTENT_PIPELINE_PLAN.md §2.3）——

@@ -28,6 +28,8 @@ import { registerReviewArchiveTools } from './tools/builtin/reviewArchive'
 import { registerAiCavityTools } from './tools/builtin/aiCavity'
 import { registerAssetCrudTools } from './tools/builtin/assetCrud'
 import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
+import { initKbStatus } from './vector/embed'
+import { terminateEmbedWorker } from './vector/worker-client'
 import { createTray, destroyTray } from './tray'
 import {
   registerGlobalShortcut,
@@ -170,6 +172,8 @@ if (!gotLock) {
     startupMark('main:tools-registered')
     // MCP 服务器异步自动连接（不阻塞启动）
     void initMcpServers()
+    // KB 向量库自检：flatIndex 懒加载 + vec_dim 漂移检测（非阻塞，失败降级纯词法）
+    void initKbStatus()
     registerIpcHandlers()
     startupMark('main:ipc-registered')
     createMainWindow()
@@ -230,6 +234,7 @@ if (!gotLock) {
     destroyTray()
     stopAutoUpdater()
     void disconnectAllMcp() // 断开所有 MCP 服务器连接
+    terminateEmbedWorker() // 终止 embed worker 子进程（best-effort，§worker-client:197）
     closeDb()
   })
 }

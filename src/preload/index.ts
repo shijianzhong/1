@@ -4,6 +4,7 @@ import type {
   Attachment,
   Capability,
   IpcResult,
+  KbStatus,
   LLMConfig,
   McpServerConfig,
   McpServerStatus,
@@ -230,6 +231,10 @@ export interface OneApi {
     /** 更新已下载完成，退出后自动安装 */
     onUpdateDownloaded: (cb: (info: { version: string }) => void) => () => void
   }
+  kb: {
+    /** 知识库就绪态（模型在否 + chunk 计数，docs/VECTOR_KB_PLAN.md §二） */
+    status: () => Promise<IpcResult<KbStatus>>
+  }
 }
 
 /** 启动早期缓存 crashRecovery，避免 React 订阅前事件丢失 */
@@ -420,6 +425,9 @@ const api: OneApi = {
       ipcRenderer.on('updater:updateDownloaded', handler)
       return () => ipcRenderer.off('updater:updateDownloaded', handler)
     },
+  },
+  kb: {
+    status: () => ipcRenderer.invoke('kb:status'),
   },
 }
 
