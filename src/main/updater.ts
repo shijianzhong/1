@@ -1,7 +1,9 @@
 import pkg from 'electron-updater'
 import { app, BrowserWindow } from 'electron'
+import { existsSync } from 'node:fs'
 import { logger } from './logger'
 import { isBenignNoReleaseError } from './updater-errors'
+import { getBuiltinKbModelDir } from './storage/paths'
 import { withHandler } from './ipc/handler'
 
 const { autoUpdater } = pkg
@@ -22,6 +24,21 @@ let timer: NodeJS.Timeout | null = null
 let initialTimer: NodeJS.Timeout | null = null
 /** 同一次进程内「无生产 release」只记一次，避免 4h 定时重复刷 */
 let loggedNoRelease = false
+
+/**
+ * 判定当前是否为 full 安装包（随包内置 kb-models 权重，离线即装即用）。
+ * 复用 paths.getBuiltinKbModelDir 的单一事实源：打包态下它返回 process.resourcesPath/kb-models，
+ * 该目录仅 full 包存在（slim 包回退到开发态 devPath，打包后不存在）。
+ * dev / 未打包一律 false，避免开发环境误判。
+ */
+export function isFullBuild(): boolean {
+  if (!app.isPackaged) return false
+  try {
+    return existsSync(getBuiltinKbModelDir())
+  } catch {
+    return false
+  }
+}
 
 function logUpdaterFailure(err: unknown, context: string): void {
   if (isBenignNoReleaseError(err)) {
@@ -46,6 +63,14 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null): voi
   // 统一走下面的 error 事件 + checkForUpdates catch。
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+
+  // full 包（随包内置 kb-models 权重）→ 走独立 full 自动更新通道，保持离线即装即用，
+  // 避免回落默认通道更新成 slim 后丢失内置模型（air-gapped 用户也无法回源下载）。
+  // slim 包不设置 channel，沿用默认通道（electron-builder 生成的 latest-*.yml）。
+  if (isFullBuild()) {
+    autoUpdater.channel = 'full'
+    logger.info('[updater] full 包：自动更新走 full 通道')
+  }
 
   autoUpdater.on('update-available', (info) => {
     logger.info('[updater] 发现新版本', info.version)

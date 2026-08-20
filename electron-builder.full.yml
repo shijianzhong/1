@@ -7,8 +7,8 @@ productName: One
 # 产物名带 -full 后缀，避免与 slim 包同名冲突（同 tag 同平台 release 内共存）。
 artifactName: ${productName}-${version}-${os}-${arch}-full.${ext}
 # 独立 full 通道：生成 latest-full-*.yml，绝不覆盖 slim 的 latest-*.yml（auto-updater 默认通道）。
-# 注：full 客户端目前不强制走 full 通道（air-gapped 本就无法访问 GitHub；在线 full 用户回落默认通道更新到 slim 即可，
-# 仅多下一次 ~22MB 模型）。如需 full 客户端也走 full 通道自动更新，再在 app 内按 resources 是否含 kb-models 设 autoUpdater.channel='full'。
+# app 内已接线：updater.ts 的 isFullBuild() 检测到随包内置 kb-models 时设 autoUpdater.channel='full'，
+# 故 full 客户端自动更新也走本通道，保持离线即装即用；slim 客户端回落默认通道（latest-*.yml）。
 publish:
   provider: github
   owner: shijianzhong
