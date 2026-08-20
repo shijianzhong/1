@@ -38,6 +38,8 @@ export interface KbDocRecord {
   sourceKind?: string | null
   chunks?: number
   embeddingProvider?: string | null
+  /** 原文存档（v11 列）：换分块策略/模型可重切不丢文档（kb_chunks.content 是片段拿不回原文） */
+  content?: string | null
   createdAt?: number
   updatedAt?: number
 }
@@ -74,7 +76,7 @@ export function blobToVec(blob: Uint8Array, dim?: number): Float32Array {
   )
 }
 
-/** kb_chunks 写入 + kb_chunks_fts 双写 + kb_docs 计数更新 */
+/** kb_chunks 写入 + kb_chunks_fts 双写（不含 kb_docs——由调用方 upsertKbDoc 写元信息） */
 export function insertKbChunks(records: KbChunkRecord[]): string[] {
   const db = getDb()
   const ids: string[] = []
@@ -90,13 +92,6 @@ export function insertKbChunks(records: KbChunkRecord[]): string[] {
   const delChunk = db.prepare('DELETE FROM kb_chunks WHERE doc_id = ?')
   const delFts = db.prepare(
     "DELETE FROM kb_chunks_fts WHERE doc_id = ?",
-  )
-  const upsertDoc = db.prepare(
-    `INSERT INTO kb_docs (id, title, source_path, source_kind, chunks, embedding_provider, created_at, updated_at)
-     VALUES (@id, @title, @sourcePath, @sourceKind, @chunks, @embeddingProvider, @createdAt, @updatedAt)
-     ON CONFLICT(id) DO UPDATE SET
-       title=@title, source_path=@sourcePath, source_kind=@sourceKind,
-       chunks=@chunks, embedding_provider=@embeddingProvider, updated_at=@updatedAt`,
   )
   const now = Date.now()
   // 按 doc_id 分组以便删旧 + 计数
@@ -136,16 +131,17 @@ export function insertKbChunks(records: KbChunkRecord[]): string[] {
   return ids
 }
 
-/** upsert 单个 kb_doc 元信息（chunks 计数由 insertKbChunks 的 ON CONFLICT 维护） */
+/** upsert 单个 kb_doc 元信息（含原文存档 content 列；chunks 计数由调用方算好传入） */
 export function upsertKbDoc(doc: KbDocRecord): void {
   const db = getDb()
   const now = doc.createdAt ?? Date.now()
   db.prepare(
-    `INSERT INTO kb_docs (id, title, source_path, source_kind, chunks, embedding_provider, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO kb_docs (id, title, source_path, source_kind, chunks, embedding_provider, content, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        title=excluded.title, source_path=excluded.source_path, source_kind=excluded.source_kind,
-       chunks=excluded.chunks, embedding_provider=excluded.embedding_provider, updated_at=excluded.updated_at`,
+       chunks=excluded.chunks, embedding_provider=excluded.embedding_provider,
+       content=excluded.content, updated_at=excluded.updated_at`,
   ).run(
     doc.id,
     doc.title,
@@ -153,6 +149,7 @@ export function upsertKbDoc(doc: KbDocRecord): void {
     doc.sourceKind ?? null,
     doc.chunks ?? 0,
     doc.embeddingProvider ?? null,
+    doc.content ?? null,
     now,
     doc.updatedAt ?? now,
   )
@@ -240,8 +237,17 @@ export function listNullVecChunkIds(): { id: string; content: string }[] {
     .all() as { id: string; content: string }[]
 }
 
-/** 列出所有 kb_docs */
+/** 列出所有 kb_docs（含原文 content；用于 reindex 重切或导出） */
 export function listKbDocs(): KbDocRecord[] {
+  return getDb()
+    .prepare(
+      'SELECT id, title, source_path as sourcePath, source_kind as sourceKind, chunks, embedding_provider as embeddingProvider, content, created_at as createdAt, updated_at as updatedAt FROM kb_docs ORDER BY updated_at DESC',
+    )
+    .all() as KbDocRecord[]
+}
+
+/** 列出 kb_docs 元信息（不含 content 原文；避免大原文过 IPC 传给前端列表） */
+export function listKbDocsLite(): KbDocRecord[] {
   return getDb()
     .prepare(
       'SELECT id, title, source_path as sourcePath, source_kind as sourceKind, chunks, embedding_provider as embeddingProvider, created_at as createdAt, updated_at as updatedAt FROM kb_docs ORDER BY updated_at DESC',

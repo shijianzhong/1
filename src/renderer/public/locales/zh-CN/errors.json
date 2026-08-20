@@ -93,5 +93,11 @@
   "drafts": {
     "invalid_args": "草稿参数无效",
     "write_failed": "草稿写入失败"
+  },
+  "kb": {
+    "invalid_input": "知识库参数校验失败（标题/内容缺失或格式错误）",
+    "empty_content": "文档内容为空，无法摄取",
+    "not_found": "文档不存在或已被删除",
+    "embed_unavailable": "向量模型未就绪，已降级为纯词法索引（可在设置中下载模型）"
   }
 }

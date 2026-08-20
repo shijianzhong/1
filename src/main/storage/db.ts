@@ -273,6 +273,14 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
       );
     `,
   },
+  {
+    // v11：kb_docs 加原文存档列（docs/VECTOR_KB_PLAN.md §四/P1）。
+    //   content TEXT 存完整原文——kb_chunks.content 是分块后片段，拿不回原文；
+    //   换分块策略（maxTokens/overlap 改）或换模型重切时，无需重新上传即可 reindex。
+    //   SQLite 单列 ALTER TABLE（幂等性靠 migration version 跳过，不重建表）。
+    version: 11,
+    sql: `ALTER TABLE kb_docs ADD COLUMN content TEXT;`,
+  },
 ]
 
 /**

@@ -11,7 +11,7 @@ vi.mock('../storage/db', () => ({
   getDb: () => memDb,
 }))
 
-const { insertKbChunks, getKbChunk, blobToVec, vecToBlob, deleteKbDoc } = await import(
+const { insertKbChunks, getKbChunk, blobToVec, vecToBlob, deleteKbDoc, upsertKbDoc, listKbDocsLite } = await import(
   './store'
 )
 
@@ -45,6 +45,7 @@ function freshDb(): Database.Database {
       source_kind TEXT,
       chunks INTEGER NOT NULL DEFAULT 0,
       embedding_provider TEXT,
+      content TEXT,
       created_at INTEGER,
       updated_at INTEGER
     );
@@ -163,5 +164,37 @@ describe('insertKbChunks 双写 + getKbChunk', () => {
     deleteKbDoc('doc1')
     expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_chunks').get() as { c: number }).c).toBe(0)
     expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_chunks_fts').get() as { c: number }).c).toBe(0)
+  })
+})
+
+describe('upsertKbDoc 原文存档 + listKbDocsLite', () => {
+  it('upsert 写 content 列；listKbDocsLite 不返回 content', () => {
+    upsertKbDoc({
+      id: 'doc1',
+      title: '测试文档',
+      content: '# 标题\n正文内容',
+      sourceKind: 'md',
+      chunks: 3,
+      embeddingProvider: 'Xenova/multilingual-e5-small',
+    })
+    const row = memDb.prepare('SELECT content FROM kb_docs WHERE id=?').get('doc1') as { content: string }
+    expect(row.content).toBe('# 标题\n正文内容')
+
+    const lite = listKbDocsLite()
+    expect(lite.length).toBe(1)
+    expect(lite[0].id).toBe('doc1')
+    expect(lite[0].title).toBe('测试文档')
+    expect(lite[0].chunks).toBe(3)
+    // lite 不含 content（undefined）
+    expect(lite[0].content).toBeUndefined()
+  })
+
+  it('同 doc_id 二次 upsert 覆盖 content（ON CONFLICT UPDATE）', () => {
+    upsertKbDoc({ id: 'doc1', title: 'v1', content: '原文v1' })
+    upsertKbDoc({ id: 'doc1', title: 'v2', content: '原文v2', chunks: 2 })
+    const row = memDb.prepare('SELECT title, content, chunks FROM kb_docs WHERE id=?').get('doc1') as { title: string; content: string; chunks: number }
+    expect(row.title).toBe('v2')
+    expect(row.content).toBe('原文v2')
+    expect(row.chunks).toBe(2)
   })
 })

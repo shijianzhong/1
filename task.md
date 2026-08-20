@@ -196,6 +196,15 @@
   - **打包**：`electron-builder.slim.yml`（worker 脚本 + onnxruntime-web/common + transformers.web.js + jinja/tokenizers 随包 ship，绝对路径 require）+ `electron-builder.full.yml`（+ build/kb-models 预置模型）+ `scripts/fetch-kb-model.mjs`（hf-mirror 下载量化 onnx+tokenizer，幂等缓存）+ package.json `package:full`/`package:slim`/`kb:spike` 脚本
   - **测试**：v10.test.ts（建表+UNIQUE+双列 FTS+vec NULL）/ store.test.ts（BLOB 往返含 byteOffset + 双写 FTS MATCH + 幂等重摄取 + vec=null）/ flat-index.test.ts（Top1 score≈1.0 + 排序 + 空库 + 维度漂移 degraded + 分片注入测真实 searchSharded + invalidate）/ rrf.test.ts（两路融合+去重+k=60+NULL 公平+topN）—— **4 文件 23 例全绿**，全套 627 测试绿，typecheck 绿
   - **中文质量 spike**（`scripts/kb-spike.mjs`）：可跑骨架 ✅；22 query×66 skill 语料实测——`all-MiniLM-L6-v2`（英文）0%（预期，证模型选型关键），`multilingual-e5-small`（中文，query:/passage: 非对称前缀）Primary Top1 36.4% / Relaxed Top3 50%，**低于 FTS 词法 77.3%/90.9%**——证 skill 匹配场景 FTS 精确词命中仍胜向量，向量应作 RRF 混合补强而非替代（P2 hybrid 决策依据）。P1 出全量结果 + 质量判定
+- [x] 7.5 向量知识库 P1 摄取管线（[`docs/VECTOR_KB_PLAN.md`](./docs/VECTOR_KB_PLAN.md) §五/§七/§八 P1）✅ 2026-08-20
+  - **schema**：db.ts v11 migration——`kb_docs` 加 `content TEXT` 列存完整原文（换分块策略/模型可重切不丢文档；`kb_chunks.content` 是片段拿不回原文）
+  - **分块**（`pipeline.ts` `chunkDocument`）：YAML frontmatter 剥离（解析 title/tags 进 meta，不入分块正文）→ 任意 `#` 标题切段（sectionTitle 记最近标题，fence 内的 `#` 不当标题）→ 超 512 token 二次切（按行推进 + 单行超长 fallback 按 Unicode 码点切，带 64 overlap 回退）→ code fence 守卫（截断点在 ```/~~~ fence 内则前进到 fence 关闭行，不拦腰截断代码块）→ 空文档早返不写空 doc；token 计数复用 `approxTokenCount`（非 tiktoken）
+  - **摄取**（`pipeline.ts` `ingestDocument`）：chunk → 探 `getLocalProvider().ready()`（不 spawn）→ ready 则 `embed(texts, signal, 'passage')`（e5 非对称 ingestion 传 passage），未就绪全 null 降级（content+FTS 照写，vec=NULL 待 P4 reindex 补齐）→ `insertKbChunks`（chunks+fts 双写+幂等删旧）+ `upsertKbDoc`（含 content 列 + embeddingProvider=KB_MODEL_ID）；docId 传则覆盖重摄取；**绝不抛**（embed 失败 worker-client 已 catch 成 null，分块异常兜底单块整文 meta 标 fallback）
+  - **store.ts 重构**：删 `insertKbChunks` 内 prepared-but-unrun 的 `upsertDoc`（latent inconsistency 消除——chunks+fts 双写职责单一，`kb_docs` 由 pipeline 显式调 `upsertKbDoc` 写）；`KbDocRecord` 加 `content?`；新增 `listKbDocsLite`（不含 content，避免大原文过 IPC）
+  - **IPC**（`ipc/knowledge.ts`）：`kb:add`（Zod 校验 `KbAddSchema`，ZodError 转 `IpcErrorThrow('errors:kb.invalid_input')` 带 i18n key；空 content → `errors:kb.empty_content`）+ `kb:list`（`listKbDocsLite`）+ `kb:remove`（Zod docId → `deleteKbDoc` 级联）；preload `OneApi.kb` 加 `add/list/remove` 白名单；`shared/types.ts` 加 `KbAddInput/KbAddResult/KbDocListItem` 接口 + `normalizeI18nKey` knownNs 加 `'kb'`
+  - **i18n**（铁律 T2）：zh-CN/en `errors.json` 加 `kb` 块（invalid_input/empty_content/not_found/embed_unavailable），主进程错误带 `errors:kb.*` key 渲染层翻译，不硬编码中文
+  - **测试**：pipeline.test.ts 9 例（空文档/frontmatter/多标题/超长二次切/code fence 守卫/ingest ready 两态/空 content 早返/幂等 docId）+ store.test.ts +2（upsertKbDoc content 往返 + listKbDocsLite 不含 content + 二次 upsert 覆盖）—— **76 文件 638 测试全绿**（+11），typecheck 绿，build 绿，preload CJS 产出，v11 migration 真机 smoke（加列+往返+幂等）通过
+  - **不在 P1**（后置）：P2 `kb:search` hybrid（FTS+FlatIndex+RRF）+ `kb_search` 工具 + `/kb` 前端页；P4 reindex 执行（`listNullVecChunkIds` + `updateKbChunkVec` 批量补 + 进度回调）；P5 pdf/docx 摄取（P1 只 md/txt/json 纯文本）；P6 HNSW/sqlite-vec
 
 ---
 

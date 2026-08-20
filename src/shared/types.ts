@@ -54,7 +54,7 @@ export function ok<T>(data: T): IpcSuccess<T> {
  */
 export function normalizeI18nKey(messageKey: string): string {
   if (!messageKey || messageKey.includes(':')) return messageKey
-  const knownNs = ['errors', 'home', 'common', 'editor', 'settings', 'registry', 'mcp']
+  const knownNs = ['errors', 'home', 'common', 'editor', 'settings', 'registry', 'mcp', 'kb']
   for (const ns of knownNs) {
     if (messageKey === ns) return `${ns}:`
     if (messageKey.startsWith(`${ns}.`)) return `${ns}:${messageKey.slice(ns.length + 1)}`
@@ -102,6 +102,38 @@ export interface KbStatus {
   chunkCount: number
   /** 模型存储目录（userData/kb-models） */
   modelDir: string
+}
+
+/** kb:add IPC 入参（docs/VECTOR_KB_PLAN.md §七）——content 字符串为唯一输入，文件读在前端/上游 */
+export interface KbAddInput {
+  title: string
+  content: string
+  /** 来源类型（md/txt/json 等，provenance） */
+  sourceKind?: string
+  /** 来源路径（provenance，可空） */
+  sourcePath?: string
+  /** 传则覆盖重摄取同 doc；不传则生成新 */
+  docId?: string
+}
+
+/** kb:add IPC 返回 */
+export interface KbAddResult {
+  docId: string
+  chunkCount: number
+  embedded: number
+  nullVec: number
+}
+
+/** kb:list IPC 返回项（不含 content 原文，避免大原文过 IPC） */
+export interface KbDocListItem {
+  id: string
+  title: string
+  sourcePath?: string | null
+  sourceKind?: string | null
+  chunks?: number
+  embeddingProvider?: string | null
+  createdAt?: number
+  updatedAt?: number
 }
 
 export const DEFAULT_THEME: ThemeConfig = {

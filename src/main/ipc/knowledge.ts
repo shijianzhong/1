@@ -1,12 +1,58 @@
-// —— 知识库（向量）IPC handlers（docs/VECTOR_KB_PLAN.md §二）——
+// —— 知识库（向量）IPC handlers（docs/VECTOR_KB_PLAN.md §七）——
 //
-// P0 仅 kb:status（探 provider 就绪 + chunk 计数，供前端显示「未就绪/已就绪」）。
-// kb:search/add/remove/list/reindex 后置 P1/P2。镜像 models.ts 的 withHandler 范式。
+// kb:status  —— P0 探 provider 就绪 + chunk 计数（供前端显示）
+// kb:add     —— P1 摄取：分块 → 向量化 → 入库（ingestDocument）
+// kb:list    —— P1 列文档元信息（不含 content 原文，避免大原文过 IPC）
+// kb:remove  —— P1 删文档（级联 chunks + FTS + doc）
+//
+// 入参 Zod 校验：畸形参数在入口处结构化报错。ZodError 原生无 messageKey，此处捕获后
+// 转 IpcErrorThrow('errors:kb.invalid_input') 让渲染层按 i18n key 翻译（铁律 T2：不硬编码中文）。
 
+import { z } from 'zod'
 import { withHandler } from './handler'
+import { IpcErrorThrow } from '@shared/types'
 import { getKbStatus } from '../vector/embed'
-import type { KbStatus } from '@shared/types'
+import { ingestDocument } from '../vector/pipeline'
+import { deleteKbDoc, listKbDocsLite } from '../vector/store'
+import type { KbAddInput, KbAddResult, KbDocListItem, KbStatus } from '@shared/types'
+
+const KbAddSchema = z.object({
+  title: z.string().min(1),
+  content: z.string(),
+  sourceKind: z.string().optional(),
+  sourcePath: z.string().optional(),
+  docId: z.string().optional(),
+})
+
+const DocIdSchema = z.string().min(1)
 
 export function registerKnowledgeHandlers(): void {
   withHandler<KbStatus>('kb:status', () => getKbStatus())
+
+  withHandler<KbAddResult>('kb:add', async (_e, inputRaw) => {
+    let input: KbAddInput
+    try {
+      input = KbAddSchema.parse(inputRaw) as KbAddInput
+    } catch {
+      throw new IpcErrorThrow('errors:kb.invalid_input')
+    }
+    if (!input.content || !input.content.trim()) {
+      throw new IpcErrorThrow('errors:kb.empty_content')
+    }
+    const result = await ingestDocument(input)
+    return result
+  })
+
+  withHandler<KbDocListItem[]>('kb:list', () => listKbDocsLite() as KbDocListItem[])
+
+  withHandler<{ deleted: true }>('kb:remove', (_e, docIdRaw) => {
+    let docId: string
+    try {
+      docId = DocIdSchema.parse(docIdRaw)
+    } catch {
+      throw new IpcErrorThrow('errors:kb.invalid_input')
+    }
+    deleteKbDoc(docId)
+    return { deleted: true as const }
+  })
 }

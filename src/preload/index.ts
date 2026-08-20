@@ -4,6 +4,9 @@ import type {
   Attachment,
   Capability,
   IpcResult,
+  KbAddInput,
+  KbAddResult,
+  KbDocListItem,
   KbStatus,
   LLMConfig,
   McpServerConfig,
@@ -234,6 +237,12 @@ export interface OneApi {
   kb: {
     /** 知识库就绪态（模型在否 + chunk 计数，docs/VECTOR_KB_PLAN.md §二） */
     status: () => Promise<IpcResult<KbStatus>>
+    /** 摄取文档：分块 → 向量化 → 入库（P1，docs/VECTOR_KB_PLAN.md §七） */
+    add: (input: KbAddInput) => Promise<IpcResult<KbAddResult>>
+    /** 列文档元信息（不含原文 content，避免大原文过 IPC） */
+    list: () => Promise<IpcResult<KbDocListItem[]>>
+    /** 删除文档（级联 chunks + FTS + doc） */
+    remove: (docId: string) => Promise<IpcResult<{ deleted: true }>>
   }
 }
 
@@ -428,6 +437,9 @@ const api: OneApi = {
   },
   kb: {
     status: () => ipcRenderer.invoke('kb:status'),
+    add: (input) => ipcRenderer.invoke('kb:add', input),
+    list: () => ipcRenderer.invoke('kb:list'),
+    remove: (docId) => ipcRenderer.invoke('kb:remove', docId),
   },
 }
 
