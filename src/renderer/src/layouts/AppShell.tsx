@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   Bot,
+  BookOpen,
   Boxes,
   Cable,
   Command,
@@ -30,6 +31,7 @@ const navItems = [
   { to: '/registry', key: 'registry', icon: Store },
   { to: '/models', key: 'models', icon: Cable },
   { to: '/mcp', key: 'mcp', icon: Plug },
+  { to: '/kb', key: 'kb', icon: BookOpen },
   { to: '/tasks', key: 'tasks', icon: Command },
   { to: '/runs', key: 'runs', icon: Activity },
   { to: '/settings', key: 'settings', icon: Settings },

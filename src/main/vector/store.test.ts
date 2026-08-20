@@ -11,7 +11,7 @@ vi.mock('../storage/db', () => ({
   getDb: () => memDb,
 }))
 
-const { insertKbChunks, getKbChunk, blobToVec, vecToBlob, deleteKbDoc, upsertKbDoc, listKbDocsLite } = await import(
+const { insertKbChunks, getKbChunk, blobToVec, vecToBlob, deleteKbDoc, upsertKbDoc, listKbDocsLite, fetchKbChunksWithDoc } = await import(
   './store'
 )
 
@@ -196,5 +196,43 @@ describe('upsertKbDoc 原文存档 + listKbDocsLite', () => {
     expect(row.title).toBe('v2')
     expect(row.content).toBe('原文v2')
     expect(row.chunks).toBe(2)
+  })
+})
+
+describe('fetchKbChunksWithDoc JOIN 取标题', () => {
+  it('按 chunk id 批量取 content + meta + 文档标题', () => {
+    upsertKbDoc({ id: 'doc1', title: '测试文档A', sourcePath: '/path/a.md', chunks: 2 })
+    upsertKbDoc({ id: 'doc2', title: '测试文档B', sourcePath: null, chunks: 1 })
+    const ids = insertKbChunks([
+      { kbId: 'kb', docId: 'doc1', chunkIdx: 0, content: 'chunk0', meta: '{"sectionTitle":"第一章"}' },
+      { kbId: 'kb', docId: 'doc1', chunkIdx: 1, content: 'chunk1', meta: null },
+      { kbId: 'kb', docId: 'doc2', chunkIdx: 0, content: 'chunk2', meta: '{"sectionTitle":"第二章"}' },
+    ])
+    const all = fetchKbChunksWithDoc(ids).sort((a, b) => a.docId.localeCompare(b.docId) || a.chunkIdx - b.chunkIdx)
+    expect(all.length).toBe(3)
+    // 第一条 doc1/chunk0 带 title + sourcePath + meta
+    expect(all[0].docId).toBe('doc1')
+    expect(all[0].title).toBe('测试文档A')
+    expect(all[0].sourcePath).toBe('/path/a.md')
+    expect(all[0].content).toBe('chunk0')
+    expect(all[0].meta).toBe('{"sectionTitle":"第一章"}')
+    // 第三条 doc2 带 title + null sourcePath
+    const doc2 = all.find((r) => r.docId === 'doc2')!
+    expect(doc2.title).toBe('测试文档B')
+    expect(doc2.sourcePath).toBeNull()
+  })
+
+  it('空 ids 数组 → 返回 []（不跑空 IN）', () => {
+    insertKbChunks([{ kbId: 'kb', docId: 'doc1', chunkIdx: 0, content: 'x' }])
+    expect(fetchKbChunksWithDoc([])).toEqual([])
+  })
+
+  it('chunk 存在但 doc 被删（JOIN 不命中）→ 不返回该行', () => {
+    // 直插 chunk 不带对应 doc
+    memDb.prepare(
+      'INSERT INTO kb_chunks (id, kb_id, doc_id, chunk_idx, content, created_at) VALUES (?,?,?,?,?,?)',
+    ).run('orphan_c', 'kb', 'orphan_doc', 0, '孤儿块', Date.now())
+    const rows = fetchKbChunksWithDoc(['orphan_c'])
+    expect(rows).toEqual([]) // JOIN kb_docs 找不到 orphan_doc → 排除
   })
 })

@@ -136,6 +136,33 @@ export interface KbDocListItem {
   updatedAt?: number
 }
 
+/** kb_search 工具 / kb:search IPC 单条命中（docs/VECTOR_KB_PLAN.md §六、§七） */
+export interface KbSearchHit {
+  docId: string
+  title: string
+  chunkId: string
+  content: string
+  /** RRF 融合分（Σ 1/(60+rank)，越大越相关） */
+  score: number
+  source?: string | null
+  sectionTitle?: string | null
+}
+
+/** kb:search IPC 入参 */
+export interface KbSearchInput {
+  query: string
+  /** 返回上限，默认 5 */
+  k?: number
+  /** 限定在这些文档内检索 */
+  docIds?: string[]
+}
+
+/** kb:search IPC 返回（degraded=true 表示向量路未参与，纯词法命中） */
+export interface KbSearchResult {
+  hits: KbSearchHit[]
+  degraded: boolean
+}
+
 export const DEFAULT_THEME: ThemeConfig = {
   preset: 'pure-white',
   mode: 'system',

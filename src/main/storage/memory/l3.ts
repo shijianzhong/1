@@ -49,13 +49,18 @@ export function tokenizeForFts(text: string): string {
  * 转义 LIKE 模式串里的 % 与 _（CODE_AUDIT 断言 4.5）。
  * 未转义时，含 % 的查询（如「折扣 50%」）会被当通配符 → 全表扫描拖慢主进程 +
  * 召回噪声。转义为字面量后按精确子串匹配。ESCAPE 子句声明反斜杠为转义符。
+ *
+ * 导出供 kb-fts.ts 的 searchKbFts 复用（KB hybrid 检索的 LIKE 兜底走同一转义逻辑，
+ * 单一真相源，避免两处转义实现漂移）。
  */
-function escapeLikePattern(literal: string): string {
+export function escapeLikePattern(literal: string): string {
   return literal.replace(/[%_\\]/g, '\\$&')
 }
 
-/** 把查询串转成 FTS5 MATCH 表达式：bigram 用 AND 语义太严，这里用 OR 连接提高召回 */
-function buildMatchQuery(query: string): string {
+/** 把查询串转成 FTS5 MATCH 表达式：bigram 用 AND 语义太严，这里用 OR 连接提高召回。
+ *  导出供 kb-fts.ts 的 searchKbFts 复用（KB FTS5 与 L3 FTS5 同为 tokenize+bigram 预分词，
+ *  MATCH 表达式构造同构，单一真相源）。 */
+export function buildMatchQuery(query: string): string {
   const seg = tokenizeForFts(query)
   // 只取长度 ≥2 的 bigram/单词作检索词（单字太碎，单独检索意义小）；全是单字时退化为单字 OR
   const words = seg.split(' ').filter(Boolean)

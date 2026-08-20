@@ -29,6 +29,9 @@ const RegistryPage = lazy(() =>
 const McpPage = lazy(() =>
   import('@renderer/pages/McpPage').then((m) => ({ default: m.McpPage })),
 )
+const KbPage = lazy(() =>
+  import('@renderer/pages/KbPage').then((m) => ({ default: m.KbPage })),
+)
 const SettingsPage = lazy(() =>
   import('@renderer/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -49,6 +52,7 @@ export function AppRoutes() {
         <Route path="/registry" element={<RegistryPage />} />
         <Route path="/models" element={<ListPage i18nKey="models" />} />
         <Route path="/mcp" element={<McpPage />} />
+        <Route path="/kb" element={<KbPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/settings" element={<SettingsPage />} />

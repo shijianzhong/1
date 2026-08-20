@@ -7,6 +7,8 @@ import type {
   KbAddInput,
   KbAddResult,
   KbDocListItem,
+  KbSearchInput,
+  KbSearchResult,
   KbStatus,
   LLMConfig,
   McpServerConfig,
@@ -243,6 +245,8 @@ export interface OneApi {
     list: () => Promise<IpcResult<KbDocListItem[]>>
     /** 删除文档（级联 chunks + FTS + doc） */
     remove: (docId: string) => Promise<IpcResult<{ deleted: true }>>
+    /** hybrid 检索（向量 + FTS + RRF 融合；degraded 时纯词法，P2） */
+    search: (input: KbSearchInput) => Promise<IpcResult<KbSearchResult>>
   }
 }
 
@@ -440,6 +444,7 @@ const api: OneApi = {
     add: (input) => ipcRenderer.invoke('kb:add', input),
     list: () => ipcRenderer.invoke('kb:list'),
     remove: (docId) => ipcRenderer.invoke('kb:remove', docId),
+    search: (input) => ipcRenderer.invoke('kb:search', input),
   },
 }
 

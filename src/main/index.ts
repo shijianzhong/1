@@ -13,6 +13,7 @@ import { registerWebTools } from './tools/builtin/web'
 import { registerOpenCliTools } from './tools/builtin/opencli'
 import { registerFileTools } from './tools/builtin/file'
 import { registerSkillRagTools } from './tools/builtin/skillRag'
+import { registerKbSearchTools } from './tools/builtin/kbSearch'
 import { registerSkillScriptTools } from './tools/builtin/skillScript'
 import { registerShellTools } from './tools/builtin/shell'
 import { registerStrReplaceEditorTool } from './tools/builtin/strReplace'
@@ -155,6 +156,7 @@ if (!gotLock) {
     registerOpenCliTools() // OpenCLI 白名单工具（用户浏览器登录态读站，写操作拦截）
     registerFileTools() // 文件工具（file_write/read/search，限 Obsidian vault 等允许根目录）
     registerSkillRagTools() // 技能检索工具（skill_search/load_skill，主 agent RAG 路径）
+    registerKbSearchTools() // 知识库检索工具（kb_search，向量+FTS hybrid，主 agent 文档 RAG）
     registerStrReplaceEditorTool() // 行级编辑（view/str_replace/insert，approvalMode='always'）
     registerGrepTool() // 正则代码搜索（workspaceRoot 内）
     registerGlobTool() // 文件模式匹配（workspaceRoot 内）

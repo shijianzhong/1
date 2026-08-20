@@ -7,6 +7,12 @@ import { unwrap } from './client'
 import type {
   Agent,
   Capability,
+  KbAddInput,
+  KbAddResult,
+  KbDocListItem,
+  KbSearchInput,
+  KbSearchResult,
+  KbStatus,
   ModelConfig,
   Persona,
   RegistryAssetKind,
@@ -119,6 +125,49 @@ export function usePickSkillFile() {
   return useMutation({
     mutationFn: () => thenUnwrap(window.one.skills.pickFile()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
+  })
+}
+
+// —— 知识库 ——
+export function useKbStatus() {
+  return useQuery({
+    queryKey: ['kb', 'status'],
+    queryFn: () => thenUnwrap(window.one.kb.status()),
+  })
+}
+
+export function useKbDocs() {
+  return useQuery({
+    queryKey: ['kb', 'docs'],
+    queryFn: () => thenUnwrap(window.one.kb.list()),
+  })
+}
+
+export function useKbAdd() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: KbAddInput) => thenUnwrap(window.one.kb.add(input)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kb', 'docs'] })
+      qc.invalidateQueries({ queryKey: ['kb', 'status'] })
+    },
+  })
+}
+
+export function useKbRemove() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (docId: string) => thenUnwrap(window.one.kb.remove(docId)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kb', 'docs'] })
+      qc.invalidateQueries({ queryKey: ['kb', 'status'] })
+    },
+  })
+}
+
+export function useKbSearch() {
+  return useMutation({
+    mutationFn: (input: KbSearchInput) => thenUnwrap(window.one.kb.search(input)),
   })
 }
 

@@ -254,3 +254,35 @@ export function listKbDocsLite(): KbDocRecord[] {
     )
     .all() as KbDocRecord[]
 }
+
+/** 带文档元信息的 chunk 行（searchKbHybrid 取内容+标题用） */
+export interface KbChunkWithDoc {
+  id: string
+  docId: string
+  chunkIdx: number
+  content: string
+  meta: string | null
+  title: string
+  sourcePath: string | null
+}
+
+/**
+ * 批量取 chunk + 所属文档标题（JOIN kb_chunks↔kb_docs）。
+ * searchKbHybrid 融合出有序 chunk_id 列表后调此回表取内容/标题/来源，
+ * 一次 IN 查询而非逐条 getKbChunk（后者 N 次往返 + 不带 doc 标题）。
+ * ids 为空直接返回 []（不跑空 IN 句）。返回顺序不保证与入参一致，调用方按 id 索引重排。
+ */
+export function fetchKbChunksWithDoc(ids: string[]): KbChunkWithDoc[] {
+  if (ids.length === 0) return []
+  const db = getDb()
+  const placeholders = ids.map(() => '?').join(',')
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.doc_id as docId, c.chunk_idx as chunkIdx, c.content, c.meta,
+              d.title, d.source_path as sourcePath
+       FROM kb_chunks c JOIN kb_docs d ON d.id = c.doc_id
+       WHERE c.id IN (${placeholders})`,
+    )
+    .all(...ids) as KbChunkWithDoc[]
+  return rows
+}

@@ -1,0 +1,49 @@
+{
+  "title": "知识库",
+  "subtitle": "向量化文档检索。喂入文档自动分块 + 向量 + 词法双索引，Agent 调 kb_search 按需召回。",
+  "status": {
+    "ready": "向量就绪",
+    "missing": "模型未就绪（纯词法）",
+    "dim": "维度 {{dim}}",
+    "chunks": "{{count}} 个分块",
+    "provider": "Provider：{{provider}}",
+    "modelMissingHint": "向量化模型未就绪，检索退化为纯词法命中。P4 接入模型下载后补齐。"
+  },
+  "search": {
+    "title": "检索预览",
+    "placeholder": "输入关键词或自然语言查询…",
+    "button": "检索",
+    "searching": "检索中…",
+    "degraded": "纯词法",
+    "degradedHint": "向量路未参与，仅 FTS + LIKE 命中",
+    "score": "相关度 {{score}}",
+    "source": "来源：{{source}}",
+    "section": "章节：{{section}}",
+    "empty": "输入查询后在此预览召回结果",
+    "noResults": "无命中分块"
+  },
+  "add": {
+    "title": "添加文档",
+    "titleField": "标题",
+    "titlePh": "文档标题",
+    "contentField": "正文（Markdown 或纯文本）",
+    "contentPh": "粘贴或输入文档内容…",
+    "sourceKind": "来源类型",
+    "sourceKindPh": "md",
+    "sourcePath": "来源路径",
+    "sourcePathPh": "可选，provenance 记录用",
+    "submit": "摄取入库",
+    "submitting": "摄取中…",
+    "stat": "已分块 {{chunks}} 块，其中 {{embedded}} 块已向量化"
+  },
+  "doc": {
+    "chunks": "{{count}} 块",
+    "noChunks": "无分块",
+    "provider": "{{provider}}",
+    "noProvider": "未向量化",
+    "updatedAt": "更新于 {{time}}",
+    "removeConfirm": "确认删除此文档及其全部分块？"
+  },
+  "empty": "知识库为空，先添加一份文档。",
+  "removeConfirm": "确认删除？"
+}
