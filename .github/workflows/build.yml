@@ -15,12 +15,27 @@ jobs:
           - os: macos-latest
             platform: mac
             artifact: dmg
+            variant: slim
+          - os: macos-latest
+            platform: mac
+            artifact: dmg
+            variant: full
           - os: windows-latest
             platform: win
             artifact: exe
+            variant: slim
+          - os: windows-latest
+            platform: win
+            artifact: exe
+            variant: full
           - os: ubuntu-latest
             platform: linux
             artifact: appimage
+            variant: slim
+          - os: ubuntu-latest
+            platform: linux
+            artifact: appimage
+            variant: full
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,14 +59,19 @@ jobs:
           mkdir -p vendor/opencli
           npm run vendor:opencli
 
-      - name: Package (electron-builder)
-        run: npx electron-builder --publish never
+      # full 包需先把量化 e5-small 权重下载到 build/kb-models（不入 git），再由 extraResources 打进包。
+      - name: Fetch KB model weights (full only)
+        if: matrix.variant == 'full'
+        run: node scripts/fetch-kb-model.mjs
+
+      - name: Package (electron-builder, ${{ matrix.variant }})
+        run: npx electron-builder --config electron-builder.${{ matrix.variant }}.yml --publish never
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 注：macOS/Windows 代码签名均需付费证书，当前未启用；构建保持未签名。
           # 后续若接入，在此注入对应 secrets 即可（mac: CSC_LINK/CSC_KEY_PASSWORD/APPLE_*；win: 证书）。
 
-      # 自动更新灰度：向 latest-*.yml 注入顶层 stagingPercentage（默认 25，仓库变量 CANARY_PERCENT 可覆盖为 100 全量）。
+      # 自动更新灰度：向 latest-*.yml / latest-full-*.yml 注入顶层 stagingPercentage（默认 25，仓库变量 CANARY_PERCENT 可覆盖为 100 全量）。
       - name: Patch auto-update staging (canary)
         run: node scripts/patch-staging.mjs
         env:
@@ -60,7 +80,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.artifact }}
+          name: ${{ matrix.platform }}-${{ matrix.artifact }}-${{ matrix.variant }}
           path: |
             release/*.dmg
             release/*.exe

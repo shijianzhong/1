@@ -3,6 +3,9 @@
 # 详见 docs/VECTOR_KB_PLAN.md §三 + CLAUDE.md 决策（两种安装包）。
 appId: com.shijianzhong.one
 productName: One
+# 产物名带 -slim 后缀，避免与 full 包同名冲突（同 tag 同平台 release 内共存）。
+artifactName: ${productName}-${version}-${os}-${arch}-slim.${ext}
+# 默认（生产）通道：生成 latest-*.yml，electron-updater 默认读取。
 publish:
   provider: github
   owner: shijianzhong
