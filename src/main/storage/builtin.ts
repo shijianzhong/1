@@ -6,11 +6,13 @@ import {
   getBuiltinSampleArticlesDir,
   getBuiltinSkillsDir,
   getBuiltinTemplatesDir,
+  getBuiltinKbModelDir,
   getAgentsPath,
   getCapabilitiesDir,
   getSampleArticlesPath,
   getSkillsPath,
   getTemplatesPath,
+  getKbModelDir,
 } from './paths'
 import { logger } from '../logger'
 
@@ -94,6 +96,30 @@ export function seedBuiltinAssets(): void {
 
   // 模板（单 HTML 文件）
   copyBuiltinFilesForce(getBuiltinTemplatesDir(), getTemplatesPath(), 'templates')
+}
+
+/**
+ * P4: full 包首启复制预置模型权重（resources/kb-models → userData/kb-models）。
+ * slim 包出厂源不存在 → no-op（运行时走 downloadKbModel 下载）。
+ *
+ * 与 seedBuiltinAssets 不同——**不强制覆盖**：模型权重 ~23MB，每次启动复制浪费。
+ * 仅在目标目录无 .onnx 时复制（首启/被清空后重装才触发）。
+ */
+export function seedKbModel(): void {
+  const src = getBuiltinKbModelDir()
+  const dest = getKbModelDir()
+  if (!existsSync(src)) return // slim 包无预置模型，运行时下载
+  // 目标已有模型 → 不复制（避免每次启动复制 23MB）
+  if (existsSync(dest)) {
+    try {
+      const entries = readdirSync(dest, { recursive: true })
+      if (entries.some((e) => String(e).endsWith('.onnx'))) return
+    } catch {
+      // 空目录 / 读失败 → 继续复制
+    }
+  }
+  cpSync(src, dest, { recursive: true })
+  logger.info(`[builtin] kb-models 复制: ${src} → ${dest}`)
 }
 
 /**

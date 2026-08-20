@@ -25,6 +25,7 @@
     "package:slim": "npm run build && npm run vendor:opencli && electron-builder --config electron-builder.slim.yml",
     "package:full": "npm run build && npm run vendor:opencli && node scripts/fetch-kb-model.mjs && electron-builder --config electron-builder.full.yml",
     "kb:spike": "node scripts/kb-spike.mjs",
+    "kb:eval": "node scripts/skill-rag-eval.mjs",
     "patch:staging": "node scripts/patch-staging.mjs"
   },
   "dependencies": {
@@ -43,8 +44,6 @@
     "adm-zip": "^0.6.0",
     "ajv": "^8.20.0",
     "better-sqlite3": "^13.0.1",
-    "onnxruntime-common": "^1.27.0",
-    "onnxruntime-web": "^1.27.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-log": "^5.4.4",
@@ -54,6 +53,9 @@
     "i18next-http-backend": "^4.0.0",
     "katex": "^0.18.1",
     "lucide-react": "^0.539.0",
+    "mammoth": "^1.12.1",
+    "onnxruntime-common": "^1.27.0",
+    "onnxruntime-web": "^1.27.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-i18next": "^15.7.2",
@@ -64,6 +66,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwind-merge": "^3.6.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.4.3",
     "zustand": "^5.0.7"
   },

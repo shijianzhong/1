@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { getDb } from '../db'
 import { getSkillsPath } from '../paths'
 import { parseSkillMd } from './parser'
-import { tokenizeForFts } from '../memory/l3'
+import { buildMatchQuery, escapeLikePattern, tokenizeForFts } from '../memory/l3'
 
 export interface SkillSearchHit {
   id: string
@@ -153,37 +153,40 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
   const db = getDb()
   const score = new Map<string, number>()
   const hit = new Map<string, SkillSearchHit>()
-  const pattern = `%${q}%`
+  // 修 latent 通配符注入 bug：原 '%${q}%' 未转义，含 %/的 query（如「折扣 50%」）
+  // 被当通配符 → 全表扫描拖慢主进程 + 召回噪声。escapeLikePattern 复用 l3.ts
+  // （L3/kb-fts 已修，单一真相源）。ESCAPE 子句声明反斜杠为转义符。
+  const escapedQ = escapeLikePattern(q)
+  const pattern = `%${escapedQ}%`
   const bump = (row: SkillSearchHit, weight: number): void => {
     hit.set(row.id, row)
     score.set(row.id, (score.get(row.id) ?? 0) + weight)
   }
 
+  // name 通道：整条 query 精确/前缀命中（原语义，3.0）。
+  // 评测证：token 子串通道在 66-skill 真实池过度加权 CJK 名「纪律」类 skill 压过真目标
+  // （真目标常 ASCII 名如 tech-research，与 CJK query 零 token 共享）→ 回归 Primary Top1，
+  // 故保留原整条精确/前缀，不开 token 子串（见 docs/SKILL_RAG_EVAL.md 重调结论）。
   const nameRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE name = ? OR name LIKE ?
+     WHERE name = ? OR name LIKE ? ESCAPE '\\'
      LIMIT ?`,
-  ).all(q, `${q}%`, limit) as SkillSearchHit[]
+  ).all(q, `${escapedQ}%`, limit) as SkillSearchHit[]
   for (const row of nameRows) bump(row, 3)
 
   const tagRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE tags = ? OR tags LIKE ?
+     WHERE tags = ? OR tags LIKE ? ESCAPE '\\'
      LIMIT ?`,
   ).all(q, pattern, limit) as SkillSearchHit[]
   for (const row of tagRows) bump(row, 2.5)
 
-  const match = (() => {
-    const seg = tokenizeForFts(q)
-    const words = seg.split(' ').filter(Boolean)
-    const terms = (words.filter((w) => [...w].length >= 2).length > 0
-      ? words.filter((w) => [...w].length >= 2)
-      : words)
-      .map((w) => `"${w.replace(/"/g, ' ')}"`)
-    return terms.join(' OR ')
-  })()
+  // FTS5 通道：MATCH + ORDER BY rank（等列权 bm25）。
+  // 评测证：bm25 列加权（name=10…）在真实池同样过度加权 CJK 名 → 回归 Top1，故保留原 rank。
+  // buildMatchQuery 复用 l3.ts（DRY 单一真相源，与 L3/kb-fts 同构）。
+  const match = buildMatchQuery(q)
   if (match) {
     try {
       const rows = db.prepare(
@@ -199,10 +202,12 @@ export function searchSkills(keywords: string, limit = 8): SkillSearchHit[] {
     }
   }
 
+  // LIKE 兜底通道：转义后的 pattern（latent bug 修同上）。
   const likeRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE name LIKE ? OR description LIKE ? OR tags LIKE ? OR content_raw LIKE ?
+     WHERE name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
+        OR tags LIKE ? ESCAPE '\\' OR content_raw LIKE ? ESCAPE '\\'
      LIMIT ?`,
   ).all(pattern, pattern, pattern, pattern, limit) as SkillSearchHit[]
   for (const row of likeRows) bump(row, 1)

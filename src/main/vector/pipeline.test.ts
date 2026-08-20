@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // —— pipeline.ts 单测（分块逻辑为主，ingest 走 mock 验 ready 两态）——
-// mock getLocalProvider（不真跑 WASM worker）+ insertKbChunks/upsertKbDoc（不真写库）。
+// mock getActiveProvider（不真跑 WASM worker）+ insertKbChunks/upsertKbDoc（不真写库）。
 // chunkDocument 是纯函数，直接断言分块结果。
 
 const embedMock = vi.fn()
 const readyMock = vi.fn()
 vi.mock('./embed', () => ({
-  getLocalProvider: () => ({
+  getActiveProvider: () => ({
     kind: 'local',
     ready: readyMock,
     dimension: () => 384,
@@ -155,5 +155,22 @@ describe('ingestDocument', () => {
     const records = insertKbChunksMock.mock.calls[0][0] as Array<{ kbId: string; docId: string }>
     expect(records[0].kbId).toBe('fixed')
     expect(records[0].docId).toBe('fixed')
+  })
+
+  // P5：锁 heading 发射 → chunk meta.sectionTitle 收益。
+  // extract.ts 给 PDF 发 `# Page N`、给 DOCX 经 htmlToMarkdown 发 `#`；
+  // 这里验证该 heading 经 chunkDocument 进 KbChunkRecord.meta.sectionTitle，
+  // 检索可按章节定位（不落 flat token-window）。
+  it('P5 heading 发射 → chunk meta.sectionTitle 收 Page 标题', async () => {
+    readyMock.mockResolvedValue(true)
+    embedMock.mockResolvedValue([Float32Array.from([0.1, 0.2])])
+    const r = await ingestDocument({
+      title: 'pdf report',
+      content: '# Page 1\nbody of page one',
+    })
+    expect(r.chunkCount).toBe(1)
+    const records = insertKbChunksMock.mock.calls[0][0] as Array<{ meta: string }>
+    const meta = JSON.parse(records[0].meta) as { sectionTitle: string | null }
+    expect(meta.sectionTitle).toBe('Page 1')
   })
 })

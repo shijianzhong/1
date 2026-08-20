@@ -1,13 +1,20 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, BookOpen, Search, Cpu, Zap } from 'lucide-react'
+import { Plus, Trash2, BookOpen, Search, Cpu, Zap, Download, RefreshCw, FileUp, Globe } from 'lucide-react'
 import { errorMessage } from '@renderer/api/client'
 import {
   useKbStatus,
   useKbDocs,
   useKbAdd,
+  useKbPickFile,
   useKbRemove,
   useKbSearch,
+  useKbReindex,
+  useKbDownloadModel,
+  useKbSetProviderPreference,
+  useKbReindexProgress,
+  useKbDownloadModelProgress,
+  useProviders,
 } from '@renderer/api/hooks'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -21,7 +28,11 @@ import {
   DrawerContent,
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
-import type { KbSearchHit } from '@shared/types'
+import type {
+  KbDownloadModelProgressEvent,
+  KbReindexProgressEvent,
+  KbSearchHit,
+} from '@shared/types'
 
 // —— 知识库管理页（docs/VECTOR_KB_PLAN.md §七 P2）——
 // 三个区块：
@@ -39,17 +50,32 @@ function formatTime(ts?: number): string {
   }
 }
 
+/** URL → hostname（失败回退原 url 串）；用于 URL 摄取的默认标题 */
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
 export function KbPage() {
-  const { t } = useTranslation(['kb', 'common'])
+  const { t } = useTranslation(['kb', 'common', 'errors'])
   const { data: status, isLoading: statusLoading } = useKbStatus()
   const { data: docsData, isLoading: docsLoading } = useKbDocs()
+  const { data: providersData } = useProviders()
   const addMut = useKbAdd()
+  const pickFileMut = useKbPickFile()
   const removeMut = useKbRemove()
   const searchMut = useKbSearch()
+  const reindexMut = useKbReindex()
+  const downloadMut = useKbDownloadModel()
+  const setPrefMut = useKbSetProviderPreference()
 
   const [draft, setDraft] = useState<{
     title: string
     content: string
+    url: string
     sourceKind: string
     sourcePath: string
   } | null>(null)
@@ -59,8 +85,73 @@ export function KbPage() {
   const [degraded, setDegraded] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
 
+  // reindex 进度（webContents.send 单向流，非 TanStack Query）
+  const [reindexProg, setReindexProg] = useState<KbReindexProgressEvent | null>(null)
+  const [reindexError, setReindexError] = useState<string | null>(null)
+  const onReindexProg = useCallback((ev: KbReindexProgressEvent) => {
+    if (ev.type === 'error') {
+      setReindexError(ev.message ?? t('kb:reindex.failed', { message: '' }))
+    } else if (ev.type === 'done') {
+      setReindexProg(null)
+    } else {
+      setReindexProg(ev)
+      setReindexError(null)
+    }
+  }, [t])
+  useKbReindexProgress(onReindexProg)
+
+  // 模型下载进度
+  const [downloadProg, setDownloadProg] = useState<KbDownloadModelProgressEvent | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const onDownloadProg = useCallback((ev: KbDownloadModelProgressEvent) => {
+    if (ev.type === 'error') {
+      setDownloadError(ev.message ?? '')
+      setDownloadProg(null)
+    } else if (ev.type === 'done') {
+      setDownloadProg(null)
+    } else {
+      setDownloadProg(ev)
+      setDownloadError(null)
+    }
+  }, [])
+  useKbDownloadModelProgress(onDownloadProg)
+
+  // 远程 embedding provider 候选（models.embedding 已配的）
+  const remoteProviders = (providersData ?? []).filter((p) => !!p.models?.embedding)
+
   const docs = docsData ?? []
   const embeddingReady = status?.embedding === 'ready'
+  const embeddingMissing = status?.embedding === 'missing'
+  const embeddingConfigError = status?.embedding === 'config-error'
+
+  const onDownloadModel = async (): Promise<void> => {
+    setDownloadError(null)
+    try {
+      await downloadMut.mutateAsync()
+    } catch (err) {
+      setDownloadError(errorMessage(err, t))
+    }
+  }
+
+  const onReindex = async (): Promise<void> => {
+    setReindexError(null)
+    setReindexProg({ type: 'progress', done: 0, total: status?.chunkCount ?? 0 })
+    try {
+      await reindexMut.mutateAsync()
+    } catch (err) {
+      setReindexError(errorMessage(err, t))
+      setReindexProg(null)
+    }
+  }
+
+  const onProviderChange = async (providerId: string): Promise<void> => {
+    const prefId = providerId === 'local' ? null : providerId
+    try {
+      await setPrefMut.mutateAsync({ providerId: prefId })
+    } catch (err) {
+      setSearchError(errorMessage(err, t))
+    }
+  }
 
   const onAdd = async (): Promise<void> => {
     if (!draft?.title.trim() || !draft.content.trim()) return
@@ -69,6 +160,25 @@ export function KbPage() {
       content: draft.content,
       sourceKind: draft.sourceKind.trim() || undefined,
       sourcePath: draft.sourcePath.trim() || undefined,
+    })
+    setDraft(null)
+  }
+
+  // P5：文件摄取——主进程弹框+抽取+ingest。cancel 返 null → 留开抽屉无报错
+  const onPickFile = async (): Promise<void> => {
+    const r = await pickFileMut.mutateAsync()
+    if (r) setDraft(null) // 成功摄取 → 关抽屉；null = cancel → 留开
+  }
+
+  // P5：URL 抓取——主进程 Jina Reader → content → ingest
+  const onFetchUrl = async (): Promise<void> => {
+    if (!draft?.url.trim()) return
+    const url = draft.url.trim()
+    await addMut.mutateAsync({
+      title: draft.title.trim() || hostnameOf(url),
+      url,
+      sourceKind: 'url',
+      sourcePath: url,
     })
     setDraft(null)
   }
@@ -101,7 +211,7 @@ export function KbPage() {
         title={t('kb:title')}
         subtitle={t('kb:subtitle')}
         actions={
-          <Button onClick={() => setDraft({ title: '', content: '', sourceKind: 'md', sourcePath: '' })}>
+          <Button onClick={() => setDraft({ title: '', content: '', url: '', sourceKind: 'md', sourcePath: '' })}>
             <Plus size={16} /> {t('kb:add.title')}
           </Button>
         }
@@ -137,11 +247,23 @@ export function KbPage() {
             <p className="section-subtitle" style={{ margin: 0 }}>{t('common:state.loading')}</p>
           ) : (
             <>
-              <p className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {embeddingReady ? t('kb:status.ready') : t('kb:status.missing')}
+              <p className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {embeddingReady
+                  ? status?.provider === 'remote'
+                    ? t('kb:status.remote')
+                    : t('kb:status.ready')
+                  : embeddingConfigError
+                    ? t('kb:status.configError')
+                    : t('kb:status.missing')}
                 {embeddingReady && status?.dimension != null ? (
                   <Badge variant="brand" style={{ fontSize: '0.7rem' }}>
                     {t('kb:status.dim', { dim: status.dimension })}
+                  </Badge>
+                ) : null}
+                {status?.reindexRequired ? (
+                  <Badge variant="warning" style={{ fontSize: '0.7rem' }}>
+                    <Zap size={10} style={{ marginRight: 4 }} />
+                    {t('kb:status.reindexRequired')}
                   </Badge>
                 ) : null}
               </p>
@@ -150,16 +272,102 @@ export function KbPage() {
                 {status?.provider && status.provider !== 'none'
                   ? ` · ${t('kb:status.provider', { provider: status.provider })}`
                   : ''}
+                {status?.embeddingModel ? ` · ${status.embeddingModel}` : ''}
               </p>
-              {!embeddingReady ? (
+              {!embeddingReady && embeddingMissing ? (
                 <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--color-fg-3)' }}>
                   {t('kb:status.modelMissingHint')}
+                </p>
+              ) : null}
+              {reindexError ? (
+                <p role="alert" style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--color-danger)' }}>
+                  {t('kb:reindex.failed', { message: reindexError })}
+                </p>
+              ) : null}
+              {downloadError ? (
+                <p role="alert" style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--color-danger)' }}>
+                  {t('kb:download.failed', { message: downloadError })}
                 </p>
               ) : null}
             </>
           )}
         </div>
+
+        {/* 右侧动作区 */}
+        {!statusLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* provider 下拉（本地 + 远程候选） */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--color-fg-2)' }}>
+              {t('kb:provider.label')}
+              <select
+                value={status?.activeProviderId ?? 'local'}
+                onChange={(e) => void onProviderChange(e.target.value)}
+                disabled={setPrefMut.isPending}
+                style={selectStyle}
+              >
+                <option value="local">{t('kb:provider.local')}</option>
+                {remoteProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.models?.embedding}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* 模型下载（仅 local missing 时） */}
+            {embeddingMissing ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void onDownloadModel()}
+                disabled={downloadMut.isPending}
+              >
+                <Download size={14} />
+                {downloadMut.isPending || downloadProg ? t('kb:download.downloading') : t('kb:download.button')}
+              </Button>
+            ) : null}
+
+            {/* 重嵌按钮（reindexRequired 或有 NULL 块时） */}
+            {(status?.reindexRequired || embeddingConfigError === false) && (embeddingReady || status?.reindexRequired) ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void onReindex()}
+                disabled={reindexMut.isPending || !embeddingReady}
+              >
+                <RefreshCw size={14} />
+                {reindexMut.isPending ? t('kb:reindex.running', { done: reindexProg?.done ?? 0, total: reindexProg?.total ?? 0 }) : t('kb:reindex.button')}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </section>
+
+      {/* reindex / download 进度条 */}
+      {reindexProg && reindexProg.total > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <progress
+            value={reindexProg.done}
+            max={reindexProg.total}
+            style={{ flex: 1, height: 6 }}
+          />
+          <span style={{ fontSize: '0.72rem', color: 'var(--color-fg-3)' }}>
+            {reindexProg.done}/{reindexProg.total}
+          </span>
+        </div>
+      ) : null}
+      {downloadProg && downloadProg.total > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <progress
+            value={downloadProg.done}
+            max={downloadProg.total}
+            style={{ flex: 1, height: 6 }}
+          />
+          <span style={{ fontSize: '0.72rem', color: 'var(--color-fg-3)' }}>
+            {downloadProg.file} {downloadProg.done}/{downloadProg.total}
+          </span>
+        </div>
+      ) : null}
 
       {/* 检索预览框 */}
       <section
@@ -256,7 +464,7 @@ export function KbPage() {
         <EmptyState
           icon={BookOpen}
           title={t('kb:empty')}
-          onClick={() => setDraft({ title: '', content: '', sourceKind: 'md', sourcePath: '' })}
+          onClick={() => setDraft({ title: '', content: '', url: '', sourceKind: 'md', sourcePath: '' })}
           actionLabel={t('kb:add.title')}
         />
       ) : (
@@ -362,12 +570,49 @@ export function KbPage() {
                     autoFocus
                   />
                 </Field>
+                {/* P5：文件 + URL 摄取入口（content-XOR-url；文件走主进程 dialog） */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void onPickFile()}
+                    disabled={pickFileMut.isPending}
+                  >
+                    <FileUp size={15} style={{ marginRight: 6 }} />
+                    {pickFileMut.isPending ? t('kb:add.pickFilePending') : t('kb:add.pickFile')}
+                  </Button>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-fg-muted)' }}>
+                    {t('kb:add.pickFileHint')}
+                  </span>
+                </div>
+                <Field label={t('kb:add.urlField')}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Input
+                      value={draft.url}
+                      onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+                      placeholder={t('kb:add.urlPh')}
+                    />
+                    <Button
+                      variant="ghost"
+                      onClick={() => void onFetchUrl()}
+                      disabled={!draft.url.trim() || addMut.isPending}
+                    >
+                      <Globe size={15} style={{ marginRight: 6 }} />
+                      {t('kb:add.fetchUrl')}
+                    </Button>
+                  </div>
+                </Field>
                 <Field label={t('kb:add.sourceKind')}>
-                  <Input
+                  <select
                     value={draft.sourceKind}
                     onChange={(e) => setDraft({ ...draft, sourceKind: e.target.value })}
-                    placeholder={t('kb:add.sourceKindPh')}
-                  />
+                    style={selectStyle}
+                  >
+                    <option value="md">md</option>
+                    <option value="txt">txt</option>
+                    <option value="pdf">pdf</option>
+                    <option value="docx">docx</option>
+                    <option value="url">url</option>
+                  </select>
                 </Field>
                 <Field label={t('kb:add.sourcePath')}>
                   <Input
@@ -415,4 +660,14 @@ const contentStyle: React.CSSProperties = {
   fontSize: '0.875rem',
   resize: 'none',
   width: '100%',
+}
+
+const selectStyle: React.CSSProperties = {
+  borderRadius: 8,
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-bg-1)',
+  color: 'var(--color-fg-1)',
+  padding: '4px 8px',
+  fontSize: '0.78rem',
+  outline: 'none',
 }

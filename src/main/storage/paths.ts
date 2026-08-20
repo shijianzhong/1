@@ -88,6 +88,24 @@ export function getKbModelDir(): string {
   return join(getUserDataDir(), KB_MODEL_DIR)
 }
 
+/**
+ * full 包随包的预置模型权重出厂源（resources/kb-models；开发环境回退 build/kb-models）。
+ * slim 包不存在 → 返回 devPath（seedKbModel 会 existsSync 判否 no-op）。
+ */
+export function getBuiltinKbModelDir(): string {
+  // 打包：process.resourcesPath/kb-models；开发：源码 build/kb-models
+  const devPath = join(__dirname, '..', '..', 'build', 'kb-models')
+  try {
+    if (app.isPackaged) {
+      const packaged = join(process.resourcesPath, 'kb-models')
+      return existsSync(packaged) ? packaged : devPath
+    }
+  } catch {
+    // vitest / 纯 Node（无 Electron app）：回退源码 build/kb-models
+  }
+  return devPath
+}
+
 /** registry 下载缓存（index 持久缓存 + skill zip 临时缓存） */
 export function getRegistryCacheDir(): string {
   return join(getUserDataDir(), 'cache', 'registry')

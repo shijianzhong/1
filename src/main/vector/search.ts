@@ -13,7 +13,7 @@
 //   - 两路都空 → hits:[]
 // degraded=true 表示向量路未参与（前端显示「纯词法」badge）。
 
-import { getLocalProvider } from './embed'
+import { getActiveProvider } from './embed'
 import { searchKbVectors, fetchKbChunksWithDoc, type KbChunkWithDoc } from './store'
 import { searchKbFts } from './kb-fts'
 import { rrfFuseTopN, rankedChannel } from './rrf'
@@ -59,7 +59,7 @@ export async function searchKbHybrid(query: string, opts: KbSearchOptions = {}):
   let degraded = false
 
   // —— 向量路：embed query（e5 非对称 search 传 'query'，与 ingestion 'passage' 对称）——
-  const provider = getLocalProvider()
+  const provider = getActiveProvider()
   let vecChannel = null
   const ready = await provider.ready().catch(() => false)
   if (ready) {

@@ -18,8 +18,17 @@ import { countKbChunks, countKbFtsRows, reindexKbFts } from '../vector/kb-fts'
 
 let dbInstance: Database.Database | null = null
 
+/** 读 app_meta（v6 表，通用 key-value）；KB reindex 标志 / 远程维度缓存等共用 */
+export function getAppMeta(key: string): string | null {
+  if (!dbInstance) return null
+  const row = dbInstance
+    .prepare('SELECT value FROM app_meta WHERE key = ?')
+    .get(key) as { value: string } | undefined
+  return row?.value ?? null
+}
+
 /** 写 app_meta（v6 表，通用 key-value）；KB vec_dim 漂移标志 / skills 签名等共用 */
-function setAppMeta(key: string, value: string): void {
+export function setAppMeta(key: string, value: string): void {
   if (!dbInstance) return
   dbInstance
     .prepare('INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)')

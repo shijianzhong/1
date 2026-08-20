@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { unwrap } from './client'
 import type {
   Agent,
@@ -10,6 +11,10 @@ import type {
   KbAddInput,
   KbAddResult,
   KbDocListItem,
+  KbDownloadModelProgressEvent,
+  KbProviderPreference,
+  KbReindexProgressEvent,
+  KbReindexResult,
   KbSearchInput,
   KbSearchResult,
   KbStatus,
@@ -154,6 +159,18 @@ export function useKbAdd() {
   })
 }
 
+/** P5：文件摄取——弹框 → 主进程抽取 → ingest；cancel 返 null（留开抽屉不报错） */
+export function useKbPickFile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => thenUnwrap(window.one.kb.pickFile()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kb', 'docs'] })
+      qc.invalidateQueries({ queryKey: ['kb', 'status'] })
+    },
+  })
+}
+
 export function useKbRemove() {
   const qc = useQueryClient()
   return useMutation({
@@ -169,6 +186,56 @@ export function useKbSearch() {
   return useMutation({
     mutationFn: (input: KbSearchInput) => thenUnwrap(window.one.kb.search(input)),
   })
+}
+
+// —— 知识库 P4：reindex + 模型下载 + provider 偏好 ——
+
+export function useKbReindex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => thenUnwrap(window.one.kb.reindex()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kb', 'status'] })
+      qc.invalidateQueries({ queryKey: ['kb', 'docs'] })
+    },
+  })
+}
+
+export function useKbDownloadModel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => thenUnwrap(window.one.kb.downloadModel()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['kb', 'status'] }),
+  })
+}
+
+export function useKbProviderPreference() {
+  return useQuery({
+    queryKey: ['kb', 'providerPreference'],
+    queryFn: () => thenUnwrap(window.one.kb.getProviderPreference()),
+  })
+}
+
+export function useKbSetProviderPreference() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: KbProviderPreference) =>
+      thenUnwrap(window.one.kb.setProviderPreference(input)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kb', 'status'] })
+      qc.invalidateQueries({ queryKey: ['kb', 'providerPreference'] })
+    },
+  })
+}
+
+/** 重嵌进度流（webContents.send 单向推，非 TanStack Query；镜像 CrashRecoveryDialog 订阅） */
+export function useKbReindexProgress(cb: (ev: KbReindexProgressEvent) => void) {
+  useEffect(() => window.one.kb.onReindexProgress(cb), [cb])
+}
+
+/** 模型下载进度流 */
+export function useKbDownloadModelProgress(cb: (ev: KbDownloadModelProgressEvent) => void) {
+  useEffect(() => window.one.kb.onDownloadModelProgress(cb), [cb])
 }
 
 // —— 能力 ——

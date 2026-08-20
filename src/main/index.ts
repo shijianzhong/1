@@ -5,7 +5,7 @@ import { app, BrowserWindow, nativeImage } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
 import { closeDb, getDb } from './storage/db'
 import { seedDefaultModels } from './storage/models'
-import { seedBuiltinAssets } from './storage/builtin'
+import { seedBuiltinAssets, seedKbModel } from './storage/builtin'
 import { registerMemoryTools } from './tools/builtin/memory'
 import { registerCreateTools } from './tools/builtin/create'
 import { registerAskUserTools } from './tools/builtin/askUser'
@@ -148,6 +148,7 @@ if (!gotLock) {
     seedDefaultModels() // 首次启动 seed Claude Code 预置模型
     startupMark('main:seedModels')
     seedBuiltinAssets() // 首启复制 builtin 出厂基线进 userData（§2.5，内容生产等内置能力随包即用）
+    seedKbModel() // P4: full 包首启复制预置模型权重（slim 包 no-op，运行时走 downloadKbModel）
     startupMark('main:seedBuiltin')
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerCreateTools() // 聊天创建工具（propose_*，不落库，确认才入库）

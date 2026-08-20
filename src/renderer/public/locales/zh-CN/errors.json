@@ -98,6 +98,13 @@
     "invalid_input": "知识库参数校验失败（标题/内容缺失或格式错误）",
     "empty_content": "文档内容为空，无法摄取",
     "not_found": "文档不存在或已被删除",
-    "embed_unavailable": "向量模型未就绪，已降级为纯词法索引（可在设置中下载模型）"
+    "embed_unavailable": "向量模型未就绪，已降级为纯词法索引（可在设置中下载模型）",
+    "provider_not_ready": "嵌入 Provider 未就绪（本地模型缺失或远程 Provider 未配置完整），无法执行重嵌",
+    "model_not_found": "嵌入模型文件缺失或下载失败",
+    "extract_failed": "文档解析失败：{{message}}",
+    "unsupported_file_type": "不支持的文件类型：{{message}}",
+    "url_fetch_failed": "URL 抓取失败：{{message}}",
+    "empty_extraction": "解析后内容为空，无法摄取",
+    "file_too_large": "文件过大（>{{mb}}MB），请拆分后重试"
   }
 }

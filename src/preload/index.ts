@@ -7,6 +7,10 @@ import type {
   KbAddInput,
   KbAddResult,
   KbDocListItem,
+  KbDownloadModelProgressEvent,
+  KbProviderPreference,
+  KbReindexProgressEvent,
+  KbReindexResult,
   KbSearchInput,
   KbSearchResult,
   KbStatus,
@@ -237,16 +241,32 @@ export interface OneApi {
     onUpdateDownloaded: (cb: (info: { version: string }) => void) => () => void
   }
   kb: {
-    /** 知识库就绪态（模型在否 + chunk 计数，docs/VECTOR_KB_PLAN.md §二） */
+    /** 知识库就绪态（模型在否 + chunk 计数 + reindex 标志 + provider，docs/VECTOR_KB_PLAN.md §二） */
     status: () => Promise<IpcResult<KbStatus>>
-    /** 摄取文档：分块 → 向量化 → 入库（P1，docs/VECTOR_KB_PLAN.md §七） */
+    /** 摄取文档：分块 → 向量化 → 入库（P1，docs/VECTOR_KB_PLAN.md §七）；P5 url 分支 */
     add: (input: KbAddInput) => Promise<IpcResult<KbAddResult>>
+    /** P5：弹文件框 → 抽取（pdf/docx/txt/md/html）→ ingest；cancel 返 null */
+    pickFile: () => Promise<IpcResult<KbAddResult | null>>
     /** 列文档元信息（不含原文 content，避免大原文过 IPC） */
     list: () => Promise<IpcResult<KbDocListItem[]>>
     /** 删除文档（级联 chunks + FTS + doc） */
     remove: (docId: string) => Promise<IpcResult<{ deleted: true }>>
     /** hybrid 检索（向量 + FTS + RRF 融合；degraded 时纯词法，P2） */
     search: (input: KbSearchInput) => Promise<IpcResult<KbSearchResult>>
+    /** P4: 批量重嵌（NULL backfill + provider 切换全量重嵌） */
+    reindex: () => Promise<IpcResult<KbReindexResult>>
+    /** P4: 取消正在进行的重嵌 */
+    reindexCancel: () => Promise<IpcResult<void>>
+    /** P4: 重嵌进度流（progress/done/error，webContents.send 单向推） */
+    onReindexProgress: (cb: (ev: KbReindexProgressEvent) => void) => () => void
+    /** P4: 下载本地模型（slim 包运行时下载到 userData/kb-models） */
+    downloadModel: () => Promise<IpcResult<void>>
+    /** P4: 模型下载进度流 */
+    onDownloadModelProgress: (cb: (ev: KbDownloadModelProgressEvent) => void) => () => void
+    /** P4: 取活跃 embedding provider 偏好（null=本地） */
+    getProviderPreference: () => Promise<IpcResult<KbProviderPreference>>
+    /** P4: 设活跃 embedding provider（触发 kb_reindex_required 标记） */
+    setProviderPreference: (input: KbProviderPreference) => Promise<IpcResult<KbProviderPreference>>
   }
 }
 
@@ -442,9 +462,25 @@ const api: OneApi = {
   kb: {
     status: () => ipcRenderer.invoke('kb:status'),
     add: (input) => ipcRenderer.invoke('kb:add', input),
+    pickFile: () => ipcRenderer.invoke('kb:pickFile'),
     list: () => ipcRenderer.invoke('kb:list'),
     remove: (docId) => ipcRenderer.invoke('kb:remove', docId),
     search: (input) => ipcRenderer.invoke('kb:search', input),
+    reindex: () => ipcRenderer.invoke('kb:reindex'),
+    reindexCancel: () => ipcRenderer.invoke('kb:reindex:cancel'),
+    onReindexProgress: (cb) => {
+      const handler = (_e: unknown, ev: KbReindexProgressEvent) => cb(ev)
+      ipcRenderer.on('kb:reindex:progress', handler)
+      return () => ipcRenderer.off('kb:reindex:progress', handler)
+    },
+    downloadModel: () => ipcRenderer.invoke('kb:downloadModel'),
+    onDownloadModelProgress: (cb) => {
+      const handler = (_e: unknown, ev: KbDownloadModelProgressEvent) => cb(ev)
+      ipcRenderer.on('kb:downloadModel:progress', handler)
+      return () => ipcRenderer.off('kb:downloadModel:progress', handler)
+    },
+    getProviderPreference: () => ipcRenderer.invoke('kb:getProviderPreference'),
+    setProviderPreference: (input) => ipcRenderer.invoke('kb:setProviderPreference', input),
   },
 }
 

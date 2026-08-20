@@ -102,13 +102,23 @@ export interface KbStatus {
   chunkCount: number
   /** 模型存储目录（userData/kb-models） */
   modelDir: string
+  /** P4: 库存向量维度 ≠ 当前 provider 维度（或 provider 刚切换）→ 需重嵌 */
+  reindexRequired: boolean
+  /** P4: 活跃 embedding provider id（remote 时为 provider.id，local 时 null） */
+  activeProviderId?: string | null
+  /** P4: 远程 embedding model id（仅 remote 时有） */
+  embeddingModel?: string | null
 }
 
-/** kb:add IPC 入参（docs/VECTOR_KB_PLAN.md §七）——content 字符串为唯一输入，文件读在前端/上游 */
+/** kb:add IPC 入参（docs/VECTOR_KB_PLAN.md §七）——content 与 url 二选一（handler 强制 XOR）。
+ *  P5：url 有则主进程抓取（Jina Reader）→ content；content 有则直传文本。文件摄取走 kb:pickFile。 */
 export interface KbAddInput {
   title: string
-  content: string
-  /** 来源类型（md/txt/json 等，provenance） */
+  /** 文本正文（直传）；与 url 互斥 */
+  content?: string
+  /** P5：URL——主进程抓取正文（Jina Reader）后当 content；与 content 互斥 */
+  url?: string
+  /** 来源类型（md/txt/pdf/docx/url 等，provenance） */
   sourceKind?: string
   /** 来源路径（provenance，可空） */
   sourcePath?: string
@@ -162,6 +172,42 @@ export interface KbSearchResult {
   hits: KbSearchHit[]
   degraded: boolean
 }
+
+// —— P4 reindex / 远程 provider / 模型下载（docs/VECTOR_KB_PLAN.md §四 + §八 P4）——
+
+/** kb:reindex:progress 流式事件（镜像 orchestrate:stream 的 webContents.send 推送） */
+export interface KbReindexProgressEvent {
+  type: 'progress' | 'done' | 'error'
+  /** 已处理数（progress/done 时为已嵌入数） */
+  done: number
+  /** 总数 */
+  total: number
+  /** error 时有 */
+  message?: string
+}
+
+/** kb:reindex IPC 返回 */
+export interface KbReindexResult {
+  total: number
+  embedded: number
+  failed: number
+}
+
+/** kb 活跃 embedding provider 偏好（存 app_meta kb_embedding_provider_id） */
+export interface KbProviderPreference {
+  /** null = 用本地 provider；否则 = 用该 provider.id 走远程嵌入 */
+  providerId: string | null
+}
+
+/** kb:downloadModel:progress 流式事件 */
+export interface KbDownloadModelProgressEvent {
+  type: 'progress' | 'done' | 'error'
+  file: string
+  done: number
+  total: number
+  message?: string
+}
+
 
 export const DEFAULT_THEME: ThemeConfig = {
   preset: 'pure-white',
@@ -478,6 +524,9 @@ export interface ProviderModels {
   fast?: string
   /** 默认模型 modelId（未指定用途时用） */
   default?: string
+  /** P4: 远程 embedding 模型 id（如 text-embedding-3-small）。配则 kb 可选此 provider 走远程嵌入。
+   *  注意：resolveModelIdByUsage 未配时会回退 default/primary，故 getActiveProvider 须先判此槽存在 */
+  embedding?: string
 }
 
 /**

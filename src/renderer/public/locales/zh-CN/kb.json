@@ -4,10 +4,31 @@
   "status": {
     "ready": "向量就绪",
     "missing": "模型未就绪（纯词法）",
+    "remote": "远程嵌入就绪",
+    "configError": "Provider 配置不完整（缺 key / model / baseUrl）",
+    "reindexRequired": "向量空间变更，需重嵌",
+    "downloading": "下载模型中…",
     "dim": "维度 {{dim}}",
     "chunks": "{{count}} 个分块",
     "provider": "Provider：{{provider}}",
-    "modelMissingHint": "向量化模型未就绪，检索退化为纯词法命中。P4 接入模型下载后补齐。"
+    "modelMissingHint": "向量化模型未就绪，检索退化为纯词法命中。点右侧「下载模型」补齐。"
+  },
+  "provider": {
+    "label": "嵌入 Provider",
+    "local": "本地（默认）",
+    "selectHint": "选远程 provider 后库内向量将全量重嵌"
+  },
+  "download": {
+    "button": "下载模型",
+    "downloading": "下载中…",
+    "done": "模型就绪",
+    "failed": "下载失败：{{message}}"
+  },
+  "reindex": {
+    "button": "重嵌向量",
+    "running": "重嵌中… {{done}}/{{total}}",
+    "done": "重嵌完成：{{embedded}}/{{total}}（失败 {{failed}}）",
+    "failed": "重嵌失败：{{message}}"
   },
   "search": {
     "title": "检索预览",
@@ -34,7 +55,13 @@
     "sourcePathPh": "可选，provenance 记录用",
     "submit": "摄取入库",
     "submitting": "摄取中…",
-    "stat": "已分块 {{chunks}} 块，其中 {{embedded}} 块已向量化"
+    "stat": "已分块 {{chunks}} 块，其中 {{embedded}} 块已向量化",
+    "pickFile": "选择文件",
+    "pickFilePending": "抽取中…",
+    "pickFileHint": "PDF / DOCX / TXT / MD（主进程抽取，自动分段）",
+    "urlField": "或抓取 URL",
+    "urlPh": "https://example.com/article",
+    "fetchUrl": "抓取"
   },
   "doc": {
     "chunks": "{{count}} 块",

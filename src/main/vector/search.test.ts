@@ -20,7 +20,7 @@ vi.mock('../storage/db', () => ({
 const embedMock = vi.fn()
 const readyMock = vi.fn()
 vi.mock('./embed', () => ({
-  getLocalProvider: () => ({
+  getActiveProvider: () => ({
     kind: 'local',
     ready: readyMock,
     dimension: () => 3,

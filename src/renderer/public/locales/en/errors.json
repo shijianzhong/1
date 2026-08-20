@@ -98,6 +98,13 @@
     "invalid_input": "Knowledge base params failed validation (missing title/content or bad format)",
     "empty_content": "Document content is empty, cannot ingest",
     "not_found": "Document not found or has been deleted",
-    "embed_unavailable": "Embedding model not ready, fell back to lexical-only index (download the model in Settings)"
+    "embed_unavailable": "Embedding model not ready, fell back to lexical-only index (download the model in Settings)",
+    "provider_not_ready": "Embedding provider not ready (local model missing or remote provider incomplete), cannot reindex",
+    "model_not_found": "Embedding model file missing or download failed",
+    "extract_failed": "Document extraction failed: {{message}}",
+    "unsupported_file_type": "Unsupported file type: {{message}}",
+    "url_fetch_failed": "URL fetch failed: {{message}}",
+    "empty_extraction": "Extraction produced no content, cannot ingest",
+    "file_too_large": "File too large (>{{mb}}MB), split it and retry"
   }
 }

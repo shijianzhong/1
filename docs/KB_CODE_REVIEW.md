@@ -2,7 +2,7 @@
 
 > 范围：基于 `feat: 知识库向量检索（P0）` 分支改动（`src/main/vector/*`、`worker-embed.cjs`、`knowledge.ts`、两个打包配置、`db.ts` v10 migration、两个脚本）。
 > 目的：把 code review 中「建议修改」的内容单独沉淀，作为动工前核对表 + 改动后回归清单。
-> 结论总览：**评审设计原则已落地（worker 移主线程 / HF mirror / RRF / 内存上限 / vec NULL 降级链 / 事务双写 / 回归测试）；P0-1（onnx 文件名错配）/ P0-2（默认英文模型）/ P0-3（e5 token_type_ids 缺输入）三项真实 bug 均已复现并修复，回归全绿；打包「web.js 不自包含」为误报。复核补充的 P2 项（e5 非对称前缀机制 + 兜底 MODEL_ID 英文残留）也已落地（2026-08-20），typecheck + 23 项 vector 单测全绿。可进 P1/P3。**
+> 结论总览：**评审设计原则已落地（worker 移主线程 / HF mirror / RRF / 内存上限 / vec NULL 降级链 / 事务双写 / 回归测试）；P0-1（onnx 文件名错配）/ P0-2（默认英文模型）/ P0-3（e5 token_type_ids 缺输入）三项真实 bug 均已复现并修复，回归全绿；打包「web.js 不自包含」为误报；e5 非对称前缀机制（P2 前必须落项）也已落地。P1 摄取管线 + P2 检索闭环均已完成验收（2026-08-20），typecheck 干净 + 78 文件 656 测试全绿（含 pipeline 9 + search 8 + kb-fts 8 + store +3），P0–P2 端到端可用。P3 前置（searchSkills 排序重调 + 66-skill 池 A/B 评测 + go/no-go 决策）、P4（reindex 执行 + 远程 OpenAI provider + 模型下载）、P5（pdf/docx/URL 摄取）均已完成验收（2026-08-20）：typecheck 干净 + 80 文件 677 测试全绿（含 reindex 5 + remote-provider 16 + extract 35 + pipeline/store/search 增量）。数据驱动决策：**P3（给 skills 搜索加向量）暂缓**——retuned FTS Top1 59.1% > vector baseline 36.4%，真实瓶颈是 CJK 命名 vs ASCII 命名 ranking 冲突，非词法 vs 向量。仅剩 **P6（HNSW/sqlite-vec，换 FlatIndex 接口不变）待做** + 4 个 P2+ 优化项（见下）。**
 
 ---
 
@@ -101,6 +101,61 @@ $ echo '{"id":"b1","texts":["测试中文 embedding","hello world"]}' | ... node
 
 ---
 
+## P2 验收复核（2026-08-20）
+
+> 方法：逐文件读 `search.ts` / `store.ts` `searchKbVectors`+`fetchKbChunksWithDoc` / `flat-index.ts` `search` / `kbSearch.ts` / `KbPage.tsx` + 查 i18n + 实跑 `tsc --noEmit` + `vitest src/main/vector`（52 测试全过）+ 读前端搜索调用与错误边界。
+
+### 已闭环（代码事实）
+
+- **hybrid 检索**：`searchKbHybrid` = 向量路（`embed([q],'query')` → cosine Top-k）+ FTS5 BM25+LIKE 词法路 → `rrfFuseTopN` 融合 → `fetchKbChunksWithDoc` JOIN 回表。e5 search 正确传 `kind='query'`（与 P1 ingestion `'passage'` 对称）。
+- **降级链**：provider 未就绪 / embed 失败 / 向量路 0 候选 → 纯词法 + `degraded=true`；NULL-vec 块只进 FTS 路（RRF 公平）；两路空 → hits:[]。
+- **flat-index 分片**：非分片态 `searchFlat` 全扫（docIds 靠 fetch 后裁剪）；sharded 态（>HARD_CAP 20000）按 docIds 扫对应分片。
+- **kb_search 工具**：注册主 agent、`approvalMode='auto'` 只读自动批准、content 截断 2000 字 + 返回 `degraded` 让 LLM 知向量路缺失（镜像 skillRag）。
+- **前端 /kb 页**：四通道全接；degraded badge；错误走 `errorMessage(err, t)` 翻译（非硬编码中文，铁律 T2 合规）+ `role="alert"`；loading/空态占位——达 product 标准基线。
+- **验证**：`tsc --noEmit` 干净；`vitest src/main/vector` **52 测试全过**（search 8 例覆盖 RRF/降级/NULL-vec/docIds/空查询）。
+
+### P2+ 优化项（非阻断，记已知缺口）
+
+1. 🟡 **向量 search 在主线程同步全扫**（`searchFlat` O(n·dim)，单次 ms 级）。groupchat 多 agent 并发调 `kb_search` 轻度串行化主线程——铁律7 同类问题，但量级小几个数量级，不阻塞验收。
+2. 🟡 **`degraded` 精度**：向量路 ready+embed 成功但 0 候选（flat-index 空）时 `searchKbHybrid` 返回 `degraded=false`（标「混合」非「纯词法」），轻微不精确。建议「本应参与却 0 候选」时标 degraded。
+3. 🟡 **非分片态 docIds 限定**：向量路全扫不过滤、靠 fetch 后裁剪，跨 docIds 强向量候选可能占 RRF rank 后被裁（sharded 态正确过滤，属边界）。
+4. 🟡 **前端 `k` 写死 5**（KbPage.tsx:90），未暴露调节 UI（与 IPC max(50)/工具 max(20) 不冲突，非 bug）。
+
+---
+
+## P3 前置 / P4 / P5 验收复核（2026-08-20）
+
+> 方法：逐文件读 `embed.ts`（RemoteEmbeddingProvider / getActiveProvider / setActiveProvider / checkVecDimDrift）/ `reindex.ts` / `download-model.ts` / `extract.ts` / `ipc/knowledge.ts`（reindex/downloadModel/provider 偏好 + pickFile/url 分支）/ `pages/KbPage.tsx` 增量 / `storage/db.ts`（getAppMeta/setAppMeta 导出）/ `storage/paths.ts` / `storage/builtin.ts`（seedKbModel）+ 查 i18n kb.json/errors.json + 实跑 `tsc --noEmit` + `vitest src/main/vector`（80 文件 677 测试全绿）。
+
+### P4 — RemoteEmbeddingProvider + download-model + reindex（代码事实）
+
+- **远程 provider 复用现有抽象**：`ProviderModels.embedding?` 槽 + 复用 `Provider.keyId` + vault `getKey` + Settings→Providers UI；`getActiveProvider()` 先判 `models.embedding` 存在（避开 `resolveModelIdByUsage` 回退 default 聊天模型）→ 否则降级 local；**不缓存 RemoteProvider**（防 Settings 改 key 后缓存实例持旧 apiKey）。维度静态查表 `KNOWN_REMOTE_DIMS`（3-small=1536/3-large=3072/ada-002=1536）→ `app_meta kb_remote_dim:<id>` 缓存 → 未知返 0（drift 跳过）。
+- **reindex 统一 NULL backfill + 全量重嵌**：`kb_reindex_required=1` → `clearAllKbVecs()`（旧维度向量全置 NULL）→ `listNullVecChunkIds` 覆盖全部；BATCH_SIZE=32，kind='passage'，`updateKbChunkVecBatch` 事务落库；清标志 + 回标 `kb_docs.embedding_provider` + `flatIndex.invalidate()`+`initFlatIndex()` warm；provider 未就绪 → `IpcErrorThrow('errors:kb.provider_not_ready')`（try/catch 前抛）；进度流 `kb:reindex:progress` 镜像 `orchestrate.ts:56-63`。
+- **模型下载**：复制 `scripts/fetch-kb-model.mjs` 到运行时 `getKbModelDir()`；`Xenova/multilingual-e5-small` + hf-mirror.com + 7 文件；幂等 + 404 容忍；`Readable.fromWeb` + `createWriteStream` pipeline；进度流 `kb:downloadModel:progress`。
+- **调用点重路由**：`search.ts`/`pipeline.ts` `getLocalProvider`→`getActiveProvider`。
+- **前端**：state bar 加下载按钮（missing）+ provider 下拉（原生 select，过滤 `p.models.embedding` 存在）+ reindex 按钮（reindexRequired）+ remote 状态文案；hooks 6 新（reindex/downloadModel/provider 偏好 + 两 progress 订阅）。
+- **验证**：`tsc --noEmit` 干净；`vitest src/main/vector` **677 测试全绿**（reindex 5 + remote-provider 16 + search/pipeline mock getActiveProvider 增量）。
+
+### P5 — extract（pdf/docx/URL 摄取）（代码事实）
+
+- **依赖零原生编译**：`unpdf`（PDF.js 纯 JS）+ `mammoth`（DOCX 流式 XML）+ URL 复用 Jina Reader `r.jina.ai`（无新依赖）。
+- **抽取**：`extractFromFile` 懒 import；PDF 每页插 `# Page N` heading（喂 chunkDocument `#`-splitter 产出 per-page sectionTitle）；DOCX→`convertToHtml`→手写 `htmlToMarkdown`（~40 行，不引 turndown）；txt/md 原文；html→`htmlToMarkdown`；`extractFromUrl` fetch `https://r.jina.ai/${url}`（UA+30s 超时+12000 字 cap+可选 `JINA_API_KEY` Bearer）。MAX_FILE_BYTES=20MB guard。全 `IpcErrorThrow('errors:kb.*')` 无硬编码中文（铁律 T2）。
+- **IPC**：新 `kb:pickFile`（`dialog.showOpenDialog` + 防御性回滚）+ `kb:add` 加 `url` 分支（content-XOR-url 校验）。
+- **验证**：`extract.test.ts` **35 例**（mock unpdf/mammoth/fetch/fs：PDF 页 heading / 空抽取 / 各类错误 → i18n key / DOCX→md / 大小 guard / URL 全链路）+ pipeline 加「P5 heading 发射→sectionTitle 收 Page 标题」例。
+
+### P3 前置 — searchSkills 排序重调 + A/B 评测 + go/no-go（代码事实）
+
+- **重调杠杆**（计划 B1）：name/tag token 子串 + FTS5 bm25 列权（name=10/desc=3/tags=4/content_tokenized=1/content_raw=0.1）+ LIKE `escapeLikePattern` 修 latent 通配符注入 bug（DRY 复用 `l3.ts`）。
+- **A/B 评测**（`scripts/skill-rag-eval.mjs`，66-skill 当前池受控）：原 ranking Primary Top1 **59.1%** / 全量重调 **45.5%**（回归 -13.6pp）/ bm25 列权降回 `ORDER BY rank` 50.0% / **escape-only 59.1%**（中性）。病根：token name 通道 + bm25 name 列权 10 过度加权 CJK 命名「…纪律」类 skill，压过 ASCII 名真目标（只在 content 列有分）。
+- **决策**（安全门「Top1 ≥ before 且失败改善」）：保留原 ranking + 只留 latent bug 修（escape）+ DRY。token/bm25 杠杆均回归，回退。回归门 `search-skills.test.ts` 9 例锁 escape latent-bug 修（含 `%`/`_` query 不抛）+ 原排名不回归。
+- **go/no-go**：retuned FTS Top1 **59.1%** vs vector baseline **36.4%** / Relaxed Top3 **50%** → **P3（skills 加向量）暂缓**。真实瓶颈是 CJK vs ASCII 命名 ranking 冲突，非词法 vs 向量。范围确认：无 `skills_vec` 迁移、无 sidecar 表、无 hybrid skills 搜索代码。后续优先级：① skill 命名规范化 ② 主 agent 端到端跑批 ③ 再考虑向量。详见 `docs/SKILL_RAG_EVAL.md`。
+
+### 非阻断项（记已知缺口）
+
+- 🟡 `kb:reindex` / `kb:downloadModel` 缺并发守卫——用户连点可能起多个 reindex/download 实例（各自跑各自的 batch，最终状态一致但浪费 I/O）。建议 agent 侧加 running 标志或 IPC 层互斥。
+
+---
+
 ## 一句话 verdict
 
-设计闭环站得住、工程判断到位；**P0-1（onnx 文件名错配）确为真实阻断 bug，已复现已修**；**P0-2（默认英文模型绕过中文决策）确为真实偏差，已改 multilingual-e5-small**；**P0-3（切 e5-small 后暴露的 `token_type_ids` 缺输入 + 批量 shape + BigInt masking）review 未提及，已发现并修**。打包「transformers.web.js 单文件不自包含」为误报（实测 0 require，自包含）。三点皆已修 + 回归全绿（627 测试 / typecheck / worker 真机 e5-small 往返），可进 P1/P3。
+设计闭环站得住、工程判断到位；**P0-1（onnx 文件名错配）确为真实阻断 bug，已复现已修**；**P0-2（默认英文模型绕过中文决策）确为真实偏差，已改 multilingual-e5-small**；**P0-3（切 e5-small 后暴露的 `token_type_ids` 缺输入 + 批量 shape + BigInt masking）review 未提及，已发现并修**。打包「transformers.web.js 单文件不自包含」为误报（实测 0 require，自包含）。e5 非对称前缀机制（P2 前必须落项）已落地。**P1 摄取管线 + P2 检索闭环均完成验收**：tsc 干净 + 78 文件 656 测试全绿（含 pipeline 9 + search 8 + kb-fts 8 + store +3），P0–P2 端到端可用。**P3 前置（排序重调 + A/B 评测 + go/no-go）、P4（reindex+远程 provider+模型下载）、P5（pdf/docx/URL 摄取）完成验收**：tsc 干净 + 80 文件 677 测试全绿；数据驱动决策 **P3（skills 加向量）暂缓**（retuned FTS Top1 59.1% > vector baseline 36.4%，瓶颈是 CJK vs ASCII 命名 ranking 冲突）。仅剩 **P6（HNSW/sqlite-vec，换 FlatIndex 接口不变）待做** + 4 个 P2+ 优化项。

@@ -45,6 +45,8 @@ export const ProviderSchema = z.object({
     reasoning: z.string().optional(),
     fast: z.string().optional(),
     default: z.string().optional(),
+    /** P4: 远程 embedding 模型 id（kb 远程嵌入用） */
+    embedding: z.string().optional(),
   }),
   enableThinking: z.boolean().optional(),
   isDefault: z.boolean().optional(),

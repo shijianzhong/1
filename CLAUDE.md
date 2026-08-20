@@ -78,7 +78,7 @@ npm run rebuild      # better-sqlite3 对应当前 Electron ABI 重编
 | 4 编排引擎 | ✅ M4 已收口 `4dd76dc` | Pregel runner + 四模式语义保真 + HITL（ask_user）；`context_mode` Sequential 下游接入待联调（M4 尾巴） |
 | 5 前端 UI | ✅ M5 | 核心页/画布/主题可用；**i18n 用户可见硬编码已清零**（2026-08-01，交叉校验零缺失）；`errors.*` 主进程 key 未齐 |
 | 6 原生与打磨 | ✅ 部分 M6 | 托盘/更新/mac dmg；草稿恢复 UI 未闭环；win 包未验 |
-| 7 工具与 MCP | ⏳ 进行中 | memory/propose/ask_user/web/file/opencli 已落地（file_* 已全量异步化）；**Skill ContextProvider + skill_run_script 已落地（7.4 ✅ 2026-08-03）**；**向量知识库 P0 地基 + P1 摄取管线 + P2 检索闭环已落地（7.5 ✅ 2026-08-20，`kb:add/list/remove/search` IPC + pipeline 分块 + v11 content 列 + hybrid 检索 searchKbHybrid[FTS+FlatIndex+RRF] + kb_search 工具 + /kb 前端页）**；shell/browser_use/MCP 未做 |
+| 7 工具与 MCP | ⏳ 进行中 | memory/propose/ask_user/web/file/opencli 已落地（file_* 已全量异步化）；**Skill ContextProvider + skill_run_script 已落地（7.4 ✅ 2026-08-03）**；**向量知识库 P0-P5 + P3 前置全落地（7.5 ✅ 2026-08-20，`kb:add/pickFile/list/remove/search/reindex/downloadModel/getProviderPreference/setProviderPreference` IPC + pipeline 分块 + v11 content 列 + hybrid 检索 searchKbHybrid[FTS+FlatIndex+RRF] + kb_search 工具 + /kb 前端页 + RemoteEmbeddingProvider 复用 Provider 系统 + reindex 统一循环 + 模型运行时下载/首启 seed + P5 pdf/docx/URL 摄取[unpdf+mammoth+Jina] + P3 前置重调评测[FTS 59.1% > 向量 36.4% → 给 skills 加向量暂缓]）**；shell/browser_use/MCP 未做 |
 | 8 Registry | ⏳ 进行中 | Phase 1–5 全落地（仓库+CI/provenance+浏览导入/导出/Token+源管理+自动PR+star+一键更新）；剩余 PR 合并后真实链路验证 |
 
 **当前优先缺口（勿当已完成）：**

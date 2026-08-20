@@ -221,13 +221,23 @@ function buildMatchQuery(query) {
   return terms.join(' OR ')
 }
 
+// MIRROR OF src/main/storage/memory/l3.ts — LIKE 转义，防通配符注入
+function escapeLikePattern(literal) {
+  return literal.replace(/[%_\\]/g, '\\$&')
+}
+
+// MIRROR OF src/main/storage/skills/fts.ts:searchSkills — keep in sync.
+// 重调结论（docs/SKILL_RAG_EVAL.md）：token-based name/tag 通道 + bm25 列加权在 66-skill
+// 真实池上回归 Primary Top1（过度加权 CJK 名「纪律」类 skill），故保留原 ranking，
+// 只保留 latent bug 修（escapeLikePattern）+ buildMatchQuery DRY 复用 l3.ts。
 function searchSkills(db, keywords, limit = 8) {
   const q = collapseWhitespace(keywords)
   if (!q) return []
 
   const score = new Map()
   const hit = new Map()
-  const pattern = `%${q}%`
+  const escapedQ = escapeLikePattern(q)
+  const pattern = `%${escapedQ}%`
   const bump = (row, weight) => {
     hit.set(row.id, row)
     score.set(row.id, (score.get(row.id) ?? 0) + weight)
@@ -236,15 +246,15 @@ function searchSkills(db, keywords, limit = 8) {
   const nameRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE name = ? OR name LIKE ?
+     WHERE name = ? OR name LIKE ? ESCAPE '\\'
      LIMIT ?`,
-  ).all(q, `${q}%`, limit)
+  ).all(q, `${escapedQ}%`, limit)
   for (const row of nameRows) bump(row, 3)
 
   const tagRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE tags = ? OR tags LIKE ?
+     WHERE tags = ? OR tags LIKE ? ESCAPE '\\'
      LIMIT ?`,
   ).all(q, pattern, limit)
   for (const row of tagRows) bump(row, 2.5)
@@ -268,7 +278,8 @@ function searchSkills(db, keywords, limit = 8) {
   const likeRows = db.prepare(
     `SELECT skill_id as id, name, description as desc
      FROM skills_fts
-     WHERE name LIKE ? OR description LIKE ? OR tags LIKE ? OR content_raw LIKE ?
+     WHERE name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
+        OR tags LIKE ? ESCAPE '\\' OR content_raw LIKE ? ESCAPE '\\'
      LIMIT ?`,
   ).all(pattern, pattern, pattern, pattern, limit)
   for (const row of likeRows) bump(row, 1)

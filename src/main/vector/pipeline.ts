@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { approxTokenCount } from '../llm/token-count'
-import { getLocalProvider, KB_MODEL_ID } from './embed'
+import { getActiveProvider, KB_MODEL_ID } from './embed'
 import { insertKbChunks, upsertKbDoc, type KbChunkRecord } from './store'
 import { logger } from '../logger'
 
@@ -221,7 +221,7 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
 
   // 向量化（降级：provider 未就绪 → 全 null，content+FTS 照写）
   const texts = drafts.map((d) => d.content)
-  const provider = getLocalProvider()
+  const provider = getActiveProvider()
   let vecs: (Float32Array | null)[]
   const ready = await provider.ready().catch(() => false)
   if (ready) {

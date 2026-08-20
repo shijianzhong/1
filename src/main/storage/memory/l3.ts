@@ -61,13 +61,23 @@ export function escapeLikePattern(literal: string): string {
  *  导出供 kb-fts.ts 的 searchKbFts 复用（KB FTS5 与 L3 FTS5 同为 tokenize+bigram 预分词，
  *  MATCH 表达式构造同构，单一真相源）。 */
 export function buildMatchQuery(query: string): string {
+  const terms = buildMatchTerms(query)
+  return terms.length > 0
+    ? terms.map((t) => `"${t.replace(/"/g, ' ')}"`).join(' OR ')
+    : ''
+}
+
+/**
+ * 从查询串提取 FTS5 检索词（bigram/单词，去单字碎片）。
+ * 优先长度 ≥2 的 bigram/单词；全是单字时退化为单字 OR。
+ * 导出供 skills/fts.ts 的 searchSkills name/tag 通道复用——同一词提取逻辑，
+ * 让 token-based 子串匹配与 FTS5 MATCH 用同一分词口径，避免两处漂移。
+ */
+export function buildMatchTerms(query: string): string[] {
   const seg = tokenizeForFts(query)
-  // 只取长度 ≥2 的 bigram/单词作检索词（单字太碎，单独检索意义小）；全是单字时退化为单字 OR
   const words = seg.split(' ').filter(Boolean)
   const bigrams = words.filter((w) => [...w].length >= 2)
-  const terms = (bigrams.length > 0 ? bigrams : words)
-    .map((w) => `"${w.replace(/"/g, ' ')}"`)
-  return terms.length > 0 ? terms.join(' OR ') : ''
+  return bigrams.length > 0 ? bigrams : words
 }
 
 /** 写入/更新 L3 fact（按 user_id + key 唯一），并同步 FTS 索引 */

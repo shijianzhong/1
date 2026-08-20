@@ -237,6 +237,41 @@ export function listNullVecChunkIds(): { id: string; content: string }[] {
     .all() as { id: string; content: string }[]
 }
 
+/**
+ * P4: 清空所有 chunk 的 vec + vec_dim（provider 切换 / 维度漂移重嵌前调）。
+ * 旧维度向量全废（384→1536），clearAllKbVecs 后 listNullVecChunkIds 覆盖全部 chunk，
+ * reindex 即全量重嵌。破坏性——中途失败则全库 vec=NULL，但 NULL-vec 块仍走 FTS 降级兜底，
+ * reindex 可重跑（store.ts:11「vec=NULL=离线兜底」哲学）。
+ */
+export function clearAllKbVecs(): void {
+  getDb()
+    .prepare('UPDATE kb_chunks SET vec = NULL, vec_dim = NULL WHERE vec IS NOT NULL')
+    .run()
+  flatIndex.invalidate()
+}
+
+/**
+ * P4: 批量更新 chunk 向量（reindex 批量补用，不逐条 invalidate）。
+ * 事务内批量 UPDATE，循环结束由调用方统一 flatIndex.invalidate() + initFlatIndex() warm。
+ * 现有 updateKbChunkVec 逐条 invalidate 在 10k 块循环里浪费（flat-index.ts:261 P0 注释）。
+ */
+export function updateKbChunkVecBatch(updates: { id: string; vec: Float32Array }[]): void {
+  if (updates.length === 0) return
+  const db = getDb()
+  const stmt = db.prepare('UPDATE kb_chunks SET vec = ?, vec_dim = ? WHERE id = ?')
+  const tx = db.transaction((rows: { id: string; vec: Float32Array }[]) => {
+    for (const r of rows) {
+      stmt.run(vecToBlob(r.vec), r.vec.length, r.id)
+    }
+  })
+  tx(updates)
+}
+
+/** P4: 批量更新 kb_docs.embedding_provider（reindex 完成后标记文档用的 provider） */
+export function updateKbDocsEmbeddingProvider(provider: string): void {
+  getDb().prepare('UPDATE kb_docs SET embedding_provider = ?').run(provider)
+}
+
 /** 列出所有 kb_docs（含原文 content；用于 reindex 重切或导出） */
 export function listKbDocs(): KbDocRecord[] {
   return getDb()
