@@ -205,3 +205,55 @@ describe('invalidate()', () => {
     expect(flatIndex.dimension).toBe(0)
   })
 })
+
+describe('惰性重载（review #1：写入后即可检索，不等重启）', () => {
+  it('invalidate 后未显式 load，search 自动重载并命中新行', () => {
+    const ins = memDb.prepare(
+      'INSERT INTO kb_chunks (id, kb_id, doc_id, chunk_idx, content, vec, vec_dim, created_at) VALUES (?,?,?,?,?,?,?,?)',
+    )
+    ins.run('c0', 'kb', 'docA', 0, 'a', vecBuf([1, 0, 0]), 3, 1)
+    // 模拟 insertKbChunks 后的状态：invalidate 置未加载，不调 load
+    flatIndex.invalidate()
+    expect(flatIndex.isLoaded).toBe(false)
+    const { results, degraded } = flatIndex.search(Float32Array.from([1, 0, 0]), { topK: 1 })
+    expect(degraded).toBe(false)
+    expect(results.length).toBe(1)
+    expect(results[0].id).toBe('c0')
+    expect(flatIndex.isLoaded).toBe(true)
+  })
+
+  it('重载后增量可见：再插一行，invalidate → search 命中新行', () => {
+    const ins = memDb.prepare(
+      'INSERT INTO kb_chunks (id, kb_id, doc_id, chunk_idx, content, vec, vec_dim, created_at) VALUES (?,?,?,?,?,?,?,?)',
+    )
+    ins.run('c0', 'kb', 'docA', 0, 'a', vecBuf([1, 0, 0]), 3, 1)
+    flatIndex.load()
+    expect(flatIndex.count).toBe(1)
+    // 摄取第二个文档
+    ins.run('c1', 'kb', 'docB', 0, 'b', vecBuf([0, 1, 0]), 3, 1)
+    flatIndex.invalidate()
+    const { results } = flatIndex.search(Float32Array.from([0, 1, 0]), { topK: 1 })
+    expect(results[0].id).toBe('c1')
+    expect(flatIndex.count).toBe(2)
+  })
+})
+
+describe('非分片 docIds 过滤（review #3）', () => {
+  it('docIds 限定 docB → 只返回 docB 候选，不占 topK 名额', () => {
+    const ins = memDb.prepare(
+      'INSERT INTO kb_chunks (id, kb_id, doc_id, chunk_idx, content, vec, vec_dim, created_at) VALUES (?,?,?,?,?,?,?,?)',
+    )
+    // docA 的 c0 与 query 完全同向（全局 Top1），docB 的 c1 正交
+    ins.run('c0', 'kb', 'docA', 0, 'a', vecBuf([1, 0, 0]), 3, 1)
+    ins.run('c1', 'kb', 'docB', 0, 'b', vecBuf([0, 1, 0]), 3, 1)
+    flatIndex.load()
+    const { results, degraded } = flatIndex.search(Float32Array.from([1, 0, 0]), {
+      topK: 1,
+      docIds: ['docB'],
+    })
+    expect(degraded).toBe(false)
+    // 不过滤的话全局 Top1 是 c0（docA），占满 topK=1 → docB 候选被挤掉
+    expect(results.length).toBe(1)
+    expect(results[0].id).toBe('c1')
+  })
+})

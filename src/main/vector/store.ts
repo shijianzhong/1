@@ -126,8 +126,25 @@ export function insertKbChunks(records: KbChunkRecord[]): string[] {
       }
     }
   })()
-  // 写入后失效内存索引（P0 最简：下次 search 触发重载）
+  // 写入后失效内存索引（下次 search 由 flat-index 惰性重载，review #1 已兑现该契约）
   flatIndex.invalidate()
+  return ids
+}
+
+/**
+ * 摄取单文档：insertKbChunks + upsertKbDoc 包进同一事务（review #4）。
+ * 两个独立事务在崩溃窗口会留「kb_chunks 有行、kb_docs 无行」的孤儿 chunk——
+ * 列表（kb_docs）查不到、索引（kb_chunks）却加载，不可见不可删还挤占 topK。
+ * better-sqlite3 事务函数嵌套自动降级为 savepoint，故 insertKbChunks 内部事务
+ * 在外层事务里是 savepoint，两步全成或全废。
+ */
+export function ingestKbDocument(records: KbChunkRecord[], doc: KbDocRecord): string[] {
+  const db = getDb()
+  let ids: string[] = []
+  db.transaction(() => {
+    ids = insertKbChunks(records)
+    upsertKbDoc(doc)
+  })()
   return ids
 }
 

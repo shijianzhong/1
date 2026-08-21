@@ -189,6 +189,42 @@ describe('RemoteEmbeddingProvider.embed()', () => {
     expect(out).toEqual([])
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('响应条数 < 请求条数（max-input 截断）→ 尾部补 null 到等长（review #2）', async () => {
+    setupRemote()
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ embedding: [0.1, 0.2] }] }), // 只回 1/3 条
+    })
+    const p = getActiveProvider()
+    const out = await p.embed(['a', 'b', 'c'])
+    // 不校验的话 out.length=1，调用方按索引取值静默丢尾部
+    expect(out.length).toBe(3)
+    expect(out[0]).toBeInstanceOf(Float32Array)
+    expect(out[1]).toBeNull()
+    expect(out[2]).toBeNull()
+  })
+
+  it('provider 无限挂起 → 60s 超时上限，降级全 null 不阻塞（review #24）', async () => {
+    vi.useFakeTimers()
+    try {
+      setupRemote()
+      // fetch 永不 resolve，只对 abort 响应（模拟黑洞 provider）
+      fetchMock.mockImplementationOnce((_url: string, init: RequestInit) =>
+        new Promise((_, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(init.signal?.reason ?? new Error('aborted')),
+          )
+        }),
+      )
+      const p = getActiveProvider()
+      const outP = p.embed(['a', 'b'])
+      await vi.advanceTimersByTimeAsync(60_000)
+      await expect(outP).resolves.toEqual([null, null])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('getActiveProvider 选择逻辑', () => {

@@ -15,7 +15,7 @@
 // 主进程事件循环不被 WASM 阻塞（推理在 worker 子进程 / 远程在 network I/O）。
 
 import { BrowserWindow } from 'electron'
-import { getActiveProvider } from './embed'
+import { getActiveProvider, providerTagFor } from './embed'
 import {
   listNullVecChunkIds,
   updateKbChunkVecBatch,
@@ -62,8 +62,10 @@ export async function runReindex(): Promise<KbReindexResult> {
     //    clearAllKbVecs 后 listNullVecChunkIds 覆盖全部 chunk
     //    无 reindexRequired（模型刚下好）→ 只 backfill NULL（增量）
     const reindexRequired = getAppMeta('kb_reindex_required') === '1'
+    let clearedAll = false
     if (reindexRequired) {
       clearAllKbVecs()
+      clearedAll = true
       logger.info('[kb-reindex] 维度/provider 漂移 → 全量重嵌（已清空旧向量）')
     }
 
@@ -80,8 +82,12 @@ export async function runReindex(): Promise<KbReindexResult> {
       return { total: 0, embedded: 0, failed: 0 }
     }
 
+    let cancelled = false
     for (let i = 0; i < total; i += BATCH_SIZE) {
-      if (signal.aborted) break
+      if (signal.aborted) {
+        cancelled = true
+        break
+      }
       const batch = nullChunks.slice(i, i + BATCH_SIZE)
       const texts = batch.map((c) => c.content)
       const vecs = await provider.embed(texts, signal, 'passage')
@@ -102,12 +108,22 @@ export async function runReindex(): Promise<KbReindexResult> {
       })
     }
 
+    // 取消收尾：已 clearAll 的全量重嵌被取消时，旧向量已清、新向量未补完——
+    // 必须保留 reindex 标志，否则 UI 不再提示而全库 vec=NULL 长期裸奔
+    // （真实问题不是「取消后标志不清」，而是「取消后标志被清、进度当 done」）。
+    if (cancelled) {
+      if (clearedAll) setAppMeta('kb_reindex_required', '1')
+      flatIndex.invalidate() // 部分批次已写入，下次 search 惰性重载
+      emitProgress({ type: 'cancelled', done: embedded, total })
+      logger.info(`[kb-reindex] 已取消：embedded=${embedded} failed=${failed} total=${total}`)
+      return { total, embedded, failed }
+    }
+
     // 3. 清 reindex 标志 + 回标 doc provider + warm index
     setAppMeta('kb_reindex_required', '')
-    const providerTag = provider.kind === 'remote' ? (provider.modelId ?? 'remote') : 'local'
-    updateKbDocsEmbeddingProvider(providerTag)
+    updateKbDocsEmbeddingProvider(providerTagFor(provider))
     // 统一一次 invalidate + warm（updateKbChunkVecBatch 不逐条 invalidate；
-    // flat-index search 不会自动 reload，须显式 initFlatIndex）
+    // 显式 warm 省掉首次搜索的全量重载延迟——search 本身也会惰性重载，review #1）
     flatIndex.invalidate()
     initFlatIndex()
 

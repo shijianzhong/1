@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { approxTokenCount } from '../llm/token-count'
 
 // —— pipeline.ts 单测（分块逻辑为主，ingest 走 mock 验 ready 两态）——
 // mock getActiveProvider（不真跑 WASM worker）+ insertKbChunks/upsertKbDoc（不真写库）。
@@ -12,14 +13,17 @@ vi.mock('./embed', () => ({
     ready: readyMock,
     dimension: () => 384,
     embed: embedMock,
+    modelId: null,
   }),
-  KB_MODEL_ID: 'Xenova/multilingual-e5-small',
+  providerTagFor: (p: { kind: string; modelId?: string | null }) =>
+    p.kind === 'remote' ? (p.modelId ?? 'remote') : 'local',
 }))
-const insertKbChunksMock = vi.fn((records: unknown[]) => records.map((_, i) => `kb_${i}`))
-const upsertKbDocMock = vi.fn()
+// pipeline 经 ingestKbDocument 单事务写库（review #4）；内部仍走 insertKbChunks/upsertKbDoc
+const ingestKbDocumentMock = vi.fn((records: unknown[], _doc: unknown) =>
+  records.map((_, i) => `kb_${i}`),
+)
 vi.mock('./store', () => ({
-  insertKbChunks: insertKbChunksMock,
-  upsertKbDoc: upsertKbDocMock,
+  ingestKbDocument: ingestKbDocumentMock,
 }))
 
 const { chunkDocument, ingestDocument } = await import('./pipeline')
@@ -27,8 +31,7 @@ const { chunkDocument, ingestDocument } = await import('./pipeline')
 beforeEach(() => {
   embedMock.mockReset()
   readyMock.mockReset()
-  insertKbChunksMock.mockClear()
-  upsertKbDocMock.mockClear()
+  ingestKbDocumentMock.mockClear()
 })
 
 describe('chunkDocument', () => {
@@ -93,6 +96,20 @@ ${code}\`\`\`
       if (fences > 0) expect(fences % 2).toBe(0)
     }
   })
+
+  it('未闭合 code fence（畸形输入）按普通文本硬切，不无界合并成超长块（review #5）', () => {
+    const code = 'const x = 1\n'.repeat(400) // ~1200 token，无闭合 fence
+    const md = `# T\n\`\`\`js\n${code}`
+    const drafts = chunkDocument(md, { maxTokens: 512, overlap: 64 })
+    // 未闭合 fence 不触发无界推进：多块、每块不超 maxTokens + 单行余量
+    expect(drafts.length).toBeGreaterThan(1)
+    for (const d of drafts) {
+      expect(approxTokenCount(d.content)).toBeLessThanOrEqual(512 + 20)
+    }
+    // 内容不丢：所有代码行都出现在块里（overlap 会重复，计数 ≥ 原始行数）
+    const joined = drafts.map((d) => d.content).join('\n')
+    expect((joined.match(/const x = 1/g) ?? []).length).toBeGreaterThanOrEqual(400)
+  })
 })
 
 describe('ingestDocument', () => {
@@ -115,12 +132,12 @@ describe('ingestDocument', () => {
       undefined,
       'passage',
     )
-    // insertKbChunks + upsertKbDoc 各调一次
-    expect(insertKbChunksMock).toHaveBeenCalledTimes(1)
-    expect(upsertKbDocMock).toHaveBeenCalledTimes(1)
-    // upsert 带 content 原文
-    const upsertArg = upsertKbDocMock.mock.calls[0][0]
-    expect(upsertArg.content).toBe('# A\n正文1\n# B\n正文2')
+    // 单事务摄取调一次（records + doc 元信息）
+    expect(ingestKbDocumentMock).toHaveBeenCalledTimes(1)
+    // doc 带 content 原文 + providerTag 口径（local → 'local'，review #8）
+    const docArg = ingestKbDocumentMock.mock.calls[0][1] as { content: string; embeddingProvider: string }
+    expect(docArg.content).toBe('# A\n正文1\n# B\n正文2')
+    expect(docArg.embeddingProvider).toBe('local')
   })
 
   it('provider 未就绪 → vec 全 null 降级 + nullVec=chunkCount', async () => {
@@ -135,24 +152,22 @@ describe('ingestDocument', () => {
     // 未就绪不调 embed
     expect(embedMock).not.toHaveBeenCalled()
     // content/fts 仍写
-    expect(insertKbChunksMock).toHaveBeenCalledTimes(1)
-    expect(upsertKbDocMock).toHaveBeenCalledTimes(1)
+    expect(ingestKbDocumentMock).toHaveBeenCalledTimes(1)
   })
 
   it('空 content → chunkCount=0 不写库', async () => {
     readyMock.mockResolvedValue(true)
     const r = await ingestDocument({ title: 't', content: '   ' })
     expect(r.chunkCount).toBe(0)
-    expect(insertKbChunksMock).not.toHaveBeenCalled()
-    expect(upsertKbDocMock).not.toHaveBeenCalled()
+    expect(ingestKbDocumentMock).not.toHaveBeenCalled()
   })
 
   it('docId 传则覆盖重摄取（幂等）', async () => {
     readyMock.mockResolvedValue(false)
     const r = await ingestDocument({ title: 't', content: '# A\n正文', docId: 'fixed' })
     expect(r.docId).toBe('fixed')
-    // insertKbChunks 收到 kbId=docId
-    const records = insertKbChunksMock.mock.calls[0][0] as Array<{ kbId: string; docId: string }>
+    // records 收到 kbId=docId
+    const records = ingestKbDocumentMock.mock.calls[0][0] as Array<{ kbId: string; docId: string }>
     expect(records[0].kbId).toBe('fixed')
     expect(records[0].docId).toBe('fixed')
   })
@@ -169,7 +184,7 @@ describe('ingestDocument', () => {
       content: '# Page 1\nbody of page one',
     })
     expect(r.chunkCount).toBe(1)
-    const records = insertKbChunksMock.mock.calls[0][0] as Array<{ meta: string }>
+    const records = ingestKbDocumentMock.mock.calls[0][0] as Array<{ meta: string }>
     const meta = JSON.parse(records[0].meta) as { sectionTitle: string | null }
     expect(meta.sectionTitle).toBe('Page 1')
   })

@@ -11,7 +11,7 @@
 // 幂等：已存在非空文件跳过；404 容忍（不同模型仓文件集不同，如 e5 用 sentencepiece.bpe.model）。
 
 import { BrowserWindow } from 'electron'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, stat, rename, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createWriteStream } from 'node:fs'
@@ -36,6 +36,65 @@ const FILES = [
 ]
 
 const PROGRESS_CHANNEL = 'kb:downloadModel:progress'
+
+/** 单文件大小上限（review #15）：e5 全套 ~23MB，异常源/重定向到超大文件时防呆 */
+const MAX_MODEL_FILE_BYTES = 200 * 1024 * 1024
+/** 单文件 fetch 重试（review #12）：5xx/网络抖动退避，404/4xx 终态不重试 */
+const FETCH_ATTEMPTS = 3
+const FETCH_BASE_DELAY_MS = 1000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * 单文件下载带退避重试。裸 fetch 一次 503/抖动就杀掉整个模型下载序列太脆。
+ * 不复用 llm/retry.ts：其 isRetryable 是 LLM SDK 错误形态（APIError instanceof /
+ * 网关关键词），与裸 fetch 的 Response/网络错误不同构，各自保持简单。
+ */
+async function fetchWithRetry(url: string): Promise<Response> {
+  let lastErr: Error = new Error('fetch failed')
+  for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { redirect: 'follow' })
+      // ok / 404 / 4xx 都是终态（404 由调用方容忍跳过），只有 5xx 重试
+      if (res.ok || res.status < 500) return res
+      lastErr = new Error(`HTTP ${res.status}`)
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e))
+    }
+    if (attempt < FETCH_ATTEMPTS - 1) {
+      const delay = FETCH_BASE_DELAY_MS * 2 ** attempt
+      logger.warn(`[kb-download] fetch 重试 ${attempt + 1}/${FETCH_ATTEMPTS - 1}，${delay}ms 后`, lastErr.message)
+      await sleep(delay)
+    }
+  }
+  throw lastErr
+}
+
+/** 流式落盘到 .part 再 rename（review #13），超大小上限中止（review #15） */
+async function streamToFile(body: ReadableStream, dest: string): Promise<void> {
+  // 先写 .part 再原子 rename：中途崩溃/失败不留半截目标文件——否则
+  // 「已存在非空即跳过」的幂等会把半截文件当已完成，模型永久损坏无法自愈。
+  const part = `${dest}.part`
+  let bytes = 0
+  // res.body 是 DOM ReadableStream；Readable.fromWeb 要 Node web stream 类型，
+  // 经 unknown 断言避免两套 ReadableStream lib 冲突
+  const src = Readable.fromWeb(body as unknown as import('node:stream/web').ReadableStream)
+  src.on('data', (chunk: Buffer) => {
+    bytes += chunk.length
+    if (bytes > MAX_MODEL_FILE_BYTES) {
+      src.destroy(new Error(`model file exceeds ${MAX_MODEL_FILE_BYTES} bytes`))
+    }
+  })
+  try {
+    await pipeline(src, createWriteStream(part))
+    await rename(part, dest)
+  } catch (e) {
+    await unlink(part).catch(() => {})
+    throw e
+  }
+}
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
@@ -69,7 +128,7 @@ export async function downloadKbModel(): Promise<void> {
       }
       await mkdir(dirname(dest), { recursive: true })
       const url = `${HOST}/${MODEL_ID}/resolve/main/${f}`
-      const res = await fetch(url, { redirect: 'follow' })
+      const res = await fetchWithRetry(url)
       if (!res.ok) {
         // 404 = 该模型仓无此文件（不同模型文件集不同）→ 跳过不报错
         if (res.status === 404) {
@@ -78,13 +137,9 @@ export async function downloadKbModel(): Promise<void> {
         }
         throw new Error(`fetch ${f}: HTTP ${res.status}`)
       }
+      if (!res.body) throw new Error(`fetch ${f}: empty body`)
       // onnx 二进制走流式落盘；文本小文件也走流（统一路径，省分支）
-      // res.body 是 DOM ReadableStream；Readable.fromWeb 要 Node web stream 类型，
-      // 经 unknown 断言避免两套 ReadableStream lib 冲突
-      await pipeline(
-        Readable.fromWeb(res.body as unknown as import('node:stream/web').ReadableStream),
-        createWriteStream(dest),
-      )
+      await streamToFile(res.body as unknown as ReadableStream, dest)
       emitProgress({ type: 'progress', file: f, done: i + 1, total: FILES.length })
     } catch (e) {
       logger.warn(`[kb-download] ${f} 下载失败: ${e instanceof Error ? e.message : e}`)

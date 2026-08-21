@@ -176,18 +176,32 @@ export function embedBatchViaWorker(
   const state = ensureWorker()
   const id = `batch_${++batchSeq}`
   const task = new Promise<(Float32Array | null)[]>((resolve, reject) => {
+    // 所有收尾路径（resolve/reject/timeout/abort/write 失败）统一摘除 abort 监听——
+    // 否则长存活 signal（单次 ingest 多批）上监听器随批数线性累积（review #23）
+    const cleanup = (): void => signal?.removeEventListener('abort', onAbort)
+    const settledResolve = (v: (Float32Array | null)[]): void => {
+      cleanup()
+      resolve(v)
+    }
+    const settledReject = (e: Error): void => {
+      cleanup()
+      reject(e)
+    }
     const timer = setTimeout(() => {
-      // 单批超时：只 reject 这批，不杀整个 worker（其它批可能正常）
+      // 单批超时：reject 这批并杀掉 worker 强制下批重建（review #22）。
+      // 卡死的 worker（ONNX 真阻塞）不触发 close/error——不杀则 ensureWorker
+      // 永远复用它，后续每批都等满超时，检索热路径永久退化纯词法直到重启。
       state.pending.delete(id)
-      reject(new Error('timeout'))
-      // 但若这批卡住致 worker 不响应，下批会再超时 → 届时由 close/fail 重建
+      state.failed = true
+      killProcessGroup(state.child)
+      settledReject(new Error('timeout'))
     }, EMBED_TIMEOUT_MS)
-    state.pending.set(id, { resolve, reject, timer, texts, n: texts.length })
     const onAbort = (): void => {
       clearTimeout(timer)
       state.pending.delete(id)
-      reject(signal?.reason ?? new Error('aborted'))
+      settledReject(signal?.reason instanceof Error ? signal.reason : new Error('aborted'))
     }
+    state.pending.set(id, { resolve: settledResolve, reject: settledReject, timer, texts, n: texts.length })
     signal?.addEventListener('abort', onAbort, { once: true })
     // 写入请求（worker 逐行读）；kind 透传给 worker 决定 e5 前缀
     const line = JSON.stringify({ id, texts, kind }) + '\n'
@@ -196,7 +210,7 @@ export function embedBatchViaWorker(
     } catch (e) {
       clearTimeout(timer)
       state.pending.delete(id)
-      reject(e instanceof Error ? e : new Error(String(e)))
+      settledReject(e instanceof Error ? e : new Error(String(e)))
     }
   })
   return task.catch((e) => {

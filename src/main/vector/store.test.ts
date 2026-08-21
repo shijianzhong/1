@@ -11,7 +11,7 @@ vi.mock('../storage/db', () => ({
   getDb: () => memDb,
 }))
 
-const { insertKbChunks, getKbChunk, blobToVec, vecToBlob, deleteKbDoc, upsertKbDoc, listKbDocsLite, fetchKbChunksWithDoc } = await import(
+const { insertKbChunks, getKbChunk, blobToVec, vecToBlob, deleteKbDoc, upsertKbDoc, listKbDocsLite, fetchKbChunksWithDoc, ingestKbDocument } = await import(
   './store'
 )
 
@@ -234,5 +234,37 @@ describe('fetchKbChunksWithDoc JOIN 取标题', () => {
     ).run('orphan_c', 'kb', 'orphan_doc', 0, '孤儿块', Date.now())
     const rows = fetchKbChunksWithDoc(['orphan_c'])
     expect(rows).toEqual([]) // JOIN kb_docs 找不到 orphan_doc → 排除
+  })
+})
+
+describe('ingestKbDocument 单事务（review #4）', () => {
+  it('chunks + doc 一次写入，两表都可见', () => {
+    const ids = ingestKbDocument(
+      [
+        { kbId: 'doc1', docId: 'doc1', chunkIdx: 0, content: '第一段 hello' },
+        { kbId: 'doc1', docId: 'doc1', chunkIdx: 1, content: '第二段 world' },
+      ],
+      { id: 'doc1', title: '事务文档', content: '第一段 hello\n第二段 world', chunks: 2 },
+    )
+    expect(ids.length).toBe(2)
+    expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_chunks WHERE doc_id=?').get('doc1') as { c: number }).c).toBe(2)
+    expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_chunks_fts WHERE doc_id=?').get('doc1') as { c: number }).c).toBe(2)
+    const doc = memDb.prepare('SELECT title, chunks FROM kb_docs WHERE id=?').get('doc1') as { title: string; chunks: number }
+    expect(doc.title).toBe('事务文档')
+    expect(doc.chunks).toBe(2)
+  })
+
+  it('doc 写入失败 → 整体回滚，不留孤儿 chunk', () => {
+    // title=null 触发 kb_docs NOT NULL 约束 → upsert 在事务内抛错
+    expect(() =>
+      ingestKbDocument(
+        [{ kbId: 'docX', docId: 'docX', chunkIdx: 0, content: '会变成孤儿吗' }],
+        { id: 'docX', title: null as unknown as string, chunks: 1 },
+      ),
+    ).toThrow()
+    // 回滚后 chunks/fts 都不应有 docX 的行
+    expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_chunks WHERE doc_id=?').get('docX') as { c: number }).c).toBe(0)
+    expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_chunks_fts WHERE doc_id=?').get('docX') as { c: number }).c).toBe(0)
+    expect((memDb.prepare('SELECT COUNT(*) as c FROM kb_docs WHERE id=?').get('docX') as { c: number }).c).toBe(0)
   })
 })

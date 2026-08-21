@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   getBuiltinAgentsDir,
@@ -118,8 +118,20 @@ export function seedKbModel(): void {
       // 空目录 / 读失败 → 继续复制
     }
   }
-  cpSync(src, dest, { recursive: true })
-  logger.info(`[builtin] kb-models 复制: ${src} → ${dest}`)
+  // 先复制到临时目录再原子 rename（review #13）：23MB 拷贝中途崩溃若留半截 .onnx
+  // 在 dest，下次启动「已有 .onnx」误判跳过复制 → 模型永久损坏无法自愈。
+  // 失败不抛——模型可后续经 kb:downloadModel 运行时下载，不该拖垮启动。
+  const tmp = `${dest}.seed-${process.pid}`
+  try {
+    rmSync(tmp, { recursive: true, force: true })
+    cpSync(src, tmp, { recursive: true })
+    if (existsSync(dest)) rmSync(dest, { recursive: true, force: true })
+    renameSync(tmp, dest)
+    logger.info(`[builtin] kb-models 复制: ${src} → ${dest}`)
+  } catch (e) {
+    rmSync(tmp, { recursive: true, force: true })
+    logger.warn('[builtin] kb-models 复制失败（可运行时下载补齐）', e)
+  }
 }
 
 /**

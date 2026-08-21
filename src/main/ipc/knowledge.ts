@@ -21,7 +21,7 @@ import { dialog } from 'electron'
 import { basename } from 'node:path'
 import { withHandler } from './handler'
 import { IpcErrorThrow } from '@shared/types'
-import { getKbStatus, setActiveProvider } from '../vector/embed'
+import { getKbStatus, setActiveProvider, invalidateLocalModelProbe } from '../vector/embed'
 import { ingestDocument } from '../vector/pipeline'
 import { deleteKbDoc, listKbDocsLite } from '../vector/store'
 import { searchKbHybrid } from '../vector/search'
@@ -166,7 +166,11 @@ export function registerKnowledgeHandlers(): void {
 
   withHandler<void>('kb:reindex:cancel', () => cancelReindex())
 
-  withHandler<void>('kb:downloadModel', async () => downloadKbModel())
+  withHandler<void>('kb:downloadModel', async () => {
+    await downloadKbModel()
+    // 模型文件已变更 → 失效 hasLocalModel 探测缓存（否则 status 长时间停留在 missing）
+    invalidateLocalModelProbe()
+  })
 
   withHandler<KbProviderPreference>('kb:getProviderPreference', () => ({
     providerId: getAppMeta('kb_embedding_provider_id') || null,

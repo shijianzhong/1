@@ -92,6 +92,9 @@ export function searchKbFts(query: string, limit = 10, docIds?: string[]): strin
 
   // 路 2：LIKE content_raw 子串兜底（FTS 分词后单字过碎时的补充；转义 %/_ 防通配符全表扫）
   if (ftsIds.length < topK) {
+    // 按剩余配额取（review #26）：不按 topK 全量再取一遍——否则词法路候选最多
+    // ~2×topK，RRF 中词法 rank 更深、融合向词法倾斜，违背「两路同 topK」前提。
+    const remaining = topK - ftsIds.length
     const esc = escapeLikePattern(trimmed)
     const likePat = `%${esc}%`
     const sql = docIds && docIds.length > 0
@@ -100,8 +103,8 @@ export function searchKbFts(query: string, limit = 10, docIds?: string[]): strin
          LIMIT ?`
       : `SELECT chunk_id FROM kb_chunks_fts WHERE content_raw LIKE ? ESCAPE '\\' LIMIT ?`
     const rows = (docIds && docIds.length > 0
-      ? db.prepare(sql).all(likePat, JSON.stringify(docIds), topK)
-      : db.prepare(sql).all(likePat, topK)) as { chunk_id: string }[]
+      ? db.prepare(sql).all(likePat, JSON.stringify(docIds), remaining)
+      : db.prepare(sql).all(likePat, remaining)) as { chunk_id: string }[]
     for (const r of rows) {
       if (!seen.has(r.chunk_id)) {
         seen.add(r.chunk_id)

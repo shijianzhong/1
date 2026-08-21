@@ -19,6 +19,8 @@ import { readFileSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { IpcErrorThrow } from '@shared/types'
 import { logger } from '../logger'
+import { fetchWithTimeout } from '../util/net'
+import { stripTags, decodeEntities } from '../util/html'
 
 /** 抽取结果——content 为 markdown，喂 ingestDocument */
 export interface ExtractedDoc {
@@ -148,17 +150,25 @@ export function htmlToMarkdown(html: string): string {
   s = s.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_, t) => `\n###### ${stripTags(t).trim()}\n`)
   // pre / code 块（保留原文）
   s = s.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_, t) => `\n\`\`\`\n${stripTags(t).trim()}\n\`\`\`\n`)
-  // ul 列表
-  s = s.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, inner) =>
-    inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_l: string, t: string) => `\n- ${stripTags(t).trim()}`) + '\n',
-  )
-  // ol 列表（带序号）
-  s = s.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, inner) => {
-    let n = 1
-    return (
-      inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_l: string, t: string) => `\n${n++}. ${stripTags(t).trim()}`) + '\n'
-    )
-  })
+  // ul/ol 列表（含嵌套，review #7）：非贪婪 `([\s\S]*?)` 直匹配嵌套列表会切到
+  // 内层第一个 </ul>，层级错位（docx 多级列表常见）。改为反复替换「最内层列表」
+  // （内容不再含任何 ul/ol 开闭标签），内层先转成 markdown 文本、外层后转，迭代至
+  // 收敛；cap 20 防病态 HTML 死循环。嵌套缩进不保留（平铺），但条目不粘连、不丢前缀。
+  const innermostListRe = /<(ul|ol)[^>]*>((?:(?!<\/?(?:ul|ol)\b)[\s\S])*?)<\/\1>/gi
+  for (let iter = 0; iter < 20; iter++) {
+    let changed = false
+    s = s.replace(innermostListRe, (_m, tag: string, inner: string) => {
+      changed = true
+      let n = 1
+      const ordered = tag.toLowerCase() === 'ol'
+      return (
+        inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_l: string, t: string) =>
+          ordered ? `\n${n++}. ${stripTags(t).trim()}` : `\n- ${stripTags(t).trim()}`,
+        ) + '\n'
+      )
+    })
+    if (!changed) break
+  }
   // 行内映射
   s = s.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, t) => `[${stripTags(t).trim()}](${href})`)
   s = s.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, t) => `**${stripTags(t)}**`)
@@ -171,27 +181,16 @@ export function htmlToMarkdown(html: string): string {
   s = s.replace(/<\/p>/gi, '\n\n')
   // 剥余标签
   s = stripTags(s)
-  // 解码常见实体 + 收敛多余空行
-  s = s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  // 解码实体（共享 decodeEntities 全量表：named + decimal + hex，review #11）+ 收敛空行
+  s = decodeEntities(s)
     .replace(/\n{3,}/g, '\n\n')
     .trim()
   return s
 }
 
-/** 剥所有 HTML 标签（保留纯文本内容） */
-function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, '')
-}
-
 /**
  * 从 URL 抓取正文（Jina Reader r.jina.ai，返 markdown）。
- * 复制 web.ts fetchText 范式但不跨层引私有 helper（保持 extract 模块自洽）。
+ * 超时 + signal 链接走共享 fetchWithTimeout（util/net.ts，与 web.ts 同源，review #10）。
  * JINA_API_KEY 只在主进程读 process.env（铁律3：secrets 不入渲染层）。
  */
 export async function extractFromUrl(url: string, signal?: AbortSignal): Promise<ExtractedDoc> {
@@ -199,18 +198,15 @@ export async function extractFromUrl(url: string, signal?: AbortSignal): Promise
     throw new IpcErrorThrow('errors:kb.url_fetch_failed', 'invalid url')
   }
   const key = process.env.JINA_API_KEY
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(new Error('timeout')), URL_TIMEOUT_MS)
-  const onAbort = (): void => ctrl.abort(signal?.reason ?? new Error('aborted'))
-  signal?.addEventListener('abort', onAbort, { once: true })
   let text: string
   try {
-    const res = await fetch(`https://r.jina.ai/${url}`, {
+    const res = await fetchWithTimeout(`https://r.jina.ai/${url}`, {
+      timeoutMs: URL_TIMEOUT_MS,
+      signal,
       headers: {
         'User-Agent': UA,
         ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
-      signal: ctrl.signal,
     })
     if (!res.ok) {
       throw new IpcErrorThrow('errors:kb.url_fetch_failed', `http_${res.status}`)
@@ -219,9 +215,6 @@ export async function extractFromUrl(url: string, signal?: AbortSignal): Promise
   } catch (e) {
     if (e instanceof IpcErrorThrow) throw e
     throw new IpcErrorThrow('errors:kb.url_fetch_failed', (e as Error).message)
-  } finally {
-    clearTimeout(timer)
-    signal?.removeEventListener('abort', onAbort)
   }
   const content = text.slice(0, URL_CAP).trim()
   if (!content) throw new IpcErrorThrow('errors:kb.empty_extraction')

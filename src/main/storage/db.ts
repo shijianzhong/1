@@ -367,10 +367,22 @@ function runMigrations(db: Database.Database): void {
     // schema_version 未登记」的半截 schema → 下次启动该版本被判为未应用、重跑 CREATE
     // 可能因已存在对象报错，且部分表结构不可用。better-sqlite3 的 transaction 对 DDL
     // 亦生效（单连接串行），保证全成或全废。
-    db.transaction(() => {
-      db.exec(m.sql)
-      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(m.version)
-    })()
+    try {
+      db.transaction(() => {
+        db.exec(m.sql)
+        db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(m.version)
+      })()
+    } catch (e) {
+      // SQLite 的 ADD COLUMN 无 IF NOT EXISTS：列已存在（dev 分支残留/手工改动）时
+      // 「duplicate column name」——目标状态已达成，登记版本跳过；
+      // 否则每次启动重跑失败死循环（review #16）
+      if (e instanceof Error && /duplicate column name/i.test(e.message)) {
+        logger.warn(`[db] migration v${m.version} 列已存在，登记跳过`)
+        db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(m.version)
+      } else {
+        throw e
+      }
+    }
   }
 }
 
@@ -451,7 +463,8 @@ export function getDb(): Database.Database {
 
   // vec_dim 漂移自检（§九风险3）：存量向量维度 ≠ 当前 provider 维度 → 标记需重嵌。
   // 不在此触发重嵌（重嵌是分钟级后台任务，走 kb:reindex），仅写 app_meta 标志 + warn。
-  // BGE_M3_DIM 与 embed.ts 同源（运行时 import，避免此处硬编码维度导致双源漂移）。
+  // 预期维度不在此硬编码——单值漂移由 embed.ts checkVecDimDrift 用
+  // provider.dimension() 与库内 vec_dim 比对判定（避免双源漂移）。
   try {
     const driftRow = db
       .prepare(
@@ -463,11 +476,6 @@ export function getDb(): Database.Database {
       // 库内同时存在多种维度 → 必然漂移（换 provider 未重嵌）
       logger.warn(`[db] KB 向量维度不一致：${dims.join(',')}，需 kb:reindex 重嵌`)
       setAppMeta('kb_reindex_required', '1')
-    } else if (dims.length === 1) {
-      // 单一维度但与预期不符 → 运行时 embed.ts 比对会判定（此处不硬编码预期维度，
-      // 由 embed.ts 的 dimension() 与库内 vec_dim 比对触发 reindex 标志）
-      // 此处仅记录库内现有维度，供 embed.ts 启动比对
-      setAppMeta('kb_vec_dim', String(dims[0]))
     }
   } catch (error) {
     logger.warn('[db] KB vec_dim 漂移自检失败（非致命）', error)

@@ -209,12 +209,8 @@ export function useKbDownloadModel() {
   })
 }
 
-export function useKbProviderPreference() {
-  return useQuery({
-    queryKey: ['kb', 'providerPreference'],
-    queryFn: () => thenUnwrap(window.one.kb.getProviderPreference()),
-  })
-}
+// useKbProviderPreference 已删（review #18 死代码）：provider 下拉读 status.activeProviderId
+// 作单一事实源；kb:getProviderPreference IPC 仍在，未来需要时再补 hook。
 
 export function useKbSetProviderPreference() {
   const qc = useQueryClient()

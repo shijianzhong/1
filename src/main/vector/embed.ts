@@ -41,6 +41,15 @@ export interface EmbeddingProvider {
 }
 
 /**
+ * kb_docs.embedding_provider 列的统一口径（ingest 与 reindex 共用，review #8）：
+ * remote 标远程 modelId，local 标 'local'。不写死本地模型 id——
+ * 远程 provider 摄取的文档若标本地模型 id，前端 per-doc badge 误显示。
+ */
+export function providerTagFor(provider: EmbeddingProvider): string {
+  return provider.kind === 'remote' ? (provider.modelId ?? 'remote') : 'local'
+}
+
+/**
  * 本地 transformers.js（WASM worker）provider。
  * ready() 查 userData/kb-models 下是否有模型文件（full 包首启复制到此 / slim 运行时下载到此）。
  */
@@ -87,6 +96,14 @@ const KNOWN_REMOTE_DIMS: Record<string, number> = {
   'text-embedding-3-large': 3072,
   'text-embedding-ada-002': 1536,
 }
+
+/**
+ * 远程 embed 超时上限（review #24）：本地路径有 worker 的 EMBED_TIMEOUT_MS=120s，
+ * 远程 fetch 只透传调用方 signal——调用方不传时黑洞/慢速 provider 会无限挂起
+ * 阻塞 ingest/search，违背「阻塞绝不无限等」的降级链纪律。网络 I/O 不含模型加载，
+ * 比本地 120s 收紧到 60s。
+ */
+const REMOTE_EMBED_TIMEOUT_MS = 60_000
 
 /**
  * 远程 embedding provider（OpenAI /embeddings 兼容）。
@@ -160,12 +177,23 @@ class RemoteEmbeddingProvider implements EmbeddingProvider {
         headers['Authorization'] = `Bearer ${this.apiKey}`
       }
       const url = `${this.baseURL}/embeddings`
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ model: this.modelId, input: texts }),
-        signal,
-      })
+      // 自身超时上限 + 调用方 signal 链接（review #24：无 signal 时也不能无限挂起）
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(new Error('timeout')), REMOTE_EMBED_TIMEOUT_MS)
+      const onAbort = (): void => ctrl.abort(signal?.reason ?? new Error('aborted'))
+      signal?.addEventListener('abort', onAbort, { once: true })
+      let res: Response
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ model: this.modelId, input: texts }),
+          signal: ctrl.signal,
+        })
+      } finally {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+      }
       if (!res.ok) {
         const errText = await res.text().catch(() => '')
         logger.warn(
@@ -174,9 +202,19 @@ class RemoteEmbeddingProvider implements EmbeddingProvider {
         return texts.map(() => null)
       }
       const json = (await res.json()) as { data: Array<{ embedding: number[] }> }
-      const out: (Float32Array | null)[] = json.data.map((d) =>
+      let out: (Float32Array | null)[] = json.data.map((d) =>
         d.embedding && d.embedding.length > 0 ? Float32Array.from(d.embedding) : null,
       )
+      // 响应条数校验（review #2）：代理/网关 max-input 截断时少回条目，
+      // 不校验会让尾部 chunk 静默 vec=NULL 且无告警。补 null 到等长 + warn。
+      if (out.length < texts.length) {
+        logger.warn(
+          `[embed:remote] /embeddings 响应 ${out.length}/${texts.length} 条，尾部按 null 降级（疑似 max-input 截断）`,
+        )
+        out = out.concat(Array(texts.length - out.length).fill(null))
+      } else if (out.length > texts.length) {
+        out = out.slice(0, texts.length)
+      }
       // 首成功 embed 回填维度缓存（后续启动 / drift 检测可用）
       if (this.cachedDim == null && out[0]) {
         this.cachedDim = out[0].length
@@ -229,18 +267,35 @@ export function setActiveProvider(providerId: string | null): void {
   setAppMeta('kb_reindex_required', '1')
 }
 
+/**
+ * 模型文件探测缓存（review #9）：目录内容只在 downloadKbModel/seedKbModel 后变化
+ * （IPC/启动路径负责调 invalidateLocalModelProbe），而 ready() 在每次 kb:search /
+ * kb:status / ingestion 都调——不缓存则每次混合搜索都同步 recursive readdir。
+ */
+let localModelProbe: { dir: string; ok: boolean } | null = null
+
+/** 模型文件变更（下载/首启复制完成）后失效探测缓存 */
+export function invalidateLocalModelProbe(): void {
+  localModelProbe = null
+}
+
 /** 模型目录是否有可用模型文件（onnx 权重 + tokenizer） */
 function hasLocalModel(): boolean {
   const dir = getKbModelDir()
-  if (!existsSync(dir)) return false
-  // 量化模型 onnx 可能叫 model.onnx / model_quantized.onnx / 在 onnx/ 子目录
-  // 宽松判断：目录非空且有 .onnx 文件
-  try {
-    const entries = readdirSync(dir, { recursive: true })
-    return entries.some((e) => String(e).endsWith('.onnx'))
-  } catch {
-    return false
+  if (localModelProbe?.dir === dir) return localModelProbe.ok
+  let ok = false
+  if (existsSync(dir)) {
+    // 量化模型 onnx 可能叫 model.onnx / model_quantized.onnx / 在 onnx/ 子目录
+    // 宽松判断：目录非空且有 .onnx 文件
+    try {
+      const entries = readdirSync(dir, { recursive: true })
+      ok = entries.some((e) => String(e).endsWith('.onnx'))
+    } catch {
+      ok = false
+    }
   }
+  localModelProbe = { dir, ok }
+  return ok
 }
 
 /**

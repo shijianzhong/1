@@ -28,7 +28,8 @@
     "button": "重嵌向量",
     "running": "重嵌中… {{done}}/{{total}}",
     "done": "重嵌完成：{{embedded}}/{{total}}（失败 {{failed}}）",
-    "failed": "重嵌失败：{{message}}"
+    "failed": "重嵌失败：{{message}}",
+    "cancelled": "已取消（{{done}}/{{total}} 已嵌入），剩余待重嵌"
   },
   "search": {
     "title": "检索预览",
@@ -68,8 +69,7 @@
     "noChunks": "无分块",
     "provider": "{{provider}}",
     "noProvider": "未向量化",
-    "updatedAt": "更新于 {{time}}",
-    "removeConfirm": "确认删除此文档及其全部分块？"
+    "updatedAt": "更新于 {{time}}"
   },
   "empty": "知识库为空，先添加一份文档。",
   "removeConfirm": "确认删除？"

@@ -177,8 +177,9 @@ export interface KbSearchResult {
 
 /** kb:reindex:progress 流式事件（镜像 orchestrate:stream 的 webContents.send 推送） */
 export interface KbReindexProgressEvent {
-  type: 'progress' | 'done' | 'error'
-  /** 已处理数（progress/done 时为已嵌入数） */
+  /** cancelled：用户取消（done=已嵌入数）；全量重嵌取消后 reindexRequired 保持 true */
+  type: 'progress' | 'done' | 'error' | 'cancelled'
+  /** 已处理数（progress/done/cancelled 时为已嵌入数） */
   done: number
   /** 总数 */
   total: number

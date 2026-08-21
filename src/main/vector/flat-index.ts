@@ -21,7 +21,7 @@ interface SearchResult {
 }
 
 interface SearchOptions {
-  /** 限定只在这些 doc_id 的分片里扫（sharded 模式下生效） */
+  /** 限定只在这些 doc_id 内扫（分片态只扫命中文档分片；非分片态点积时按 doc 过滤） */
   docIds?: string[]
   /** 返回前 N 条 */
   topK?: number
@@ -42,6 +42,8 @@ class FlatIndexImpl {
   // 非分片：全部向量拼接 + id 列表
   private vectors: Float32Array = new Float32Array(0)
   private ids: string[] = []
+  /** 与 ids 对齐的 doc_id（非分片 docIds 过滤用） */
+  private docIdsFlat: string[] = []
 
   // 分片
   private shardedState: ShardedState | null = null
@@ -100,6 +102,7 @@ class FlatIndexImpl {
     const n = rows.length
     const buf = new Float32Array(n * this.dim)
     const ids: string[] = new Array(n)
+    const docIds: string[] = new Array(n)
     for (let i = 0; i < n; i++) {
       // vec 是 BLOB，little-endian Float32；Float32Array view 直接读
       const view = new Float32Array(
@@ -109,9 +112,11 @@ class FlatIndexImpl {
       )
       buf.set(view, i * this.dim)
       ids[i] = rows[i].id
+      docIds[i] = rows[i].doc_id
     }
     this.vectors = buf
     this.ids = ids
+    this.docIdsFlat = docIds
     this.sharded = false
   }
 
@@ -156,7 +161,18 @@ class FlatIndexImpl {
     results: SearchResult[]
     degraded: boolean
   } {
-    if (!this.loaded || this.dim === 0) return { results: [], degraded: false }
+    // 写入/删除后 invalidate() 置未加载——此处惰性全量重载，
+    // 兑现 store.ts「下次 search 触发重载」契约（否则新摄取文档的向量
+    // 在搜索中静默失效直到重启，review #1）。加载失败按降级处理（纯词法兜底）。
+    if (!this.loaded) {
+      try {
+        this.load()
+      } catch (e) {
+        console.warn('[flat-index] lazy load failed, degrade to FTS', e)
+        return { results: [], degraded: true }
+      }
+    }
+    if (this.dim === 0) return { results: [], degraded: false }
     if (query.length !== this.dim) {
       // 维度不匹配（漂移场景）——降级
       return { results: [], degraded: true }
@@ -166,17 +182,19 @@ class FlatIndexImpl {
     if (this.sharded) {
       return this.searchSharded(query, opts, topK)
     }
-    return { results: this.searchFlat(query, topK), degraded: false }
+    return { results: this.searchFlat(query, topK, opts.docIds), degraded: false }
   }
 
-  /** 非分片：全扫点积 + Top-k 堆 */
-  private searchFlat(query: Float32Array, topK: number): SearchResult[] {
+  /** 非分片：全扫点积 + Top-k 堆；docIds 非空时只保留限定文档的候选 */
+  private searchFlat(query: Float32Array, topK: number, docIds?: string[]): SearchResult[] {
     const n = this.ids.length
     const step = this.dim
     const v = this.vectors
+    const docFilter = docIds && docIds.length > 0 ? new Set(docIds) : null
     // 用小顶堆维护 Top-k（避免全排序 n*log(n)）
     const heap: { id: string; score: number }[] = []
     for (let i = 0; i < n; i++) {
+      if (docFilter && !docFilter.has(this.docIdsFlat[i])) continue
       let dot = 0
       const base = i * step
       for (let d = 0; d < step; d++) dot += v[base + d] * query[d]
@@ -256,13 +274,14 @@ class FlatIndexImpl {
   }
 
   /**
-   * 增删后失效标记：P0 最简正确——add/remove 后置 loaded=false，
-   * 下次 search/load 触发全量重载。P1 优化为增量更新。
+   * 增删后失效标记：add/remove 后置 loaded=false，
+   * 下次 search 惰性触发全量重载（search() 入口保证）。P1 可优化为增量更新。
    */
   invalidate(): void {
     this.loaded = false
     this.vectors = new Float32Array(0)
     this.ids = []
+    this.docIdsFlat = []
     this.shardedState = null
     this.sharded = false
     this.dim = 0

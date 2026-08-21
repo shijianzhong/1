@@ -229,6 +229,9 @@ async function embed(texts, kind) {
 // 生命周期：主进程懒 spawn 一次、跨 batch 复用。stdin EOF 时主进程要终止 worker，
 // 但必须等进行中的 batch 完成 + 响应写出后才退（否则丢响应）。
 let initialized = false
+// init-promise 去重（review #6）：init() 加载 ~23MB 模型需 1-2s，期间并发到达的
+// batch 若各自进 init() 会重复加载致内存翻倍。共享同一 promise，所有并发 batch 等同一次加载。
+let initPromise = null
 let pending = 0
 let stdinEnded = false
 let buf = ''
@@ -238,7 +241,8 @@ async function handleRequest(req) {
   pending++
   try {
     if (!initialized) {
-      await init()
+      if (!initPromise) initPromise = init()
+      await initPromise
       initialized = true
     }
     const texts = Array.isArray(req.texts) ? req.texts : [String(req.texts ?? '')]

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { registerTool } from '../registry'
 import { logger } from '../../logger'
+import { fetchWithTimeout } from '../../util/net'
+import { stripTags, decodeEntities } from '../../util/html'
 
 // —— 内置联网工具（P2-search：搜索后端优先 API，弃用裸爬 Bing HTML）——
 // web_read   = Jina Reader（r.jina.ai，免 key 有限流；JINA_API_KEY 提额）
@@ -28,22 +30,15 @@ async function fetchText(
   signal: AbortSignal | undefined,
   extraHeaders: Record<string, string> = {},
 ): Promise<FetchOutcome> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(new Error('timeout')), TIMEOUT_MS)
-  const onAbort = (): void => ctrl.abort(signal?.reason ?? new Error('aborted'))
-  signal?.addEventListener('abort', onAbort, { once: true })
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA, ...extraHeaders },
-      signal: ctrl.signal,
-    })
-    if (!res.ok && res.status < 500) return { ok: false, status: res.status }
-    if (!res.ok) throw new Error(`http_${res.status}`)
-    return { ok: true, text: await res.text() }
-  } finally {
-    clearTimeout(timer)
-    signal?.removeEventListener('abort', onAbort)
-  }
+  // 超时 + signal 链接走共享 helper（util/net.ts，与 KB URL 摄取同源）
+  const res = await fetchWithTimeout(url, {
+    timeoutMs: TIMEOUT_MS,
+    signal,
+    headers: { 'User-Agent': UA, ...extraHeaders },
+  })
+  if (!res.ok && res.status < 500) return { ok: false, status: res.status }
+  if (!res.ok) throw new Error(`http_${res.status}`)
+  return { ok: true, text: await res.text() }
 }
 
 /** fetch JSON（Brave API 等结构化接口用） */
@@ -69,23 +64,7 @@ interface SearchResult {
 }
 
 // —— Bing CN HTML 结果解析（降级 fallback，保留原实现）——
-function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, '')
-}
-
-function decodeEntities(s: string): string {
-  const named: Record<string, string> = {
-    amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'", '#x2F': '/',
-    nbsp: ' ', ensp: ' ', emsp: ' ', middot: '·', hellip: '…', mdash: '—', ndash: '–',
-  }
-  return s.replace(/&(#x?[0-9a-fA-F]+|\w+);/g, (m, entity: string) => {
-    if (named[entity]) return named[entity]
-    if (entity.startsWith('#x')) return String.fromCodePoint(parseInt(entity.slice(2), 16))
-    if (entity.startsWith('#')) return String.fromCodePoint(parseInt(entity.slice(1), 10))
-    return m
-  })
-}
-
+// stripTags/decodeEntities 用共享实现（util/html.ts，与 KB 抽取同源）
 function parseBingHtml(html: string, limit: number): SearchResult[] {
   const results: SearchResult[] = []
   for (const block of html.split('b_algo').slice(1)) {

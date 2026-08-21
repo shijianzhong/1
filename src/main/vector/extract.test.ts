@@ -237,6 +237,26 @@ describe('htmlToMarkdown — 标签映射', () => {
     expect(md2).toContain('2. b')
   })
 
+  it('嵌套列表不错位：内层条目独立成行、外层条目不粘连（review #7）', () => {
+    // docx 多级列表经 mammoth 产出真正的嵌套 <ul>
+    const md = htmlToMarkdown(
+      '<ul><li>顶层A<ul><li>子B</li><li>子C</li></ul></li><li>顶层D</li></ul>',
+    )
+    expect(md).toContain('- 顶层A')
+    expect(md).toContain('- 子B')
+    expect(md).toContain('- 子C')
+    expect(md).toContain('- 顶层D')
+    // 修复前：顶层A 与子B 粘连成「- 顶层A子B」、顶层D 丢前缀
+    expect(md).not.toContain('顶层A子B')
+  })
+
+  it('ul 内嵌 ol 交叉嵌套也能收敛', () => {
+    const md = htmlToMarkdown('<ul><li>A<ol><li>x</li><li>y</li></ol></li></ul>')
+    expect(md).toContain('- A')
+    expect(md).toContain('1. x')
+    expect(md).toContain('2. y')
+  })
+
   it('a 链接 → [text](href)', () => {
     expect(htmlToMarkdown('<a href="https://x.com">link</a>')).toBe('[link](https://x.com)')
   })

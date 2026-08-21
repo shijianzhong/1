@@ -88,14 +88,29 @@ export function KbPage() {
   // reindex 进度（webContents.send 单向流，非 TanStack Query）
   const [reindexProg, setReindexProg] = useState<KbReindexProgressEvent | null>(null)
   const [reindexError, setReindexError] = useState<string | null>(null)
+  // 取消不是失败：中性提示（全量重嵌取消后 reindexRequired 标志仍在，剩余待补）
+  const [reindexNotice, setReindexNotice] = useState<string | null>(null)
+  // provider 切换失败独立错误区（review #17：不写进搜索框错误区）
+  const [providerError, setProviderError] = useState<string | null>(null)
+  // 摄取失败反馈（review #14：add/pickFile/fetchUrl 的 mutateAsync 此前无 catch 静默失败）
+  const [ingestError, setIngestError] = useState<string | null>(null)
+  // 删除失败反馈（文档网格区）
+  const [docsError, setDocsError] = useState<string | null>(null)
   const onReindexProg = useCallback((ev: KbReindexProgressEvent) => {
     if (ev.type === 'error') {
       setReindexError(ev.message ?? t('kb:reindex.failed', { message: '' }))
+      setReindexNotice(null)
+    } else if (ev.type === 'cancelled') {
+      setReindexProg(null)
+      setReindexError(null)
+      setReindexNotice(t('kb:reindex.cancelled', { done: ev.done, total: ev.total }))
     } else if (ev.type === 'done') {
       setReindexProg(null)
+      setReindexNotice(null)
     } else {
       setReindexProg(ev)
       setReindexError(null)
+      setReindexNotice(null)
     }
   }, [t])
   useKbReindexProgress(onReindexProg)
@@ -135,6 +150,7 @@ export function KbPage() {
 
   const onReindex = async (): Promise<void> => {
     setReindexError(null)
+    setReindexNotice(null)
     setReindexProg({ type: 'progress', done: 0, total: status?.chunkCount ?? 0 })
     try {
       await reindexMut.mutateAsync()
@@ -146,41 +162,58 @@ export function KbPage() {
 
   const onProviderChange = async (providerId: string): Promise<void> => {
     const prefId = providerId === 'local' ? null : providerId
+    setProviderError(null)
     try {
       await setPrefMut.mutateAsync({ providerId: prefId })
     } catch (err) {
-      setSearchError(errorMessage(err, t))
+      setProviderError(errorMessage(err, t))
     }
   }
 
   const onAdd = async (): Promise<void> => {
     if (!draft?.title.trim() || !draft.content.trim()) return
-    await addMut.mutateAsync({
-      title: draft.title.trim(),
-      content: draft.content,
-      sourceKind: draft.sourceKind.trim() || undefined,
-      sourcePath: draft.sourcePath.trim() || undefined,
-    })
-    setDraft(null)
+    setIngestError(null)
+    try {
+      await addMut.mutateAsync({
+        title: draft.title.trim(),
+        content: draft.content,
+        sourceKind: draft.sourceKind.trim() || undefined,
+        sourcePath: draft.sourcePath.trim() || undefined,
+      })
+      setDraft(null)
+    } catch (err) {
+      // 失败留抽屉 + 错误反馈（此前 unhandled rejection 静默失败）
+      setIngestError(errorMessage(err, t))
+    }
   }
 
   // P5：文件摄取——主进程弹框+抽取+ingest。cancel 返 null → 留开抽屉无报错
   const onPickFile = async (): Promise<void> => {
-    const r = await pickFileMut.mutateAsync()
-    if (r) setDraft(null) // 成功摄取 → 关抽屉；null = cancel → 留开
+    setIngestError(null)
+    try {
+      const r = await pickFileMut.mutateAsync()
+      if (r) setDraft(null) // 成功摄取 → 关抽屉；null = cancel → 留开
+    } catch (err) {
+      setIngestError(errorMessage(err, t))
+    }
   }
 
   // P5：URL 抓取——主进程 Jina Reader → content → ingest
   const onFetchUrl = async (): Promise<void> => {
     if (!draft?.url.trim()) return
     const url = draft.url.trim()
-    await addMut.mutateAsync({
-      title: draft.title.trim() || hostnameOf(url),
-      url,
-      sourceKind: 'url',
-      sourcePath: url,
-    })
-    setDraft(null)
+    setIngestError(null)
+    try {
+      await addMut.mutateAsync({
+        title: draft.title.trim() || hostnameOf(url),
+        url,
+        sourceKind: 'url',
+        sourcePath: url,
+      })
+      setDraft(null)
+    } catch (err) {
+      setIngestError(errorMessage(err, t))
+    }
   }
 
   const onRemove = async (docId: string): Promise<void> => {
@@ -189,7 +222,12 @@ export function KbPage() {
       confirmText: t('common:actions.delete'),
     })
     if (!ok) return
-    await removeMut.mutateAsync(docId)
+    setDocsError(null)
+    try {
+      await removeMut.mutateAsync(docId)
+    } catch (err) {
+      setDocsError(errorMessage(err, t))
+    }
   }
 
   const onSearch = async (): Promise<void> => {
@@ -211,7 +249,7 @@ export function KbPage() {
         title={t('kb:title')}
         subtitle={t('kb:subtitle')}
         actions={
-          <Button onClick={() => setDraft({ title: '', content: '', url: '', sourceKind: 'md', sourcePath: '' })}>
+          <Button onClick={() => { setIngestError(null); setDraft({ title: '', content: '', url: '', sourceKind: 'md', sourcePath: '' }) }}>
             <Plus size={16} /> {t('kb:add.title')}
           </Button>
         }
@@ -279,9 +317,19 @@ export function KbPage() {
                   {t('kb:status.modelMissingHint')}
                 </p>
               ) : null}
+              {providerError ? (
+                <p role="alert" style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--color-danger)' }}>
+                  {providerError}
+                </p>
+              ) : null}
               {reindexError ? (
                 <p role="alert" style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--color-danger)' }}>
                   {t('kb:reindex.failed', { message: reindexError })}
+                </p>
+              ) : null}
+              {reindexNotice ? (
+                <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--color-fg-3)' }}>
+                  {reindexNotice}
                 </p>
               ) : null}
               {downloadError ? (
@@ -457,6 +505,13 @@ export function KbPage() {
         )}
       </section>
 
+      {/* 文档操作错误（删除失败等） */}
+      {docsError ? (
+        <p role="alert" style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-danger)' }}>
+          {docsError}
+        </p>
+      ) : null}
+
       {/* 文档卡片网格 */}
       {docsLoading ? (
         <EmptyState text={t('common:state.loading')} />
@@ -464,7 +519,7 @@ export function KbPage() {
         <EmptyState
           icon={BookOpen}
           title={t('kb:empty')}
-          onClick={() => setDraft({ title: '', content: '', url: '', sourceKind: 'md', sourcePath: '' })}
+          onClick={() => { setIngestError(null); setDraft({ title: '', content: '', url: '', sourceKind: 'md', sourcePath: '' }) }}
           actionLabel={t('kb:add.title')}
         />
       ) : (
@@ -629,6 +684,11 @@ export function KbPage() {
                     placeholder={t('kb:add.contentPh')}
                   />
                 </Field>
+                {ingestError ? (
+                  <p role="alert" style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-danger)', flexShrink: 0 }}>
+                    {ingestError}
+                  </p>
+                ) : null}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
                   <Button variant="ghost" onClick={() => setDraft(null)}>
                     {t('common:actions.cancel')}

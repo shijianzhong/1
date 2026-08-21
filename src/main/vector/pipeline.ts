@@ -17,8 +17,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { approxTokenCount } from '../llm/token-count'
-import { getActiveProvider, KB_MODEL_ID } from './embed'
-import { insertKbChunks, upsertKbDoc, type KbChunkRecord } from './store'
+import { getActiveProvider, providerTagFor } from './embed'
+import { ingestKbDocument, type KbChunkRecord } from './store'
 import { logger } from '../logger'
 
 /** 分块草稿（不含 vec/id，由 ingestDocument 补） */
@@ -113,8 +113,12 @@ function splitByTokenWindow(text: string, maxTokens: number, overlap: number): s
     let depth = 0
     for (let k = 0; k < end; k++) if (fenceRe.test(lines[k])) depth++
     if (depth % 2 === 1 && end < lines.length) {
-      while (end < lines.length && !fenceRe.test(lines[end])) end++
-      end++ // 含 fence 关闭行
+      let close = end
+      while (close < lines.length && !fenceRe.test(lines[close])) close++
+      // 找到闭合 → 含关闭行；未闭合（畸形输入，如 docx 抽取截断）→ 当普通文本
+      // 在 j 处硬切，不无界推进（否则整个剩余 section 合成远超 maxTokens 的单块，
+      // embedding 截断/失败，review #5）
+      if (close < lines.length) end = close + 1
     }
     chunks.push(lines.slice(i, end).join('\n'))
     if (end >= lines.length) break
@@ -248,16 +252,18 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     }),
   }))
 
-  // 入库：chunks+fts 双写（先删旧块幂等）+ kb_docs 原文存档
-  insertKbChunks(records)
-  upsertKbDoc({
+  // 入库：chunks+fts 双写（先删旧块幂等）+ kb_docs 原文存档——单事务（review #4：
+  // 两个独立事务的崩溃窗口会留孤儿 chunk，列表不可见、索引却加载）
+  ingestKbDocument(records, {
     id: docId,
     title: input.title,
     content,
     sourcePath: input.sourcePath ?? null,
     sourceKind: input.sourceKind ?? null,
     chunks: records.length,
-    embeddingProvider: KB_MODEL_ID,
+    // 与 reindex 同口径（review #8）：remote 标 modelId、local 标 'local'，
+    // 不写死本地模型 id（远程 provider 摄取的文档 badge 会错标）
+    embeddingProvider: providerTagFor(provider),
   })
 
   const embedded = vecs.filter((v) => v != null).length

@@ -34,6 +34,8 @@ const providerMock = {
 }
 vi.mock('./embed', () => ({
   getActiveProvider: () => providerMock,
+  providerTagFor: (p: { kind: string; modelId?: string | null }) =>
+    p.kind === 'remote' ? (p.modelId ?? 'remote') : 'local',
 }))
 
 // 进度事件收集
@@ -47,7 +49,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-const { runReindex } = await import('./reindex')
+const { runReindex, cancelReindex } = await import('./reindex')
 const { insertKbChunks, upsertKbDoc, getKbChunk, clearAllKbVecs } = await import('./store')
 const { flatIndex } = await import('./flat-index')
 
@@ -227,5 +229,55 @@ describe('runReindex — provider 未就绪', () => {
     expect(embedMock).not.toHaveBeenCalled()
     // 未就绪短路，无任何进度事件
     expect(progressEvents).toHaveLength(0)
+  })
+})
+
+describe('runReindex — 取消（review #19 真实问题）', () => {
+  it('全量重嵌中途取消 → reindex 标志保留 + cancelled 事件（旧向量已清，剩余必须补嵌）', async () => {
+    // 40 个 chunk（> BATCH_SIZE 32，两批）：第一批 embed 期间取消
+    const records = Array.from({ length: 40 }, (_, i) => ({
+      id: `c${i}`, kbId: 'kb', docId: 'docA', chunkIdx: i, content: `text ${i}`, vec: null as Float32Array | null, meta: null,
+    }))
+    insertKbChunks(records)
+    upsertKbDoc({ id: 'docA', title: 'A', chunks: 40 })
+    appMeta.set('kb_reindex_required', '1')
+    readyMock.mockResolvedValue(true)
+    embedMock.mockImplementation((texts: string[]) => {
+      cancelReindex() // 模拟用户在第一批 embed 期间取消
+      return texts.map(() => Float32Array.from([1, 0, 0]))
+    })
+
+    const res = await runReindex()
+
+    // 第一批 32 已嵌入，第二批未跑
+    expect(res.embedded).toBe(32)
+    expect(res.total).toBe(40)
+    // 标志保留：clearAll 后取消，剩余 8 块 vec=NULL，UI 必须继续提示重嵌
+    expect(appMeta.get('kb_reindex_required')).toBe('1')
+    // cancelled 事件而非 done（前端据此给中性提示而非成功态）
+    const cancelledEv = progressEvents.find((e) => e.type === 'cancelled')
+    expect(cancelledEv).toBeDefined()
+    expect(cancelledEv!.done).toBe(32)
+    expect(progressEvents.find((e) => e.type === 'done')).toBeUndefined()
+  })
+
+  it('增量补齐取消（无 clearAll）→ 不置 reindex 标志', async () => {
+    const records = Array.from({ length: 40 }, (_, i) => ({
+      id: `c${i}`, kbId: 'kb', docId: 'docA', chunkIdx: i, content: `text ${i}`, vec: null as Float32Array | null, meta: null,
+    }))
+    insertKbChunks(records)
+    upsertKbDoc({ id: 'docA', title: 'A', chunks: 40 })
+    // 无 kb_reindex_required → 增量 backfill 路径
+    readyMock.mockResolvedValue(true)
+    embedMock.mockImplementation((texts: string[]) => {
+      cancelReindex()
+      return texts.map(() => Float32Array.from([1, 0, 0]))
+    })
+
+    const res = await runReindex()
+    expect(res.embedded).toBe(32)
+    // 增量路径取消不置标志（剩余 NULL 块是「模型刚下好」常态，不需全量重嵌）
+    expect(appMeta.has('kb_reindex_required')).toBe(false)
+    expect(progressEvents.find((e) => e.type === 'cancelled')).toBeDefined()
   })
 })

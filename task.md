@@ -332,6 +332,7 @@
 | ~~P3~~ | ~~AbortController 模块级单例~~ ✅ 2026-08-01（入口检测已有运行自动取消旧运行 + finally 只清自己句柄，home/orchestrate 双侧） | ipc/home / orchestrate |
 | ~~P2~~ | ~~L3 向量检索后置~~ ✅ P0 地基 2026-08-19（[`docs/VECTOR_KB_PLAN.md`](./docs/VECTOR_KB_PLAN.md) P0） | L3 向量 |
 | P3 | win 包 / 编排路径记忆注入 / tasks 落盘 | M6 / M3 尾巴 |
+| ~~**P0**~~ | ~~向量知识库第二轮深度 review~~ ✅ 2026-08-21（按代码事实复核后分级修正：原文档 6 个 P0 仅 #1 真阻塞，#19/#20 诊断不准已重新定性。落地：#1 flat-index search 惰性重载+degraded 语义；#3 非分片 docIds 过滤；#4 `ingestKbDocument` 单事务；#5 未闭合 fence 硬切；#6 worker init-promise 去重；#22 批超时杀 worker 自愈；#23 abort 监听全路径清理；#2 远程响应条数校验；#24 远程 60s 超时；#7 嵌套列表最内层迭代替换；#8 `providerTagFor` 统一口径；#13 下载/seed 原子 rename 防半截；#12 下载 5xx 退避重试；#15 单文件 200MB 上限；#14 前端四 handler 错误反馈；#17 providerError 独立；#19 真实问题修复（clearAll 后取消→标志保留+cancelled 事件）；#9 hasLocalModel 缓存+IPC 失效；#16 migration 幂等；#18/#21/#25 死代码；#26 LIKE 剩余配额；#10/#11 共享 `util/net.ts`+`util/html.ts`。不改：#20（db.ts 启动 DISTINCT 全扫已覆盖多维度）、#27（与 skills.ts 既有模式一致）。新增回归测试 14 条，vitest 731 全绿 + tsc 干净） | 7.5 / vector/* |
 
 > **2026-08-01 review 误报排除清单（已核实，勿再报）**：① JSON 配置（models/providers/persona）与 vault「读-改-写竞态」——读写全同步（`readFileSync`/`writeFileSync`），事件循环天然原子，加锁为空操作；② `selectSession(result.runId)`——`home:chat` 返回的 runId 按构造即 sessionId；③ `orch_event.done` 与 `message_stop` 间隙——主进程全路径（正常/异常/取消）均配对发送 message_stop（reducer 侧已补 `done` 定格流式态作纵深防御 ✅ 2026-08-01）；④ Magentic 直接 throw——MVP 既定降级设计。
 

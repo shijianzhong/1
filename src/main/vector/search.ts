@@ -71,11 +71,8 @@ export async function searchKbHybrid(query: string, opts: KbSearchOptions = {}):
     if (qVec) {
       const { hits, degraded: vecDegraded } = searchKbVectors(qVec, { docIds, topK })
       if (!vecDegraded && hits.length > 0) {
-        // flat-index 非分片路径不过滤 docIds（searchFlat 全扫），
-        // 在此按 doc_id 后置过滤，保证 docIds 限定在向量路也生效。
-        // 命中 id → 需查 doc_id 判定；为避免逐条查库，依赖后续 fetchKbChunksWithDoc
-        // 取回 docId 后再过滤（见下方 fused → hits 组装处）。此处先不过滤 vec 候选，
-        // 让 RRF 融合后统一在 fetch 阶段按 docIds 裁剪。
+        // flat-index 分片/非分片路径都已按 docIds 过滤（review #3 修复）；
+        // fetch 阶段的 docIdSet 裁剪保留作最终兜底（融合与回表之间的删除窗口）。
         vecChannel = rankedChannel(hits.map((h) => h.id))
       }
       if (vecDegraded) degraded = true
@@ -112,7 +109,7 @@ export async function searchKbHybrid(query: string, opts: KbSearchOptions = {}):
   for (const f of fused) {
     const c = chunkMap.get(f.id)
     if (!c) continue // chunk 已删（融合与回表之间窗口期）→ 跳过
-    // flat-index 非分片路径不过滤 docIds，在此统一裁剪（向量路召回的跨文档候选）
+    // docIds 最终兜底裁剪（向量路/词法路上游已过滤，此处防窗口期脏数据）
     if (docIdSet && !docIdSet.has(c.docId)) continue
     const meta = parseChunkMeta(c.meta)
     hits.push({
