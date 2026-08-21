@@ -19,6 +19,7 @@ import type {
   KbSearchResult,
   KbStatus,
   ModelConfig,
+  NativeFileDialogLabels,
   Persona,
   RegistryAssetKind,
   RegistryConfig,
@@ -124,11 +125,11 @@ export function useRemoveSkill() {
   })
 }
 
-/** 上传技能包（.zip）→ 解析+保存+资源提取一步到位，返回完整 Skill */
+/** 上传技能包（.zip）→ 解析+保存+资源提取一步到位，返回完整 Skill。labels 为原生对话框文案（i18n） */
 export function usePickSkillFile() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => thenUnwrap(window.one.skills.pickFile()),
+    mutationFn: (labels: NativeFileDialogLabels) => thenUnwrap(window.one.skills.pickFile(labels)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
   })
 }
@@ -159,11 +160,11 @@ export function useKbAdd() {
   })
 }
 
-/** P5：文件摄取——弹框 → 主进程抽取 → ingest；cancel 返 null（留开抽屉不报错） */
+/** P5：文件摄取——弹框 → 主进程抽取 → ingest；cancel 返 null（留开抽屉不报错）。labels 为原生对话框文案（i18n） */
 export function useKbPickFile() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => thenUnwrap(window.one.kb.pickFile()),
+    mutationFn: (labels: NativeFileDialogLabels) => thenUnwrap(window.one.kb.pickFile(labels)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kb', 'docs'] })
       qc.invalidateQueries({ queryKey: ['kb', 'status'] })

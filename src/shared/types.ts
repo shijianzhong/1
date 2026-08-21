@@ -209,6 +209,19 @@ export interface KbDownloadModelProgressEvent {
   message?: string
 }
 
+/**
+ * 原生文件对话框文案（铁律 T2：主进程不硬编码中文，渲染层 i18n 后传入）。
+ * 用于 kb:pickFile / skills:pickFile 的 dialog.showOpenDialog。
+ */
+export interface NativeFileDialogLabels {
+  /** 对话框标题 */
+  title: string
+  /** 主文件类型过滤器名（如「文档」/「技能包」） */
+  fileLabel: string
+  /** 「所有文件」过滤器名 */
+  allFilesLabel: string
+}
+
 
 export const DEFAULT_THEME: ThemeConfig = {
   preset: 'pure-white',

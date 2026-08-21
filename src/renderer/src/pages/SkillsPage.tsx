@@ -95,12 +95,16 @@ export function SkillsPage() {
     await removeSkill.mutateAsync(id)
   }
 
-  /** 上传技能包 → 解析+保存+资源提取一步到位 */
+  /** 上传技能包 → 解析+保存+资源提取一步到位。原生对话框文案由渲染层 i18n 传入（review #27） */
   const onUpload = async (): Promise<void> => {
     setUploading(true)
     setUploadError(null)
     try {
-      await pickFile.mutateAsync()
+      await pickFile.mutateAsync({
+        title: t('common:skills.picker.title'),
+        fileLabel: t('common:skills.picker.fileLabel'),
+        allFilesLabel: t('common:skills.picker.allFiles'),
+      })
     } catch (err) {
       const msg = errorMessage(err, t)
       setUploadError(t('common:skills.uploadFailed', { message: msg }))

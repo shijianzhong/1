@@ -18,6 +18,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelConfig,
+  NativeFileDialogLabels,
   Persona,
   ReviewRecord,
   SampleArticle,
@@ -73,7 +74,8 @@ export interface OneApi {
     get: (id: string) => Promise<IpcResult<Skill | null>>
     save: (input: Partial<Skill> & { name: string; content: string }) => Promise<IpcResult<Skill>>
     remove: (id: string) => Promise<IpcResult<void>>
-    pickFile: () => Promise<IpcResult<Skill | null>>
+    /** labels：原生对话框文案（渲染层 i18n 传入，铁律 T2） */
+    pickFile: (labels: NativeFileDialogLabels) => Promise<IpcResult<Skill | null>>
   }
   models: {
     list: () => Promise<IpcResult<ModelConfig[]>>
@@ -245,8 +247,8 @@ export interface OneApi {
     status: () => Promise<IpcResult<KbStatus>>
     /** 摄取文档：分块 → 向量化 → 入库（P1，docs/VECTOR_KB_PLAN.md §七）；P5 url 分支 */
     add: (input: KbAddInput) => Promise<IpcResult<KbAddResult>>
-    /** P5：弹文件框 → 抽取（pdf/docx/txt/md/html）→ ingest；cancel 返 null */
-    pickFile: () => Promise<IpcResult<KbAddResult | null>>
+    /** P5：弹文件框 → 抽取（pdf/docx/txt/md/html）→ ingest；cancel 返 null。labels 为对话框文案（i18n 传入） */
+    pickFile: (labels: NativeFileDialogLabels) => Promise<IpcResult<KbAddResult | null>>
     /** 列文档元信息（不含原文 content，避免大原文过 IPC） */
     list: () => Promise<IpcResult<KbDocListItem[]>>
     /** 删除文档（级联 chunks + FTS + doc） */
@@ -306,7 +308,7 @@ const api: OneApi = {
     get: (id) => ipcRenderer.invoke('skills:get', id),
     save: (input) => ipcRenderer.invoke('skills:save', input),
     remove: (id) => ipcRenderer.invoke('skills:remove', id),
-    pickFile: () => ipcRenderer.invoke('skills:pickFile'),
+    pickFile: (labels) => ipcRenderer.invoke('skills:pickFile', labels),
   },
   models: {
     list: () => ipcRenderer.invoke('models:list'),
@@ -462,7 +464,7 @@ const api: OneApi = {
   kb: {
     status: () => ipcRenderer.invoke('kb:status'),
     add: (input) => ipcRenderer.invoke('kb:add', input),
-    pickFile: () => ipcRenderer.invoke('kb:pickFile'),
+    pickFile: (labels) => ipcRenderer.invoke('kb:pickFile', labels),
     list: () => ipcRenderer.invoke('kb:list'),
     remove: (docId) => ipcRenderer.invoke('kb:remove', docId),
     search: (input) => ipcRenderer.invoke('kb:search', input),

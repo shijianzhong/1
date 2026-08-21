@@ -72,5 +72,10 @@
     "updatedAt": "更新于 {{time}}"
   },
   "empty": "知识库为空，先添加一份文档。",
-  "removeConfirm": "确认删除？"
+  "removeConfirm": "确认删除？",
+  "picker": {
+    "title": "选择文档",
+    "fileLabel": "文档",
+    "allFiles": "所有文件"
+  }
 }

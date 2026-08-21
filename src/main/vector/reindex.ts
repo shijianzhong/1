@@ -32,6 +32,8 @@ const PROGRESS_CHANNEL = 'kb:reindex:progress'
 const BATCH_SIZE = 32
 
 let reindexController: AbortController | null = null
+/** 在途 reindex promise（并发守卫）：非 null 时新调用挂到同一任务而非并发重跑 */
+let inflightReindex: Promise<KbReindexResult> | null = null
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
@@ -43,10 +45,27 @@ function emitProgress(ev: KbReindexProgressEvent): void {
 
 /**
  * 执行 reindex。返回 {total, embedded, failed}。
- * 进度经 kb:reindex:progress channel 推送（progress/done/error）。
+ * 进度经 kb:reindex:progress channel 推送（progress/done/error/cancelled）。
  * provider 未就绪 → throw IpcErrorThrow（被 withHandler 包成 IpcFailure）。
+ *
+ * 并发守卫：重嵌是分钟级批处理，并发跑两趟只会双倍占用 embed worker / 远程配额，
+ * 且 clearAllKbVecs + 进度事件交错互相干扰。第二调用方挂到在途 promise 拿同一结果
+ * （幂等语义）；cancelReindex 对在途任务生效，挂接方同获取消结果。
  */
 export async function runReindex(): Promise<KbReindexResult> {
+  if (inflightReindex) {
+    logger.info('[kb-reindex] 已有在途 reindex，挂到同一任务')
+    return inflightReindex
+  }
+  inflightReindex = runReindexInner()
+  try {
+    return await inflightReindex
+  } finally {
+    inflightReindex = null
+  }
+}
+
+async function runReindexInner(): Promise<KbReindexResult> {
   reindexController = new AbortController()
   const signal = reindexController.signal
 

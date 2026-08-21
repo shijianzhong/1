@@ -36,7 +36,18 @@ export function setAppMeta(key: string, value: string): void {
 }
 
 /** 迁移版本号（每次 schema 变更加一条 migration） */
-const MIGRATIONS: Array<{ version: number; sql: string }> = [
+const MIGRATIONS: Array<{
+  version: number
+  sql: string
+  /**
+   * 幂等前置检查：返回 true 则跳过执行、直接登记版本。
+   * SQLite 的 ALTER TABLE ... ADD COLUMN 无 IF NOT EXISTS——列已存在
+   * （dev 库残留/手工改动/schema_version 丢失）时裸跑会报「duplicate column name」，
+   * 每次启动重跑失败死循环。此类 migration 必须用 PRAGMA table_info 显式判定，
+   * 不靠捕获错误当控制流。
+   */
+  isApplied?: (db: Database.Database) => boolean
+}> = [
   {
     version: 1,
     sql: `
@@ -286,9 +297,13 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
     // v11：kb_docs 加原文存档列（docs/VECTOR_KB_PLAN.md §四/P1）。
     //   content TEXT 存完整原文——kb_chunks.content 是分块后片段，拿不回原文；
     //   换分块策略（maxTokens/overlap 改）或换模型重切时，无需重新上传即可 reindex。
-    //   SQLite 单列 ALTER TABLE（幂等性靠 migration version 跳过，不重建表）。
+    //   SQLite 单列 ALTER TABLE 无 IF NOT EXISTS：isApplied 显式判列存在（幂等）。
     version: 11,
     sql: `ALTER TABLE kb_docs ADD COLUMN content TEXT;`,
+    isApplied: (db) =>
+      db
+        .prepare(`SELECT 1 FROM pragma_table_info('kb_docs') WHERE name = 'content'`)
+        .get() !== undefined,
   },
 ]
 
@@ -350,8 +365,8 @@ function recoverFromCorruption(): void {
   }
 }
 
-/** 应用迁移：按版本号顺序执行未应用的 migration */
-function runMigrations(db: Database.Database): void {
+/** 应用迁移：按版本号顺序执行未应用的 migration（export 仅供 db.migration-*.test 直测） */
+export function runMigrations(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);
   `)
@@ -362,6 +377,13 @@ function runMigrations(db: Database.Database): void {
   )
   for (const m of MIGRATIONS) {
     if (applied.has(m.version)) continue
+    // 幂等前置检查：目标状态已达成（如 ADD COLUMN 的列已存在）→ 登记版本跳过，
+    // 不进执行路径（review #16：不把「duplicate column name」异常当控制流）
+    if (m.isApplied?.(db)) {
+      logger.info(`[db] migration v${m.version} 已处于目标状态，登记跳过`)
+      db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(m.version)
+      continue
+    }
     logger.info(`[db] applying migration v${m.version}`)
     // DDL 执行 + 版本登记必须原子：中途崩溃（进程被杀/断电）会留下「表已建一半但
     // schema_version 未登记」的半截 schema → 下次启动该版本被判为未应用、重跑 CREATE
@@ -373,11 +395,11 @@ function runMigrations(db: Database.Database): void {
         db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(m.version)
       })()
     } catch (e) {
-      // SQLite 的 ADD COLUMN 无 IF NOT EXISTS：列已存在（dev 分支残留/手工改动）时
-      // 「duplicate column name」——目标状态已达成，登记版本跳过；
-      // 否则每次启动重跑失败死循环（review #16）
+      // 兜底防御：migration 未声明 isApplied 但库已被外部改动（如手工建列）。
+      // 「duplicate column name」= 目标状态已达成，登记跳过防启动死循环；
+      // 其余错误照常抛（不掩盖真问题）
       if (e instanceof Error && /duplicate column name/i.test(e.message)) {
-        logger.warn(`[db] migration v${m.version} 列已存在，登记跳过`)
+        logger.warn(`[db] migration v${m.version} 列已存在（未声明 isApplied），登记跳过`)
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(m.version)
       } else {
         throw e

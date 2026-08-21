@@ -39,6 +39,7 @@ import type {
   KbSearchInput,
   KbSearchResult,
   KbStatus,
+  NativeFileDialogLabels,
 } from '@shared/types'
 
 const KbAddSchema = z.object({
@@ -60,6 +61,13 @@ const KbSearchSchema = z.object({
 
 const KbProviderPreferenceSchema = z.object({
   providerId: z.string().nullable(),
+})
+
+/** 原生对话框文案（渲染层 i18n 传入；限长防畸形串进系统弹窗） */
+const NativeFileDialogLabelsSchema = z.object({
+  title: z.string().min(1).max(100),
+  fileLabel: z.string().min(1).max(50),
+  allFilesLabel: z.string().min(1).max(50),
 })
 
 export function registerKnowledgeHandlers(): void {
@@ -102,15 +110,22 @@ export function registerKnowledgeHandlers(): void {
   })
 
   // P5：文件摄取——弹原生文件框 → 抽取（pdf/docx/txt/md/html）→ ingestDocument。
-  // 镜像 skills:pickFile（skills.ts:18-53）的「dialog → 解析 → save → 资源 → 回滚」范式。
+  // 镜像 skills:pickFile 的「dialog → 解析 → save → 资源 → 回滚」范式。
   // canceled 返 null（渲染层据此留开抽屉不报错）；抽取在 ingest 前，抛错则未写任何东西。
-  withHandler<KbAddResult | null>('kb:pickFile', async () => {
+  // 对话框文案由渲染层 i18n 后传入（铁律 T2：主进程不硬编码中文，review #27）。
+  withHandler<KbAddResult | null>('kb:pickFile', async (_e, labelsRaw) => {
+    let labels: NativeFileDialogLabels
+    try {
+      labels = NativeFileDialogLabelsSchema.parse(labelsRaw) as NativeFileDialogLabels
+    } catch {
+      throw new IpcErrorThrow('errors:kb.invalid_input')
+    }
     const result = await dialog.showOpenDialog({
-      title: '选择文档',
+      title: labels.title,
       properties: ['openFile'],
       filters: [
-        { name: '文档', extensions: ['pdf', 'docx', 'txt', 'md', 'html', 'htm'] },
-        { name: '所有文件', extensions: ['*'] },
+        { name: labels.fileLabel, extensions: ['pdf', 'docx', 'txt', 'md', 'html', 'htm'] },
+        { name: labels.allFilesLabel, extensions: ['*'] },
       ],
     })
     if (result.canceled || result.filePaths.length === 0) return null

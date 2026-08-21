@@ -220,7 +220,7 @@
 
 - **download-model.ts:25 MODEL_ID 重复硬编码**：与 `worker-client.ts:155` `DEFAULT_MODEL_ID` 各自硬编码 `'Xenova/multilingual-e5-small'`，没复用同一常量源。改模型要改多处易漏。FILES 列表与 fetch-kb-model.mjs 一致，但 MODEL_ID 单点没统一。
 - **flat-index.ts:186 heap.sort 废了堆用途**：`searchFlat` 用小顶堆维护 Top-k（注释说"避免全排序 n·log(n)"），但最后 `heap.sort((a,b) => b.score - a.score)` 还是做了 k·log(k) 排序。堆只省了维护阶段（O(n·log k) vs O(n·log n)），非正确性问题，注释略有误导。
-- **reindex/downloadModel 缺并发守卫**：用户连点可起多实例。`reindexController` 模块级单例只在 `runReindex` 内赋值，并发第二次调用覆盖 controller 引用，第一个 reindex 的 abort 信号丢失。（KB_CODE_REVIEW.md:155 已记）
+- ~~**reindex/downloadModel 缺并发守卫**~~：✅ 已修（2026-08-21 二轮补修）——模块级 inflight promise，并发调用挂到在途任务，见「修复落地 · 二轮补修」。
 - **degraded 0 候选时 false**：向量路 ready+embed 成功但 0 候选（flat-index 空）时返回 `degraded=false`（标"混合"非"纯词法"），轻微不精确。（KB_CODE_REVIEW.md:120 已记）
 - **terminateEmbedWorker setTimeout 在退出流里失效**：`before-quit` 同步流调 `terminateEmbedWorker`，内部 `setTimeout(() => killProcessGroup(w.child), 2000)` 回调在进程退出后不执行。但 worker 因 stdin EOF 自然退出，不影响正确性，仅 2 秒强杀宽限拿不到。
 
@@ -258,13 +258,15 @@
 
 **修复方向**：流式写入时累计字节数，超阈值（如 100MB）中止 + 删半截文件。
 
-### #16〔P2〕v11 migration 非幂等
+### #16〔P2〕v11 migration 非幂等 ✅ 已修
 
 **位置**：`src/main/storage/db.ts:291`
 
 **现象**：`ALTER TABLE kb_docs ADD COLUMN content TEXT;` 是全部 migration 中唯一非 `IF NOT EXISTS` 的 DDL。列已存在（dev 分支残留/手工改动）时抛「duplicate column name」，事务回滚（含 schema_version 登记）→ 每次启动重跑失败。
 
 **修复方向**：迁移前查 `PRAGMA table_info(kb_docs)` 判列存在，或包 try/catch 幂等。
+
+**落地**：migration 条目新增 `isApplied` 前置检查（v11 用 `pragma_table_info` 判列），显式跳过登记；catch 仅作兜底。回归测试 `db.migration-v11.test.ts` 直测真实迁移链。
 
 ### #17〔P2〕onProviderChange 错误写进 searchError
 
@@ -356,11 +358,13 @@
 
 **修复方向**：LIKE 追加时按 `topK - ftsIds.length` 截断新增量（或直接把 FTS+LIKE 合并候选也 cap 到 topK）。
 
-### #27〔nit〕原生文件对话框硬编码中文
+### #27〔nit〕原生文件对话框硬编码中文 ✅ 已修
 
-**位置**：`src/main/ipc/knowledge.ts:109-113`
+**位置**：`src/main/ipc/knowledge.ts:109-113`（+ `skills.ts` 同范式）
 
 **现象**：`dialog.showOpenDialog({ title: '选择文档', filters: [{name:'文档'},{name:'所有文件'}] })` 主进程原生对话框硬编码中文。属系统原生 UI，非渲染层 JSX，不归 T2 严格约束；与既有 `skills.ts` 同范式，仅记录不做强改（若要本地化需走 dialog 的 locale 或接受现状）。
+
+**落地**（2026-08-21 二轮补修，用户点名）：对话框文案改由渲染层 i18n 后经 IPC 传入（`NativeFileDialogLabels`，zod 校验），`kb:pickFile`/`skills:pickFile` 同步改造，主进程零硬编码中文对话框。
 
 ---
 
@@ -443,4 +447,14 @@
 | #26 | LIKE 兜底按剩余配额 `topK - ftsIds.length` 取，消除 RRF 词法倾斜 |
 | #10/#11 | 新增 `util/net.ts`（fetchWithTimeout）+ `util/html.ts`（stripTags/decodeEntities 全量实体表），web.ts 与 extract.ts 同源 |
 | #20 | 不改（见上） |
-| #27 | 不改（与 skills.ts 既有模式一致，对话框标题本地化留待统一处理） |
+| #27 | ~~不改~~ → 2026-08-21 二轮补修（见下） |
+
+## 修复落地 · 二轮补修（2026-08-21，用户复核后追加）
+
+用户复核点名三项需改：#16 显式幂等、#27 对话框本地化、reindex/downloadModel 并发守卫。落地（vitest 736 全绿 + tsc 干净，新增回归测试 5 条）：
+
+| 项 | 落地 |
+|---|------|
+| #16 升级 | migration 条目新增 `isApplied?: (db) => boolean` 前置检查：v11 用 `pragma_table_info('kb_docs')` 显式判列存在，目标态已达成则登记跳过，**不把异常当控制流**；原 `duplicate column name` catch 降级为未声明 isApplied 的兜底防御（warn 可见）。`runMigrations` export 供 `db.migration-v11.test.ts` 直测真实迁移链（区别于 v3/v5/v6 测试的自包含副本） |
+| #27 | 新增共享类型 `NativeFileDialogLabels{title,fileLabel,allFilesLabel}`：`kb:pickFile`/`skills:pickFile` 的对话框文案改由渲染层 i18n 后传入（zod 校验限长，失败抛 `errors:kb.invalid_input`/`errors:skills.invalid_input`）；preload/hooks/KbPage/SkillsPage 链路同步；新增 `kb:picker.*`、`common:skills.picker.*`、`errors:skills.invalid_input` 六个 locale key（zh/en）。主进程零硬编码中文对话框 |
+| 并发守卫 | `runReindex`/`downloadKbModel` 模块级 `inflight` promise：并发第二调用挂到在途任务拿同一结果（幂等语义），不再双倍 embed/拉流 + clearAll/进度事件交错 + .part rename 竞态；`cancelReindex` 对在途任务生效，挂接方同获取消结果。回归测试：reindex 并发 embed 只跑一趟；download 并发 fetch 恰 7 次且结束后 inflight 清空可幂等重跑 |

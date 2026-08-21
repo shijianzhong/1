@@ -281,3 +281,28 @@ describe('runReindex — 取消（review #19 真实问题）', () => {
     expect(progressEvents.find((e) => e.type === 'cancelled')).toBeDefined()
   })
 })
+
+describe('runReindex — 并发守卫', () => {
+  it('并发第二调用挂到在途任务：embed 只跑一趟，两调用同结果', async () => {
+    seedChunks(false) // 3 块全 NULL → 单批
+    readyMock.mockResolvedValue(true)
+    let releaseEmbed: (() => void) | null = null
+    const gate = new Promise<void>((r) => { releaseEmbed = r })
+    embedMock.mockImplementation(async (texts: string[]) => {
+      await gate
+      return texts.map(() => Float32Array.from([1, 0, 0]))
+    })
+
+    const p1 = runReindex()
+    const p2 = runReindex() // 守卫：挂到 p1 的在途任务，不起第二趟（否则双倍 embed + clearAll 交错）
+    releaseEmbed!()
+    const [r1, r2] = await Promise.all([p1, p2])
+
+    // 守卫失效则两趟并发 → embed 被调 2 次
+    expect(embedMock).toHaveBeenCalledTimes(1)
+    expect(r1).toEqual({ total: 3, embedded: 3, failed: 0 })
+    expect(r2).toEqual(r1)
+    // done 只发一次
+    expect(progressEvents.filter((e) => e.type === 'done')).toHaveLength(1)
+  })
+})

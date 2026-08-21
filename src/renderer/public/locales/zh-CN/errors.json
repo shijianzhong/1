@@ -15,7 +15,8 @@
   },
   "skills": {
     "zip_only": "仅支持 .zip 格式的技能包（ZIP 内须包含 SKILL.md）",
-    "no_skill_md": "ZIP 内未找到 SKILL.md"
+    "no_skill_md": "ZIP 内未找到 SKILL.md",
+    "invalid_input": "文件选择参数校验失败"
   },
   "graph": {
     "cycle": "编排图存在环（不支持循环图）",

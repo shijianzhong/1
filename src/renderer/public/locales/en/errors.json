@@ -15,7 +15,8 @@
   },
   "skills": {
     "zip_only": "Only .zip skill packs are supported (must contain SKILL.md inside)",
-    "no_skill_md": "SKILL.md not found in ZIP"
+    "no_skill_md": "SKILL.md not found in ZIP",
+    "invalid_input": "File picker argument validation failed"
   },
   "graph": {
     "cycle": "Orchestration graph contains a cycle (cycles not supported)",

@@ -187,11 +187,16 @@ export function KbPage() {
     }
   }
 
-  // P5：文件摄取——主进程弹框+抽取+ingest。cancel 返 null → 留开抽屉无报错
+  // P5：文件摄取——主进程弹框+抽取+ingest。cancel 返 null → 留开抽屉无报错。
+  // 原生对话框文案由渲染层 i18n 传入（review #27）
   const onPickFile = async (): Promise<void> => {
     setIngestError(null)
     try {
-      const r = await pickFileMut.mutateAsync()
+      const r = await pickFileMut.mutateAsync({
+        title: t('kb:picker.title'),
+        fileLabel: t('kb:picker.fileLabel'),
+        allFilesLabel: t('kb:picker.allFiles'),
+      })
       if (r) setDraft(null) // 成功摄取 → 关抽屉；null = cancel → 留开
     } catch (err) {
       setIngestError(errorMessage(err, t))

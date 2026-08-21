@@ -104,12 +104,31 @@ function emitProgress(ev: KbDownloadModelProgressEvent): void {
   getMainWindow()?.webContents.send(PROGRESS_CHANNEL, ev)
 }
 
+/** 在途下载 promise（并发守卫）：非 null 时新调用挂到同一任务而非并发重下 */
+let inflightDownload: Promise<void> | null = null
+
 /**
  * 下载 KB 嵌入模型到 getKbModelDir()。
  * 进度经 kb:downloadModel:progress channel 推送（每文件 progress + done/error）。
  * 幂等：重跑跳过已存在非空文件。
+ *
+ * 并发守卫：并发两趟会写同一批 .part/目标文件（rename 竞态）且双倍拉流。
+ * 第二调用方挂到在途 promise，同获成功/失败。
  */
 export async function downloadKbModel(): Promise<void> {
+  if (inflightDownload) {
+    logger.info('[kb-download] 已有在途下载，挂到同一任务')
+    return inflightDownload
+  }
+  inflightDownload = doDownloadKbModel()
+  try {
+    await inflightDownload
+  } finally {
+    inflightDownload = null
+  }
+}
+
+async function doDownloadKbModel(): Promise<void> {
   const outDir = getKbModelDir()
   const modelDir = join(outDir, MODEL_ID)
   await mkdir(modelDir, { recursive: true })
