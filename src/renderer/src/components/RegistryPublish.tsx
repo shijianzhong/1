@@ -80,7 +80,10 @@ export function RegistryPublishButton(props: { kind: RegistryAssetKind; localId:
       .map(({ kind, localId, slug, version }) => ({ kind, localId, slug: slug.trim(), version: version.trim() }))
     if (confirmed.length === 0) return
     try {
-      const r = await applyExport.mutateAsync(confirmed)
+      const r = await applyExport.mutateAsync({
+        items: confirmed,
+        labels: { title: t('registry:publish.pickDirTitle') },
+      })
       if (r) {
         setResult(r)
         setConfirmed(confirmed)

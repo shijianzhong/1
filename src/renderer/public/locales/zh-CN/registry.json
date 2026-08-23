@@ -56,6 +56,7 @@
     "update": "更新",
     "cancel": "取消",
     "confirm": "导出（{{count}}）",
+    "pickDirTitle": "选择导出目录（将在其中创建 one-registry-export/）",
     "applying": "导出中…",
     "doneSummary": "已导出 {{count}} 个文件到：",
     "doneNext": "下一步：把该目录下的 skills/、agents/、capabilities/ 复制到你的 fork 仓库对应位置并提交 PR（validate CI 会自动校验；slug 冲突或版本未递增会被打回）。",

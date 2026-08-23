@@ -222,6 +222,12 @@ export interface NativeFileDialogLabels {
   allFilesLabel: string
 }
 
+/** 原生目录选择对话框文案（渲染层 i18n 传入，铁律 T2） */
+export interface NativeDirDialogLabels {
+  /** 对话框标题 */
+  title: string
+}
+
 
 export const DEFAULT_THEME: ThemeConfig = {
   preset: 'pure-white',

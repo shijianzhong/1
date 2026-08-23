@@ -56,6 +56,7 @@
     "update": "update",
     "cancel": "Cancel",
     "confirm": "Export ({{count}})",
+    "pickDirTitle": "Select export directory (one-registry-export/ will be created inside)",
     "applying": "Exporting…",
     "doneSummary": "Exported {{count}} files to:",
     "doneNext": "Next: copy the skills/, agents/, and capabilities/ folders from this directory into your fork and open a PR (the validate CI checks automatically; slug conflicts or non-incremented versions will be rejected).",

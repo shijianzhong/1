@@ -95,6 +95,9 @@
     "invalid_args": "草稿参数无效",
     "write_failed": "草稿写入失败"
   },
+  "theme": {
+    "invalid_input": "背景图选择参数校验失败"
+  },
   "kb": {
     "invalid_input": "知识库参数校验失败（标题/内容缺失或格式错误）",
     "empty_content": "文档内容为空，无法摄取",

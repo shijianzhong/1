@@ -18,6 +18,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelConfig,
+  NativeDirDialogLabels,
   NativeFileDialogLabels,
   Persona,
   ReviewRecord,
@@ -52,7 +53,8 @@ export interface OneApi {
   theme: {
     get: () => Promise<IpcResult<ThemeConfig>>
     set: (theme: ThemeConfig) => Promise<IpcResult<ThemeConfig>>
-    pickBackground: () => Promise<IpcResult<{ filePath: string } | null>>
+    /** labels：原生对话框文案（渲染层 i18n 传入，铁律 T2） */
+    pickBackground: (labels: NativeFileDialogLabels) => Promise<IpcResult<{ filePath: string } | null>>
     importBackground: (filePath: string) => Promise<IpcResult<{ imageId: string }>>
     loadBackground: (bg: import('@shared/types').ThemeBackgroundConfig) => Promise<IpcResult<{ dataUrl: string | null; stale?: boolean }>>
     removeBackground: (imageId?: string) => Promise<IpcResult<void>>
@@ -154,8 +156,8 @@ export interface OneApi {
     planImport: (input: { kind: import('@shared/types').RegistryAssetKind; id: string }) => Promise<IpcResult<import('@shared/types').RegistryImportPlan>>
     applyImport: (input: { kind: import('@shared/types').RegistryAssetKind; id: string; materializeAgents?: boolean }) => Promise<IpcResult<import('@shared/types').RegistryImportResult>>
     planExport: (input: { kind: import('@shared/types').RegistryAssetKind; localId: string }) => Promise<IpcResult<import('@shared/types').RegistryExportPlan>>
-    /** 弹目录选择器；用户取消返回 null，成功返回落盘目录与文件清单并自动 reveal */
-    applyExport: (items: import('@shared/types').RegistryExportConfirmItem[]) => Promise<IpcResult<import('@shared/types').RegistryExportResult | null>>
+    /** 弹目录选择器；用户取消返回 null，成功返回落盘目录与文件清单并自动 reveal。labels 为对话框文案（i18n 传入） */
+    applyExport: (items: import('@shared/types').RegistryExportConfirmItem[], labels: NativeDirDialogLabels) => Promise<IpcResult<import('@shared/types').RegistryExportResult | null>>
     /** 打开 Registry 贡献页（fork + 手动 PR 引导） */
     openContribute: () => Promise<IpcResult<void>>
     /** 方式 B：导出目录内容经 GitHub API 自动 fork + 提交 PR（需写权限 Token；成功自动打开 PR 页） */
@@ -286,7 +288,7 @@ const api: OneApi = {
   theme: {
     get: () => ipcRenderer.invoke('theme:get'),
     set: (theme) => ipcRenderer.invoke('theme:set', theme),
-    pickBackground: () => ipcRenderer.invoke('theme:pickBackground'),
+    pickBackground: (labels) => ipcRenderer.invoke('theme:pickBackground', labels),
     importBackground: (filePath) => ipcRenderer.invoke('theme:importBackground', filePath),
     loadBackground: (bg) => ipcRenderer.invoke('theme:loadBackground', bg),
     removeBackground: (imageId) => ipcRenderer.invoke('theme:removeBackground', imageId),
@@ -377,7 +379,7 @@ const api: OneApi = {
     planImport: (input) => ipcRenderer.invoke('registry:planImport', input),
     applyImport: (input) => ipcRenderer.invoke('registry:applyImport', input),
     planExport: (input) => ipcRenderer.invoke('registry:planExport', input),
-    applyExport: (items) => ipcRenderer.invoke('registry:applyExport', items),
+    applyExport: (items, labels) => ipcRenderer.invoke('registry:applyExport', items, labels),
     openContribute: () => ipcRenderer.invoke('registry:openContribute'),
     submitPr: (input) => ipcRenderer.invoke('registry:submitPr', input),
     getRepoStats: () => ipcRenderer.invoke('registry:getRepoStats'),

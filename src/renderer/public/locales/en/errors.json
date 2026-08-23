@@ -95,6 +95,9 @@
     "invalid_args": "Invalid draft arguments",
     "write_failed": "Failed to write draft"
   },
+  "theme": {
+    "invalid_input": "Background image picker argument validation failed"
+  },
   "kb": {
     "invalid_input": "Knowledge base params failed validation (missing title/content or bad format)",
     "empty_content": "Document content is empty, cannot ingest",

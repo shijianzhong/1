@@ -16,6 +16,7 @@ import { getRepoStats, submitExportAsPr } from '../registry/publisher'
 import { getRegistryIndex, getRegistryManifest, resetRegistryCaches } from '../registry/service'
 import { isValidSlug, loadRegistryConfig, saveRegistryConfig } from '../registry/sources'
 import { withHandler } from './handler'
+import { parseDirDialogLabels } from './dialog-labels'
 
 // —— Registry IPC（docs/REGISTRY_PLAN.md §3.1/§3.2/§3.3）——
 // 浏览：getIndex（10min 缓存 + stale 回退）/ getManifest；
@@ -102,12 +103,14 @@ export function registerRegistryHandlers(): void {
     return planExport(parseKind(input?.kind), input.localId)
   })
 
-  withHandler<RegistryExportResult | null>('registry:applyExport', async (e, inputRaw) => {
-    const items = inputRaw as RegistryExportConfirmItem[]
+  // 对话框文案由渲染层 i18n 后传入（铁律 T2：主进程不硬编码中文，review #27）
+  withHandler<RegistryExportResult | null>('registry:applyExport', async (e, itemsRaw, labelsRaw) => {
+    const items = itemsRaw as RegistryExportConfirmItem[]
     if (!Array.isArray(items) || items.length === 0) throw new IpcErrorThrow('errors.registry.export_empty')
+    const labels = parseDirDialogLabels(labelsRaw, 'errors.registry.invalid_input')
     const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getAllWindows()[0]
     const picked = await dialog.showOpenDialog(win, {
-      title: '选择导出目录（将在其中创建 one-registry-export/）',
+      title: labels.title,
       properties: ['openDirectory', 'createDirectory'],
     })
     if (picked.canceled || !picked.filePaths[0]) return null

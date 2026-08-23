@@ -152,9 +152,17 @@ export function SettingsPage() {
   }
 
   const onPickBackground = async (): Promise<void> => {
-    const picked = await window.one.theme.pickBackground().then(unwrap)
+    const picked = await window.one.theme
+      .pickBackground({
+        title: t('settings:appearance.bgPickerTitle'),
+        fileLabel: t('settings:appearance.bgPickerImages'),
+        allFilesLabel: t('settings:appearance.bgPickerAllFiles'),
+      })
+      .then(unwrap)
+      .catch(() => null)
     if (!picked) return
-    const imported = await window.one.theme.importBackground(picked.filePath).then(unwrap)
+    const imported = await window.one.theme.importBackground(picked.filePath).then(unwrap).catch(() => null)
+    if (!imported) return
     const bg: ThemeBackgroundConfig = {
       type: 'image',
       imageId: imported.imageId,

@@ -19,6 +19,7 @@ import type {
   KbSearchResult,
   KbStatus,
   ModelConfig,
+  NativeDirDialogLabels,
   NativeFileDialogLabels,
   Persona,
   RegistryAssetKind,
@@ -439,8 +440,8 @@ export function usePlanRegistryExport() {
 export function useApplyRegistryExport() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (items: RegistryExportConfirmItem[]) =>
-      thenUnwrap(window.one.registry.applyExport(items)),
+    mutationFn: (input: { items: RegistryExportConfirmItem[]; labels: NativeDirDialogLabels }) =>
+      thenUnwrap(window.one.registry.applyExport(input.items, input.labels)),
     onSuccess: (result) => {
       // 导出成功回写 provenance，刷新列表让「已安装/有更新」徽标立即生效
       if (result) {

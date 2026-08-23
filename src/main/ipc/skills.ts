@@ -1,18 +1,10 @@
 import { dialog } from 'electron'
-import { z } from 'zod'
-import type { NativeFileDialogLabels, Skill, SkillMeta } from '@shared/types'
-import { IpcErrorThrow } from '@shared/types'
+import type { Skill, SkillMeta } from '@shared/types'
 import { withHandler } from './handler'
+import { parseFileDialogLabels } from './dialog-labels'
 import { getSkill, getSkillDir, invalidateSkillsCache, listSkillMetas, removeSkill, saveSkill } from '../storage/models'
 import { extractSkillResourcesToDir, uploadSkillFile } from '../skills/upload'
 import { logger } from '../logger'
-
-/** 原生对话框文案（渲染层 i18n 传入；限长防畸形串进系统弹窗） */
-const NativeFileDialogLabelsSchema = z.object({
-  title: z.string().min(1).max(100),
-  fileLabel: z.string().min(1).max(50),
-  allFilesLabel: z.string().min(1).max(50),
-})
 
 // —— 技能 IPC（§八之二 B）——
 // 目录化改造（docs/SKILL_STORAGE_STANDARD_PLAN.md §6.8）：
@@ -26,12 +18,7 @@ export function registerSkillsHandlers(): void {
   // 上传技能包：弹原生文件选择框 → 解析 ZIP → saveSkill 落盘 → 提取资源 → 返回完整 Skill
   // 对话框文案由渲染层 i18n 后传入（铁律 T2：主进程不硬编码中文，review #27）
   withHandler<Skill | null>('skills:pickFile', async (_e, labelsRaw) => {
-    let labels: NativeFileDialogLabels
-    try {
-      labels = NativeFileDialogLabelsSchema.parse(labelsRaw) as NativeFileDialogLabels
-    } catch {
-      throw new IpcErrorThrow('errors:skills.invalid_input')
-    }
+    const labels = parseFileDialogLabels(labelsRaw, 'errors:skills.invalid_input')
     const result = await dialog.showOpenDialog({
       title: labels.title,
       properties: ['openFile'],

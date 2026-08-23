@@ -10,6 +10,7 @@ import {
   type ThemeConfig,
 } from '@shared/types'
 import { withHandler } from './handler'
+import { parseFileDialogLabels } from './dialog-labels'
 import { getBackgroundDir } from '../storage/paths'
 import { registerCapabilitiesHandlers } from './capabilities'
 import { registerAgentsHandlers } from './agents'
@@ -169,10 +170,16 @@ export function registerIpcHandlers(): void {
   withHandler<ThemeConfig>('theme:set', async (_event, themeRaw) =>
     saveTheme(themeRaw as ThemeConfig),
   )
-  withHandler<{ filePath: string } | null>('theme:pickBackground', async () => {
+  // 对话框文案由渲染层 i18n 后传入（铁律 T2：主进程不硬编码中文，review #27）
+  withHandler<{ filePath: string } | null>('theme:pickBackground', async (_e, labelsRaw) => {
+    const labels = parseFileDialogLabels(labelsRaw, 'errors:theme.invalid_input')
     const result = await dialog.showOpenDialog({
+      title: labels.title,
       properties: ['openFile'],
-      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      filters: [
+        { name: labels.fileLabel, extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
+        { name: labels.allFilesLabel, extensions: ['*'] },
+      ],
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return { filePath: result.filePaths[0] }
