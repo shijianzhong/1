@@ -106,8 +106,8 @@ export function registerRegistryHandlers(): void {
   // 对话框文案由渲染层 i18n 后传入（铁律 T2：主进程不硬编码中文，review #27）
   withHandler<RegistryExportResult | null>('registry:applyExport', async (e, itemsRaw, labelsRaw) => {
     const items = itemsRaw as RegistryExportConfirmItem[]
-    if (!Array.isArray(items) || items.length === 0) throw new IpcErrorThrow('errors.registry.export_empty')
-    const labels = parseDirDialogLabels(labelsRaw, 'errors.registry.invalid_input')
+    if (!Array.isArray(items) || items.length === 0) throw new IpcErrorThrow('errors:registry.export_empty')
+    const labels = parseDirDialogLabels(labelsRaw, 'errors:registry.invalid_input')
     const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getAllWindows()[0]
     const picked = await dialog.showOpenDialog(win, {
       title: labels.title,
