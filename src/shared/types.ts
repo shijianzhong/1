@@ -228,7 +228,6 @@ export interface NativeDirDialogLabels {
   title: string
 }
 
-
 export const DEFAULT_THEME: ThemeConfig = {
   preset: 'pure-white',
   mode: 'system',
