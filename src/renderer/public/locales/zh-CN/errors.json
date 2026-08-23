@@ -23,6 +23,7 @@
     "empty": "编排图无节点"
   },
   "registry": {
+    "invalid_input": "导出目录参数校验失败",
     "export_empty": "导出清单为空",
     "invalid_repo": "仓库地址格式无效（需 owner/name）",
     "invalid_ref": "分支名不能为空",

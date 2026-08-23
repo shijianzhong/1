@@ -23,6 +23,7 @@
     "empty": "Orchestration graph has no nodes"
   },
   "registry": {
+    "invalid_input": "Export directory argument validation failed",
     "export_empty": "Export list is empty",
     "invalid_repo": "Invalid repository format (expected owner/name)",
     "invalid_ref": "Branch name cannot be empty",
