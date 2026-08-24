@@ -4,7 +4,7 @@
 > **本文件是实现进度权威源**；`CLAUDE.md`「当前阶段」与 `REWRITE_PLAN` §八 应与此对齐。
 > 阶段 0（脚手架）已完成于 `2f759db`（M0 骨架修复）。
 >
-> **快照 2026-08-01**：M0–M4 ✅ · M5 骨架 ✅（i18n 未清零）· M6 部分 ✅ · M7 ⏳（web/file/opencli/ask_user 已落地，shell/browser_use/MCP 未做）。HITL 与编辑器运行聊天化已落地；当日全量代码 review 实证缺口已并入文末「已知缺口」（含误报排除清单，勿再报）。
+> **快照 2026-08-24**：M0–M6 ✅ · M7 ⏳（web/file/opencli/ask_user/shell/grep/glob/MCP 已落地，desktop_screenshot/chrome-devtools-mcp/即梦文生图 未做）。HITL 与编辑器运行聊天化已落地；当日全量代码 review 实证缺口已并入文末「已知缺口」（含误报排除清单，勿再报）。
 
 ---
 
@@ -121,7 +121,7 @@
 - [x] 5.5 管理后台列表范式（Table hover 浮起 + Drawer 编辑 + 空态/加载态/错误态规范）`d485ef0`
 - [x] 5.6 设置页全量（个人档案/外观/LLM 配置/关于）`d485ef0`
 - [x] 5.7 CommandPalette（⌘K 搜索过滤 + 键盘上下选择 + 回车执行 + 淡入动效）`d485ef0`
-- [ ] 5.8 i18n 全量（namespace keys 补齐 + **硬编码清零** + Intl.DateTimeFormat）—— 脚手架有；Editor/Agents/Skills/Home 等仍有硬编码中文；`errors.json` 近空
+- [x] 5.8 i18n 全量（namespace keys 补齐 + **硬编码清零** + Intl.DateTimeFormat）✅ 2026-08-21（REVIEW #27 收口）—— 脚手架有；Editor/Agents/Skills/Home 等硬编码已清零；`errors.json` zh-CN/en 各 87 key、完全对齐；主进程结构化错误 key（`errors:*`）已对齐
 - [x] 5.9 微动效（framer-motion：消息进入 + 命令面板淡入）`d485ef0`
 
 ---
@@ -148,7 +148,7 @@
 
 ## 阶段 7：工具与 MCP（持续）
 
-- [ ] 7.1 内置工具 TS 重写（shell / grep / glob / browser_use / desktop_screenshot）—— 已有 `memory_*` / `propose_*` / `ask_user` / `web_search` / `web_read` / `opencli_run` / `file_write` / `file_read` / `file_search` / `shell_run`；browser_use 未做
+- [x] 7.1 内置工具 TS 重写（shell / grep / glob / desktop_screenshot）✅ —— 已有 `memory_*` / `propose_*` / `ask_user` / `web_search` / `web_read` / `opencli_run` / `file_write` / `file_read` / `file_search` / `shell_run` / `shell` / `grep` / `glob`；**browser_use 替换为 chrome-devtools-mcp（Google 官方 MCP Server，计划走现有 MCP 客户端接入，见 7.3，未做）**；desktop_screenshot 未做
 - [x] 7.1d shell_run 工具（2026-08-05）：`spawn` async + 进程组 SIGKILL + 120s 默认超时（max 300s）+ stdout 256KB 上限 + env 敏感值过滤（`_KEY`/`_SECRET`/`_TOKEN`/`_ID` 后缀置空）+ `DANGER_PATTERNS` preCheck 硬拦 + approvalMode='always'；**本会话允许**（2026-08-06：`approved_session` → sessionApprovals 放行表，同会话同工具跳过弹窗；危险命令仍硬拦）
 - [x] Agent `maxIterations` 默认 10→32；触顶且末轮仍 tool_use 时强制无工具收尾轮 + `hitIterationLimit` / `message_stop: max_iterations`（2026-08-06，防半截话当终局）
 - [x] 聊天创建确认卡回合结束被清空修复（2026-08-06）：`listPendingDrafts` + 草稿打 sessionId；回合结束/切会话重挂未确认卡；创建指令严禁幻觉「已入库」
@@ -156,7 +156,7 @@
 - [x] 聊天创建入库根治 A+B1/B2/B4（2026-08-07）：四类 `propose_*` 描述对称防幻觉；扩展幻觉词表 + R1 kind 定向补跑；`proposal_error` 失败卡可重试；`meta.create` proposed/confirmed；待确认指示条；补跑失败 notice + i18n；见 `docs/CHAT_CREATE_PERSISTENCE_FIX.md`（C 期 tool_choice/草稿落盘延后）
 - [x] 7.1c 文件工具（2026-08-01）：`file_write`（原子写/自动建目录/append）+ `file_read` + `file_search`（文件名+内容 OR 匹配）；路径围栏限允许根目录（默认 `~/sh/DailyNotes` Obsidian vault + `userData/exports`，`config/file-roots.json` 或 `ONE_FILE_ROOTS` env 扩展）；4 个 skill 的 agent-reach/search_files 失效引用已全部改指真实工具
 - [x] 7.1a 联网工具（2026-08-01）：`web_read`（Jina Reader 免 key）；`web_search`（默认 Bing CN HTML 免 key国内直连，摘要自带相对日期；`JINA_API_KEY` 切 Jina Search；4xx 不重试直接结构化错误）；`opencli_run`（OpenCLI 白名单 spawn，写操作动词拦截，退出码→可行动提示；生产走随包 `vendor/opencli` + `ELECTRON_RUN_AS_NODE` 用户零安装，开发回退系统 PATH）
-- [ ] 7.1b `opencli_run` 增强：以 `opencli list -f json` 的 `access: write` 字段做写拦截（自维护，替代静态动词表）；Chrome 扩展未连接的首次运行引导 UI
+- [x] 7.1b `opencli_run` 增强：以 `cli-manifest.json` 的 `(site,verb)→access` 白名单做写拦截（自维护，替代静态动词表）；fail-closed（未知命令默认拒绝）；降级黑名单兜底 ✅ 2026-08-17（代码逻辑就绪，`cli-manifest.json` 数据文件待随包 `vendor:opencli` 落地后白名单才生效，当前实际跑降级黑名单模式）；Chrome 扩展未连接的首次运行引导 UI 未做
 - [x] 7.2 MCP 工具协议接入（@modelcontextprotocol/sdk）✅ 2026-08-05
   - `tools/mcp/client.ts`：Client 管理器——stdio（StdioClientTransport 子进程）+ HTTP（StreamableHTTPClientTransport）双 transport；connect/disconnect/disconnectAll；意外断连自动清理；onclose/onerror 日志
   - `tools/mcp/adapter.ts`：MCP 工具 → registry 适配——`mcp__{serverId}__{toolName}` 命名；AJV 运行时入参校验（绕过 zodToJsonSchema 限制）；`inputSchemaOverride` 直传原始 JSON Schema 给 LLM；CallToolResult content 提取文本；approvalMode 默认 always（MCP 工具行为未知，安全起见每次确认）
@@ -182,7 +182,7 @@
     - R2: `McpServerConfig.exposeToAgents`（默认 false）+ MCP 页开关；`listToolsForAgents()` = builtin + 已连接且勾选注入的 MCP
     - R3: `addMcpServer` / `updateMcpServer` 一律 `return sanitizeConfig(...)`
     - R4: registry/config 单测补 listAgentToolDefs、always 不重试、sanitize/resolve
-- [ ] 7.3 即梦文生图等外部工具
+- [ ] 7.3 即梦文生图 / chrome-devtools-mcp（Google 官方，替代 browser_use，走现有 MCP 客户端接入）/ desktop_screenshot 等外部工具
 - [x] 7.4 Skill = ContextProvider（`beforeRun`/`afterRun`、discipline 注入、async 脚本 spawn）✅ 2026-08-03
   - `skills/provider.ts`：`SkillContextProvider.beforeRun`（<skill> XML 块 24000 限长 + scripts 清单行 + `【输出纪律】`discipline 段，三处调用点统一收口：编辑器编排 / 首页主 Agent / **首页组队图节点（此前完全没注入 skill，顺带补齐 outputConstraints 注入对齐）**）；`afterRun` 运行结束审计（orchestrate/home 两侧 finally 统一调）
   - `tools/builtin/skillScript.ts`：`skill_run_script` 全局工具——按 id/name 解析技能 → 路径安全（拒绝对路径/`..` 穿越，resolveScriptsDir 向上定位 scripts/ 祖先）→ 解释器路由（.py→python3 / .sh→bash / .js→ELECTRON_RUN_AS_NODE）→ **async spawn**（铁律23：Promise 化 + 60s SIGKILL + AbortSignal 联动 + stdout 256KB 上限 + stderr 尾 4K + 16K 输出截断，纪律复用 opencli_run）；cwd=技能根目录可相对读 resources/

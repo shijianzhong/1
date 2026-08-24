@@ -32,7 +32,7 @@ A multi-agent orchestration desktop application. Create agents, skills, and capa
 
 - **Shell**: Electron
 - **Frontend**: React, TypeScript, Vite
-- **Backend**: Full TypeScript (Koa), SQLite (better-sqlite3)
+- **Backend**: Full TypeScript, Electron IPC (no HTTP server), SQLite (better-sqlite3)
 - **Canvas**: ReactFlow
 - **Styling**: CSS custom properties, glass-morphism design system
 - **LLM**: Multi-provider support with thinking/retry/HITL
@@ -57,7 +57,7 @@ npm run package
 
 ```
 src/
-├── main/          # Electron main process (Koa backend, tools, orchestrator)
+├── main/          # Electron main process (IPC + tools + orchestrator, no HTTP backend)
 │   ├── ipc/       # IPC handlers (agents, skills, capabilities, secrets...)
 │   ├── llm/       # LLM client, retry, thinking parser
 │   ├── orchestrator/  # Home router, workflow runner
@@ -107,7 +107,7 @@ src/
 
 - **外壳**：Electron
 - **前端**：React、TypeScript、Vite
-- **后端**：全 TypeScript（Koa）、SQLite（better-sqlite3）
+- **后端**：全 TypeScript、无 HTTP 服务层（Electron IPC 直连）、SQLite（better-sqlite3）
 - **画布**：ReactFlow
 - **样式**：CSS 自定义属性、玻璃拟态设计系统
 - **LLM**：多供应商支持，含思考链/重试/人机交互

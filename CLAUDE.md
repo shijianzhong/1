@@ -65,7 +65,7 @@ npm run test:e2e     # 先 build 再 Playwright Electron
 npm run rebuild      # better-sqlite3 对应当前 Electron ABI 重编
 ```
 
-## 当前阶段（2026-08-01 快照）
+## 当前阶段（2026-08-24 快照）
 
 > **权威勾选见 [`task.md`](./task.md)**；下文是 AI 协作速查摘要。分阶段定义见 [`docs/REWRITE_PLAN.md`](./docs/REWRITE_PLAN.md) §八。
 
@@ -76,16 +76,16 @@ npm run rebuild      # better-sqlite3 对应当前 Electron ABI 重编
 | 2 LLM + 单 Agent | ✅ M2 | `beta.messages.stream`、重试、首页流式聊天 |
 | 3 三级记忆 | ✅ M3 | L0–L3 + memory 工具；首页已注入 |
 | 4 编排引擎 | ✅ M4 已收口 `4dd76dc` | Pregel runner + 四模式语义保真 + HITL（ask_user）；`context_mode` Sequential 下游接入待联调（M4 尾巴） |
-| 5 前端 UI | ✅ M5 | 核心页/画布/主题可用；**i18n 用户可见硬编码已清零**（2026-08-01，交叉校验零缺失）；`errors.*` 主进程 key 未齐 |
-| 6 原生与打磨 | ✅ 部分 M6 | 托盘/更新/mac dmg；草稿恢复 UI 未闭环；win 包未验 |
-| 7 工具与 MCP | ⏳ 进行中 | memory/propose/ask_user/web/file/opencli 已落地（file_* 已全量异步化）；**Skill ContextProvider + skill_run_script 已落地（7.4 ✅ 2026-08-03）**；**向量知识库 P0-P5 + P3 前置全落地（7.5 ✅ 2026-08-20，`kb:add/pickFile/list/remove/search/reindex/downloadModel/getProviderPreference/setProviderPreference` IPC + pipeline 分块 + v11 content 列 + hybrid 检索 searchKbHybrid[FTS+FlatIndex+RRF] + kb_search 工具 + /kb 前端页 + RemoteEmbeddingProvider 复用 Provider 系统 + reindex 统一循环 + 模型运行时下载/首启 seed + P5 pdf/docx/URL 摄取[unpdf+mammoth+Jina] + P3 前置重调评测[FTS 59.1% > 向量 36.4% → 给 skills 加向量暂缓]）**；shell/browser_use/MCP 未做 |
+| 5 前端 UI | ✅ M5 | 核心页/画布/主题可用；**i18n 用户可见硬编码已清零**（2026-08-21 REVIEW #27 收口，zh-CN/en 各 87 errors key 完全对齐）；主进程结构化错误 key（`errors:*`）已对齐 |
+| 6 原生与打磨 | ✅ M6 | 托盘/更新/mac dmg；草稿恢复写盘（HomePage/EditorPage `writeDraft`）+ 渲染层恢复 UI（`CrashRecoveryDialog` 已挂 App.tsx）已闭环；win nsis 有 CI（`.github/workflows/build.yml` windows-latest）但本地未验证运行 |
+| 7 工具与 MCP | ⏳ 进行中 | builtin 工具已全量落地：`memory_*`/`propose_*`/`ask_user`/`web_search`/`web_read`/`opencli_run`（7.1b `(site,verb)→access` 白名单 + fail-closed ✅ 2026-08-17）/`file_*`/`shell`/`grep`/`glob`（file_* 全量异步化）；**Skill ContextProvider + skill_run_script 已落地（7.4 ✅ 2026-08-03）**；**向量知识库 P0-P5 + P3 前置全落地（7.5 ✅ 2026-08-20，`kb:add/pickFile/list/remove/search/reindex/downloadModel/getProviderPreference/setProviderPreference` IPC + pipeline 分块 + v11 content 列 + hybrid 检索 searchKbHybrid[FTS+FlatIndex+RRF] + kb_search 工具 + /kb 前端页 + RemoteEmbeddingProvider 复用 Provider 系统 + reindex 统一循环 + 模型运行时下载/首启 seed + P5 pdf/docx/URL 摄取[unpdf+mammoth+Jina] + P3 前置重调评测[FTS 59.1% > 向量 36.4% → 给 skills 加向量暂缓]）**；MCP 协议接入已落地（7.2 ✅ 2026-08-05，stdio+HTTP 双 transport + 适配器 + 配置页）；browser_use 改走 chrome-devtools-mcp（计划，未做）、desktop_screenshot 未做 |
 | 8 Registry | ⏳ 进行中 | Phase 1–5 全落地（仓库+CI/provenance+浏览导入/导出/Token+源管理+自动PR+star+一键更新）；剩余 PR 合并后真实链路验证 |
 
 **当前优先缺口（勿当已完成）：**
 
-1. **崩溃草稿**：哨兵/`listDrafts` 有，编辑器/聊天写盘 + 渲染层恢复 UI 未接。
-2. **工具生态**：shell/browser_use/MCP 未做；opencli 写拦截改 `access: write` 自维护（7.1b）。
-3. **i18n 尾巴**：`errors.*` 主进程结构化错误 key 未齐（渲染层硬编码已清零）。
+1. **工具生态尾巴**：browser_use 改走 chrome-devtools-mcp（Google 官方 MCP Server，走现有 MCP 客户端接入，计划未做）、desktop_screenshot 未做。opencli 写拦截已改 `cli-manifest.json` 的 `(site,verb)→access` 白名单 + fail-closed ✅（7.1b，2026-08-17）。
+2. **win 包运行验证**：win nsis 有 CI（`.github/workflows/build.yml` windows-latest）但本地无产物、未实测运行。
+3. **Registry 真实链路**：Phase 1–5 全落地，剩余 PR 合并后真实链路验证。
 
 > 2026-08-01 review 实证的稳定性项（Error Boundary / fan-in 容错 / WAL checkpoint 备份 / L3 事务 / opencli 限流 / tool_use delta ID / AbortController 加固）已全部修复，见 task.md 缺口表 ✅ 行。
 
