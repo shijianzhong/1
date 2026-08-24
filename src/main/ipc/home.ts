@@ -39,6 +39,7 @@ import { Agent } from '../orchestrator/agent'
 import {
   TeamJsonDetector,
   buildCreateInstruction,
+  buildKbInstruction,
   buildMemoryInstruction,
   buildSkillInstruction,
   buildRoutingInstruction,
@@ -62,6 +63,7 @@ import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
 import { listMemoryKeysForPrompt } from '../tools/builtin/memory'
+import { countKbChunks } from '../vector/kb-fts'
 import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
 import {
   newRequestId,
@@ -382,10 +384,14 @@ export function registerHomeHandlers(): void {
       : instructionsWithSkills
 
     const skillInstruction = buildSkillInstruction(countSkills())
+    // —— 知识库激活指令段：门控注入——仅当用户确实索引了文档（chunkCount>0）才拼入，
+    // 空库用户不注入、prompt 不膨胀、也不会白调 kb_search 空转一轮。
+    // 与【长期记忆】并列但语义边界分离（文档素材 vs 个人事实），见 buildKbInstruction。
+    const kbInstruction = buildKbInstruction(countKbChunks())
     // —— 创建指令段：引导主 Agent 识别创建/修改意图 → 多轮澄清 → propose_* 产出草稿。
     // 注入当前 persona 原文（<persona> 边界），防 LLM 把 L0/记忆/路由段误当人设固化。
     // —— 记忆策略指令段（铁律21 L3 激活）：告诉主 Agent 何时记/何时取，附已有记忆 key 防重复。
-    const instructions = `${instructionsWithRouting}\n${skillInstruction}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}`
+    const instructions = `${instructionsWithRouting}\n${skillInstruction}\n${buildCreateInstruction(persona)}\n${buildMemoryInstruction(listMemoryKeysForPrompt())}${kbInstruction}`
 
     // 取消控制器：按 session 维度隔离；同一会话重复发起时仅取消自己的旧运行。
     // 不同会话可并发，切换会话不应互相影响。

@@ -3,6 +3,7 @@ import type { Agent, Capability, SkillMeta } from '@shared/types'
 import {
   TeamJsonDetector,
   buildCreateInstruction,
+  buildKbInstruction,
   buildMemoryInstruction,
   buildSkillInstruction,
   buildRoutingInstruction,
@@ -395,6 +396,23 @@ describe('buildCreateInstruction', () => {
     expect(s).toContain('propose_persona')
     expect(s).toContain('个人档案')
     expect(s).not.toContain('职业/称呼')
+  })
+
+  it('知识库指令：空库（chunkCount=0）返回空串，不注入', () => {
+    expect(buildKbInstruction(0)).toBe('')
+    expect(buildKbInstruction(-1)).toBe('')
+  })
+
+  it('知识库指令：有文档时激活，且与长期记忆语义边界分离', () => {
+    const s = buildKbInstruction(42)
+    expect(s).toContain('【知识库】')
+    expect(s).toContain('42 段')
+    expect(s).toContain('kb_search')
+    // 明确边界：kb_search=文档素材，memory_*=用户个人事实，不要互相替代
+    expect(s).toContain('memory_search')
+    expect(s).toContain('不要互相替代')
+    // 空库提示（让模型在无命中时如实告知，而非硬凑）
+    expect(s).toContain('知识库里没有相关内容')
   })
 
   it('技能策略：只给数量和检索规则，不列技能清单', () => {

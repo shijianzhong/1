@@ -51,6 +51,7 @@ vi.mock('../orchestrator/agent', () => ({
 vi.mock('../orchestrator/home', () => ({
   TeamJsonDetector: class { feed() { return null } decide() { return { kind: 'direct' } } },
   buildCreateInstruction: () => '',
+  buildKbInstruction: () => '',
   buildMemoryInstruction: () => '',
   buildSkillInstruction: () => '',
   buildRoutingInstruction: () => '',
@@ -74,6 +75,9 @@ vi.mock('../skills/provider', () => ({
 vi.mock('../storage/db', () => ({
   getDb: () => ({ prepare: () => ({ run: () => ({}) }) }),
 }))
+
+// kb_search 激活指令依赖 chunk 数；此处固定为空库（指令段不注入），与 L2/L1 等空态 mock 一致。
+vi.mock('../vector/kb-fts', () => ({ countKbChunks: () => 0 }))
 
 vi.mock('../storage/memory/l0', () => ({ injectL0: (a: string) => a }))
 vi.mock('../storage/memory/l1', () => ({

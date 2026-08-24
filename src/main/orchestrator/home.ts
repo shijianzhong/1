@@ -371,6 +371,25 @@ export function buildMemoryInstruction(existingKeys: string[] = []): string {
   ].join('\n')
 }
 
+/**
+ * 知识库（KB）激活指令：门控注入——仅当用户确实入库了文档（chunkCount > 0）才调用。
+ * 与【长期记忆】并列但**语义边界分离**：KB 是你「已入库的文档/手册/笔记」语料（外部知识），
+ * L3 是「用户告诉过你的个人事实/偏好」（关于这个人本身）。两者不混用，避免模型错配：
+ * 既不要把 kb_search 当回忆用户偏好，也不要把 memory_retain 当存文档知识。
+ * @param chunkCount kb_chunks 主表行数；0 表示空库，调用方应直接返回 '' 不注入。
+ */
+export function buildKbInstruction(chunkCount: number): string {
+  if (chunkCount <= 0) return ''
+  return [
+    '',
+    `【知识库】你已索引 ${chunkCount} 段用户入库文档（向量+词法混合检索）。策略：`,
+    '1. 何时取用：回答需要依据「已入库资料（文档/手册/笔记/规范）」的问题时（如「按我们的接口规范怎么写」「公司报销流程是什么」），先调 kb_search 检索相关分块再作答；不要凭记忆编造文档细节。',
+    '2. 与长期记忆的边界：kb_search 查「已入库文档」，memory_* 查「用户个人事实」——问资料用 kb_search，问用户本人用 memory_search，两者不要互相替代。',
+    '3. 不要调用：闲聊、通用常识、无需文档依据的问题不要调 kb_search。检索返回空时如实告知用户「知识库里没有相关内容」，不要硬凑。',
+    '4. 引用来源：作答时尽量点出内容来自哪份文档（kb_search 结果带 title/source），方便用户溯源。',
+  ].join('\n')
+}
+
 /** Skill RAG 激活指令：只给数量与策略，不列技能清单，避免 prompt 膨胀。 */
 export function buildSkillInstruction(skillCount: number): string {
   return [
