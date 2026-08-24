@@ -119,6 +119,15 @@ export function listL3Keys(userId: string): string[] {
   ).map((r) => r.key)
 }
 
+/** 列出用户全部 L3 fact（含 value，按 ts 倒序，管理页展示用） */
+export function listL3(userId: string): L3Fact[] {
+  return getDb()
+    .prepare(
+      'SELECT user_id as userId, key, value, ts FROM memory_l3 WHERE user_id = ? ORDER BY ts DESC',
+    )
+    .all(userId) as L3Fact[]
+}
+
 /**
  * 检索 L3：三路召回合并。
  * 1) key 精确/前缀命中（权重最高）2) FTS5 BM25（语义/词序）3) LIKE 子串兜底。

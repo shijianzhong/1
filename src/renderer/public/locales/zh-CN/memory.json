@@ -1,0 +1,51 @@
+{
+  "title": "记忆",
+  "subtitle": "查看与编辑 One 的长期记忆（L1 会话摘要 / L2 跨会话摘要 / L3 长期事实）",
+  "tab": {
+    "l3": "长期记忆 (L3)",
+    "l2": "跨会话摘要 (L2)",
+    "l1": "会话摘要 (L1)"
+  },
+  "l3": {
+    "add": "新增事实",
+    "searchPh": "按 key 或内容搜索…",
+    "empty": "还没有长期记忆。对话中透露的稳定偏好、身份或项目约定会被自动记住。",
+    "editTitle": "编辑事实",
+    "addTitle": "新增事实",
+    "keyField": "Key",
+    "keyPh": "如 preference:like_morning_run",
+    "valueField": "内容",
+    "valuePh": "一条事实…",
+    "save": "保存",
+    "submitting": "保存中…",
+    "removeConfirm": "确定删除这条长期记忆？",
+    "renameHint": "修改 Key 会创建新条目并删除旧条目"
+  },
+  "category": {
+    "preference": "偏好",
+    "identity": "身份",
+    "project": "项目",
+    "goal": "目标",
+    "fact": "其它",
+    "other": "其它"
+  },
+  "l2": {
+    "empty": "还没有跨会话摘要。",
+    "editTitle": "编辑摘要",
+    "digestField": "摘要内容",
+    "save": "保存",
+    "submitting": "保存中…",
+    "removeConfirm": "确定删除这条跨会话摘要？",
+    "readOnlyNote": "跨会话摘要由会话结束时自动精炼生成。"
+  },
+  "l1": {
+    "empty": "还没有会话摘要。",
+    "removeConfirm": "确定删除这条会话摘要？下次长会话会重新生成。",
+    "readOnlyNote": "会话摘要由 AI 在长会话时自动压缩生成，仅供查看与删除（手动编辑会被下次压缩覆盖）。"
+  },
+  "field": {
+    "session": "会话",
+    "updated": "更新于"
+  },
+  "error": "记忆操作失败：{{message}}"
+}

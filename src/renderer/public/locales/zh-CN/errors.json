@@ -111,5 +111,8 @@
     "url_fetch_failed": "URL 抓取失败：{{message}}",
     "empty_extraction": "解析后内容为空，无法摄取",
     "file_too_large": "文件过大（>{{mb}}MB），请拆分后重试"
+  },
+  "memory": {
+    "invalid_input": "记忆操作参数校验失败（key/内容/时间戳格式错误）"
   }
 }

@@ -1044,6 +1044,18 @@ export interface L3Fact {
   ts: number
 }
 
+/** 记忆管理页快照：L1/L2/L3 当前数据的合集（单用户） */
+export interface MemorySnapshot {
+  l1: L1Summary[]
+  l2: L2Digest[]
+  l3: L3Fact[]
+}
+
+/** 记忆写操作统一返回 */
+export interface MemoryOpResult {
+  ok: true
+}
+
 // ============================================================================
 // 内容生产知识资产（docs/CONTENT_PIPELINE_PLAN.md §2.3）——
 // 选题库 TopicLibrary（SQLite）/ Review 档案（SQLite）/

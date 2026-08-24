@@ -236,6 +236,69 @@ export function useKbDownloadModelProgress(cb: (ev: KbDownloadModelProgressEvent
   useEffect(() => window.one.kb.onDownloadModelProgress(cb), [cb])
 }
 
+// —— 记忆管理页（§三之三 D + 铁律21）——
+// 单查询读取三层快照；各 mutation 改完后失效 ['memory'] 触发重拉。
+// L1 为 LLM 滚动压缩产物，页面只读+删（不提供编辑），故无 l1:update。
+
+export function useMemory() {
+  return useQuery({
+    queryKey: ['memory'],
+    queryFn: () => thenUnwrap(window.one.memory.list()),
+  })
+}
+
+export function useMemoryL3Add() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { key: string; value: string }) =>
+      thenUnwrap(window.one.memory.l3Add(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['memory'] }),
+  })
+}
+
+export function useMemoryL3Update() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { key: string; value: string }) =>
+      thenUnwrap(window.one.memory.l3Update(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['memory'] }),
+  })
+}
+
+export function useMemoryL3Remove() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { key: string }) => thenUnwrap(window.one.memory.l3Remove(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['memory'] }),
+  })
+}
+
+export function useMemoryL2Update() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { sessionId?: string; ts: number; digest: string }) =>
+      thenUnwrap(window.one.memory.l2Update(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['memory'] }),
+  })
+}
+
+export function useMemoryL2Remove() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { sessionId?: string; ts: number }) =>
+      thenUnwrap(window.one.memory.l2Remove(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['memory'] }),
+  })
+}
+
+export function useMemoryL1Remove() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { sessionId: string }) => thenUnwrap(window.one.memory.l1Remove(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['memory'] }),
+  })
+}
+
 // —— 能力 ——
 export function useCapabilities() {
   return useQuery({

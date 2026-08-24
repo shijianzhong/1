@@ -1,0 +1,51 @@
+{
+  "title": "Memory",
+  "subtitle": "View and edit One's long-term memory (L1 session summary / L2 cross-session digest / L3 long-term facts)",
+  "tab": {
+    "l3": "Long-term (L3)",
+    "l2": "Cross-session (L2)",
+    "l1": "Session (L1)"
+  },
+  "l3": {
+    "add": "New fact",
+    "searchPh": "Search by key or content…",
+    "empty": "No long-term memory yet. Stable preferences, identity, or project conventions revealed in chat are remembered automatically.",
+    "editTitle": "Edit fact",
+    "addTitle": "New fact",
+    "keyField": "Key",
+    "keyPh": "e.g. preference:like_morning_run",
+    "valueField": "Content",
+    "valuePh": "A single fact…",
+    "save": "Save",
+    "submitting": "Saving…",
+    "removeConfirm": "Delete this long-term memory?",
+    "renameHint": "Changing the Key creates a new entry and removes the old one"
+  },
+  "category": {
+    "preference": "Preference",
+    "identity": "Identity",
+    "project": "Project",
+    "goal": "Goal",
+    "fact": "Fact",
+    "other": "Other"
+  },
+  "l2": {
+    "empty": "No cross-session digest yet.",
+    "editTitle": "Edit digest",
+    "digestField": "Digest content",
+    "save": "Save",
+    "submitting": "Saving…",
+    "removeConfirm": "Delete this cross-session digest?",
+    "readOnlyNote": "Cross-session digests are auto-refined when a session ends."
+  },
+  "l1": {
+    "empty": "No session summary yet.",
+    "removeConfirm": "Delete this session summary? It will be regenerated on the next long session.",
+    "readOnlyNote": "Session summaries are auto-compressed by AI during long sessions. View and delete only — manual edits are overwritten on the next compression."
+  },
+  "field": {
+    "session": "Session",
+    "updated": "Updated"
+  },
+  "error": "Memory operation failed: {{message}}"
+}

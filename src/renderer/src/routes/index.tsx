@@ -32,6 +32,9 @@ const McpPage = lazy(() =>
 const KbPage = lazy(() =>
   import('@renderer/pages/KbPage').then((m) => ({ default: m.KbPage })),
 )
+const MemoryPage = lazy(() =>
+  import('@renderer/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })),
+)
 const SettingsPage = lazy(() =>
   import('@renderer/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -53,6 +56,7 @@ export function AppRoutes() {
         <Route path="/models" element={<ListPage i18nKey="models" />} />
         <Route path="/mcp" element={<McpPage />} />
         <Route path="/kb" element={<KbPage />} />
+        <Route path="/memory" element={<MemoryPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/settings" element={<SettingsPage />} />

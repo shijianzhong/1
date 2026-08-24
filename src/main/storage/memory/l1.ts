@@ -139,3 +139,23 @@ export function buildL1Messages(
 export function removeL1(sessionId: string): void {
   getDb().prepare('DELETE FROM memory_l1 WHERE session_id = ?').run(sessionId)
 }
+
+/** 列出所有会话的 L1 摘要（管理页用，按 ts 倒序） */
+export function listL1(): L1Summary[] {
+  const rows = getDb()
+    .prepare(
+      'SELECT session_id, summary, summarized_up_to, ts FROM memory_l1 ORDER BY ts DESC',
+    )
+    .all() as Array<{
+    session_id: string
+    summary: string
+    summarized_up_to: string | null
+    ts: number
+  }>
+  return rows.map((r) => ({
+    sessionId: r.session_id,
+    summary: r.summary,
+    summarizedUpTo: r.summarized_up_to ?? undefined,
+    ts: r.ts,
+  }))
+}

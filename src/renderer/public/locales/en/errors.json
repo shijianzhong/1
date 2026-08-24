@@ -111,5 +111,8 @@
     "url_fetch_failed": "URL fetch failed: {{message}}",
     "empty_extraction": "Extraction produced no content, cannot ingest",
     "file_too_large": "File too large (>{{mb}}MB), split it and retry"
+  },
+  "memory": {
+    "invalid_input": "Memory operation param validation failed (bad key/content/timestamp format)"
   }
 }

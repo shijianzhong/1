@@ -272,6 +272,22 @@ export interface OneApi {
     /** P4: 设活跃 embedding provider（触发 kb_reindex_required 标记） */
     setProviderPreference: (input: KbProviderPreference) => Promise<IpcResult<KbProviderPreference>>
   }
+  memory: {
+    /** 读取 L1/L2/L3 当前数据快照（管理页展示） */
+    list: () => Promise<IpcResult<import('@shared/types').MemorySnapshot>>
+    /** 新增/覆盖 L3 fact（key + value） */
+    l3Add: (input: { key: string; value: string }) => Promise<IpcResult<import('@shared/types').MemoryOpResult>>
+    /** 改 L3 fact 文本（同 key upsert） */
+    l3Update: (input: { key: string; value: string }) => Promise<IpcResult<import('@shared/types').MemoryOpResult>>
+    /** 删 L3 fact */
+    l3Remove: (input: { key: string }) => Promise<IpcResult<import('@shared/types').MemoryOpResult>>
+    /** 改单条 L2 摘要（sessionId 可空，ts 定位） */
+    l2Update: (input: { sessionId?: string; ts: number; digest: string }) => Promise<IpcResult<import('@shared/types').MemoryOpResult>>
+    /** 删单条 L2 */
+    l2Remove: (input: { sessionId?: string; ts: number }) => Promise<IpcResult<import('@shared/types').MemoryOpResult>>
+    /** 删单条 L1（按 sessionId） */
+    l1Remove: (input: { sessionId: string }) => Promise<IpcResult<import('@shared/types').MemoryOpResult>>
+  }
 }
 
 /** 启动早期缓存 crashRecovery，避免 React 订阅前事件丢失 */
@@ -485,6 +501,15 @@ const api: OneApi = {
     },
     getProviderPreference: () => ipcRenderer.invoke('kb:getProviderPreference'),
     setProviderPreference: (input) => ipcRenderer.invoke('kb:setProviderPreference', input),
+  },
+  memory: {
+    list: () => ipcRenderer.invoke('memory:list'),
+    l3Add: (input) => ipcRenderer.invoke('memory:l3:add', input),
+    l3Update: (input) => ipcRenderer.invoke('memory:l3:update', input),
+    l3Remove: (input) => ipcRenderer.invoke('memory:l3:remove', input),
+    l2Update: (input) => ipcRenderer.invoke('memory:l2:update', input),
+    l2Remove: (input) => ipcRenderer.invoke('memory:l2:remove', input),
+    l1Remove: (input) => ipcRenderer.invoke('memory:l1:remove', input),
   },
 }
 

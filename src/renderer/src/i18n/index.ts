@@ -12,6 +12,7 @@ import zhCnErrors from '../../public/locales/zh-CN/errors.json'
 import zhCnMcp from '../../public/locales/zh-CN/mcp.json'
 import zhCnContent from '../../public/locales/zh-CN/content.json'
 import zhCnKb from '../../public/locales/zh-CN/kb.json'
+import zhCnMemory from '../../public/locales/zh-CN/memory.json'
 import enCommon from '../../public/locales/en/common.json'
 import enHome from '../../public/locales/en/home.json'
 import enEditor from '../../public/locales/en/editor.json'
@@ -21,9 +22,10 @@ import enErrors from '../../public/locales/en/errors.json'
 import enMcp from '../../public/locales/en/mcp.json'
 import enContent from '../../public/locales/en/content.json'
 import enKb from '../../public/locales/en/kb.json'
+import enMemory from '../../public/locales/en/memory.json'
 import { startupMark } from '@renderer/lib/startupMark'
 
-const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors', 'mcp', 'content', 'kb'] as const
+const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors', 'mcp', 'content', 'kb', 'memory'] as const
 
 // —— i18n（§十二）：默认 zh-CN；资源内联，禁止 HttpBackend ——
 const isDev = !!import.meta.env.DEV
@@ -46,6 +48,7 @@ void i18n
         mcp: zhCnMcp,
         content: zhCnContent,
         kb: zhCnKb,
+        memory: zhCnMemory,
       },
       en: {
         common: enCommon,
@@ -57,6 +60,7 @@ void i18n
         mcp: enMcp,
         content: enContent,
         kb: enKb,
+        memory: enMemory,
       },
     },
     interpolation: {

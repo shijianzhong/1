@@ -11,7 +11,7 @@ vi.mock('../db', () => ({
 }))
 
 // mock 后再 import 被测模块（vitest 提升 vi.mock，静态 import 顺序安全）
-const { saveL3, getL3, searchL3, removeL3, tokenizeForFts } = await import('./l3')
+const { saveL3, getL3, searchL3, removeL3, listL3, tokenizeForFts } = await import('./l3')
 const { splitAtomicMemories } = await import('../../tools/builtin/memory')
 
 function freshDb(): Database.Database {
@@ -147,5 +147,20 @@ describe('splitAtomicMemories 原子拆分', () => {
   })
   it('单条原文保留', () => {
     expect(splitAtomicMemories('用户是一名软件工程师')).toEqual(['用户是一名软件工程师'])
+  })
+})
+
+describe('listL3 全量读取', () => {
+  it('返回全部 L3 fact（含 value）', () => {
+    saveL3('local', 'preference:run', 'likes running')
+    saveL3('local', 'project:x', 'uses One')
+    const all = listL3('local')
+    expect(all).toHaveLength(2)
+    expect(all.map((x) => x.key).sort()).toEqual(['preference:run', 'project:x'])
+    expect(all.find((x) => x.key === 'preference:run')?.value).toBe('likes running')
+  })
+  it('不同 user 隔离', () => {
+    saveL3('local', 'k', 'v')
+    expect(listL3('other')).toHaveLength(0)
   })
 })

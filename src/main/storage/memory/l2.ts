@@ -104,3 +104,30 @@ export function buildL2Injection(userId = 'local'): string {
 export function removeL2(userId = 'local'): void {
   getDb().prepare('DELETE FROM memory_l2 WHERE user_id = ?').run(userId)
 }
+
+/**
+ * 改单条 L2 摘要文本（管理页编辑用）。
+ * 定位：(user_id, session_id, ts)；sessionId 缺失按空串归一（COALESCE 双端）。
+ */
+export function updateL2Digest(
+  userId: string,
+  sessionId: string | undefined,
+  ts: number,
+  digest: string,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE memory_l2 SET digest = ?
+       WHERE user_id = ? AND COALESCE(session_id, '') = COALESCE(?, '') AND ts = ?`,
+    )
+    .run(digest, userId, sessionId ?? '', ts)
+}
+
+/** 删单条 L2（定位同上） */
+export function removeL2Entry(userId: string, sessionId: string | undefined, ts: number): void {
+  getDb()
+    .prepare(
+      `DELETE FROM memory_l2 WHERE user_id = ? AND COALESCE(session_id, '') = COALESCE(?, '') AND ts = ?`,
+    )
+    .run(userId, sessionId ?? '', ts)
+}
