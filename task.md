@@ -331,7 +331,7 @@
 | P2 | 更多 builtin 工具 | 7.1 |
 | ~~P3~~ | ~~AbortController 模块级单例~~ ✅ 2026-08-01（入口检测已有运行自动取消旧运行 + finally 只清自己句柄，home/orchestrate 双侧） | ipc/home / orchestrate |
 | ~~P2~~ | ~~L3 向量检索后置~~ ✅ P0 地基 2026-08-19（[`docs/VECTOR_KB_PLAN.md`](./docs/VECTOR_KB_PLAN.md) P0） | L3 向量 |
-| P3 | win 包 / 编排路径记忆注入 / tasks 落盘 | M6 / M3 尾巴 |
+| ~~P3~~ | ~~编排路径记忆注入~~ ✅ `71829e0`（orchestrate 注入 L0+L2，对齐首页）/ ~~tasks 落盘~~ ✅（tasks 表 CRUD 已落地）/ win 包（配置在 electron-builder.yml + CI windows-latest，待真机验证） | M6 / M3 尾巴 |
 | ~~**P0**~~ | ~~向量知识库第二轮深度 review~~ ✅ 2026-08-21（按代码事实复核后分级修正：原文档 6 个 P0 仅 #1 真阻塞，#19/#20 诊断不准已重新定性。落地：#1 flat-index search 惰性重载+degraded 语义；#3 非分片 docIds 过滤；#4 `ingestKbDocument` 单事务；#5 未闭合 fence 硬切；#6 worker init-promise 去重；#22 批超时杀 worker 自愈；#23 abort 监听全路径清理；#2 远程响应条数校验；#24 远程 60s 超时；#7 嵌套列表最内层迭代替换；#8 `providerTagFor` 统一口径；#13 下载/seed 原子 rename 防半截；#12 下载 5xx 退避重试；#15 单文件 200MB 上限；#14 前端四 handler 错误反馈；#17 providerError 独立；#19 真实问题修复（clearAll 后取消→标志保留+cancelled 事件）；#9 hasLocalModel 缓存+IPC 失效；#16 migration 幂等；#18/#21/#25 死代码；#26 LIKE 剩余配额；#10/#11 共享 `util/net.ts`+`util/html.ts`。不改：#20（db.ts 启动 DISTINCT 全扫已覆盖多维度）。新增回归测试 14 条，vitest 731 全绿 + tsc 干净） | 7.5 / vector/* |
 | ~~P2~~ | ~~KB review 二轮补修（#16 升级 / #27 / 并发守卫）~~ ✅ 2026-08-21（用户复核点名：① #16 migration 改显式幂等——条目新增 `isApplied` 前置检查，v11 用 `pragma_table_info` 判列存在登记跳过，不把异常当控制流，`db.migration-v11.test.ts` 直测真实迁移链；② #27 原生对话框去硬编码中文——新增 `NativeFileDialogLabels`，`kb:pickFile`/`skills:pickFile` 文案由渲染层 i18n 经 IPC 传入（zod 校验），新增 `kb:picker.*`/`common:skills.picker.*`/`errors:skills.invalid_input` locale key；③ reindex/downloadModel 并发守卫——模块级 inflight promise，并发调用挂到在途任务拿同一结果，防双倍 embed/拉流 + clearAll 交错 + .part rename 竞态。新增回归测试 5 条，vitest 736 全绿 + tsc 干净） | db.ts / ipc / vector/* |
 
