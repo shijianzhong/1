@@ -33,6 +33,7 @@ import {
   findMessageByCreateDraftId,
   getSession,
   listMessages,
+  toLlmMessages,
   updateMessageMeta,
 } from '../storage/sessions'
 import { Agent } from '../orchestrator/agent'
@@ -58,7 +59,7 @@ import { getDb } from '../storage/db'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
 import { buildL2Injection, refineL2 } from '../storage/memory/l2'
-import { getClient } from '../llm/retry'
+import { makeCompressFn } from '../llm/compress'
 import { resolveThinkingConfig } from '../llm/thinking'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
@@ -177,27 +178,6 @@ function emitStream(delta: HomeStreamEvent): void {
   win?.webContents.send(STREAM_CHANNEL, delta)
 }
 
-/** LLM 压缩函数（供 L1/L2 调用，用默认 provider） */
-function makeCompressFn(
-  modelId: string,
-  apiKey?: string,
-  baseURL?: string,
-  authHeader?: string,
-  apiFormat?: import('@shared/types').ApiFormat,
-) {
-  return async (text: string): Promise<string> => {
-    const client = getClient(modelId, { apiKey, baseURL, authHeader, apiFormat })
-    const res = await client.stream({
-      model: modelId,
-      system: '你是摘要助手。把对话压缩成不超过 300 字的要点摘要，保留关键事实与意图。',
-      messages: [{ role: 'user', content: text }],
-      maxTokens: 1024,
-    })
-    const block = res.content.find((b) => b.type === 'text')
-    return block?.text ?? ''
-  }
-}
-
 export function registerHomeHandlers(): void {
   hydrateCreateDraftsFromDisk()
   withHandler<{ runId: string }>('home:chat', async (_e, input) => {
@@ -290,19 +270,7 @@ export function registerHomeHandlers(): void {
 
     // 历史重建：若消息含 meta.structured=true，content 是 JSON-stringified LlmContentBlock[]
     // （tool_use / tool_result 块），需还原为结构化 content 供 LLM 看到完整工具调用上下文
-    const historyMessages: LlmMessage[] = history.map((m) => {
-      const meta = m.meta as { structured?: boolean; intermediate?: boolean } | undefined
-      if (meta?.structured) {
-        return {
-          role: (m.role === 'tool' ? 'user' : m.role) as LlmMessage['role'],
-          content: JSON.parse(m.content) as LlmContentBlock[],
-        }
-      }
-      return {
-        role: (m.role === 'tool' ? 'user' : m.role) as LlmMessage['role'],
-        content: m.content,
-      }
-    })
+    const historyMessages = toLlmMessages(history)
     const allMessages: LlmMessage[] = [
       ...historyMessages,
       { role: 'user', content: userContent },

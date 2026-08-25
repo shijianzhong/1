@@ -41,6 +41,7 @@ vi.mock('../storage/sessions', () => ({
   findMessageByCreateDraftId: () => null,
   getSession: () => null,
   listMessages: () => [],
+  toLlmMessages: () => [],
   updateMessageMeta: vi.fn(),
 }))
 

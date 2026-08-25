@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { getDb } from './db'
-import type { Session, SessionMessage } from '@shared/types'
+import type { LlmContentBlock, LlmMessage, Session, SessionMessage } from '@shared/types'
 
 // —— 会话/消息 SQLite CRUD（§5.2.3 schema）——
 
@@ -114,6 +114,28 @@ export function listMessages(sessionId: string): SessionMessage[] {
         meta: row.meta ? JSON.parse(row.meta) : undefined,
       }
     }) as SessionMessage[]
+}
+
+/**
+ * SessionMessage[] → LlmMessage[] 映射（home / orchestrate 共用）。
+ * meta.structured=true 的 content 是 JSON-stringified LlmContentBlock[]
+ * （tool_use / tool_result 块），需还原为结构化 content 供 LLM 看到完整工具调用上下文；
+ * role 'tool' → 'user'（Anthropic 不接受 tool role）。非结构化原样取 content。
+ */
+export function toLlmMessages(rows: SessionMessage[]): LlmMessage[] {
+  return rows.map((m) => {
+    const meta = m.meta as { structured?: boolean; intermediate?: boolean } | undefined
+    if (meta?.structured) {
+      return {
+        role: (m.role === 'tool' ? 'user' : m.role) as LlmMessage['role'],
+        content: JSON.parse(m.content) as LlmContentBlock[],
+      }
+    }
+    return {
+      role: (m.role === 'tool' ? 'user' : m.role) as LlmMessage['role'],
+      content: m.content,
+    }
+  })
 }
 
 /** 合并更新消息 meta（聊天创建 confirm 后写 status=confirmed 等） */

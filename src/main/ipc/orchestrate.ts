@@ -4,6 +4,8 @@ import type {
   AgentConfig,
   ApiFormat,
   GraphNode,
+  LlmContentBlock,
+  LlmMessage,
   LlmToolDef,
   StreamEvent,
   WorkflowGraph,
@@ -26,7 +28,7 @@ import {
   resolveProviderCredentials,
   getPersona,
 } from '../storage/models'
-import { addMessage, getSession } from '../storage/sessions'
+import { addMessage, getSession, listMessages, toLlmMessages } from '../storage/sessions'
 import { getDb } from '../storage/db'
 import { endRun, startRun, appendRunEvent } from '../storage/runEvents'
 import { SkillContextProvider } from '../skills/provider'
@@ -34,7 +36,8 @@ import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
 import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
 import { resolveThinkingConfig } from '../llm/thinking'
-import { buildL2Injection } from '../storage/memory/l2'
+import { makeCompressFn } from '../llm/compress'
+import { buildL2Injection, refineL2 } from '../storage/memory/l2'
 import { withOrchestrationMemory } from '../storage/memory/compose'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
@@ -287,6 +290,10 @@ export function registerOrchestrateHandlers(): void {
         throw new IpcErrorThrow('errors:orchestrate.no_default_model', '供应商未配置默认模型')
       }
 
+      // L2 精炼压缩函数（对齐 home.ts）：converged 收尾时把本会话压成 ≤300 字摘要落 memory_l2，
+      // 使编排路径的对话也沉淀进跨会话长期记忆（此前只在首页 home 精炼，编排"失忆"）。
+      const compressFn = makeCompressFn(modelId, apiKey, baseURL, authHeader, apiFormat)
+
       // 先建 AbortController：signal 贯穿 toolCtx（agent 循环 + ask_user 挂起），
       // cancel 才能真正打断「等用户作答」与工具循环（原来只断 superstep 间隙）。
       // 并发防御：同 sessionId 已有运行时先取消旧的（渲染层 running 守卫下不会并发，兜底重复 IPC）。
@@ -337,6 +344,11 @@ export function registerOrchestrateHandlers(): void {
         )
         if (sessionId && result.output && result.stopReason === 'converged') {
           addMessage({ sessionId, role: 'assistant', content: result.output })
+          // L2 精炼（对齐 home.ts:1002）：会话末尾把全部消息压成摘要落 memory_l2，
+          // 下次运行（首页/编排）经 buildL2Injection 注入。fire-and-forget，失败仅告警。
+          void refineL2(DEFAULT_USER_ID, sessionId, toLlmMessages(listMessages(sessionId)), compressFn).catch((e) =>
+            logger.warn('[l2] 编排路径精炼失败', e),
+          )
         }
         return {
           runId: sessionId ?? `run_${randomUUID().slice(0, 8)}`,
