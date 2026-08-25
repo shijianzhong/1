@@ -122,5 +122,10 @@
     "model_not_found": "所选模型不存在",
     "provider_not_found": "模型所属供应商不存在",
     "run_failed": "模型调用失败"
+  },
+  "schedules": {
+    "invalid_cron": "Cron 表达式无效",
+    "invalid_input": "定时任务参数校验失败",
+    "not_found": "定时任务不存在"
   }
 }

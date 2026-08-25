@@ -1333,3 +1333,45 @@ export interface RunEventInfo {
   payload: unknown
   createdAt: number
 }
+
+// —— 定时任务（scheduler）——
+// 触发目标两类（用户明确需要）：
+//   orchestration —— 到点用给定 prompt 跑一次 One 编排（结果落 /runs）；
+//   shell          —— 定时执行固定命令/脚本（execFile，不开 shell，防注入）。
+
+export type ScheduleAction =
+  | {
+      type: 'orchestration'
+      /** 触发时喂给 One 编排的提示词 */
+      prompt: string
+      /** 可选：覆盖默认模型名（如 'claude-xxx'）；不填用默认 provider 的默认模型 */
+      modelId?: string
+    }
+  | {
+      type: 'shell'
+      /** 可执行文件绝对路径或 PATH 中的命令名（execFile，不开 shell，防注入） */
+      command: string
+      /** 参数数组（不拼 shell 字符串） */
+      args?: string[]
+      /** 工作目录（绝对路径） */
+      cwd?: string
+      /** 超时毫秒，默认 60000 */
+      timeoutMs?: number
+    }
+
+export interface Schedule {
+  id: string
+  name: string
+  enabled: boolean
+  /** 完整 5 段 cron 表达式：分 时 日 月 周 */
+  cron: string
+  /** IANA 时区，如 'Asia/Shanghai'；缺省用系统本地时区 */
+  timezone?: string
+  action: ScheduleAction
+  /** 完成后弹桌面通知 */
+  notifyOnComplete?: boolean
+  /** 上次实际触发的命中时刻（epoch ms）；从未触发为 null。错过策略据此追平 */
+  lastFiredAt?: number | null
+  createdAt: number
+  updatedAt: number
+}

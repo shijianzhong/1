@@ -13,7 +13,7 @@ import { logger } from '../logger'
 /** 单个事件 payload JSON 的硬上限（超出截断并标记，防观测数据膨胀） */
 const PAYLOAD_JSON_CAP = 8 * 1024
 
-export type RunEntry = 'home' | 'editor'
+export type RunEntry = 'home' | 'editor' | 'scheduled'
 export type RunRoute = 'direct' | 'team' | 'directAgent' | 'focusCap'
 export type RunStatus = 'running' | 'completed' | 'error' | 'aborted'
 

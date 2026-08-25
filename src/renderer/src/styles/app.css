@@ -150,6 +150,50 @@ html[data-platform='darwin'] .titlebar__inner {
   box-shadow: var(--shadow-1);
 }
 
+/* ── 表单控件（定时任务抽屉等）── */
+.text-input {
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--color-fg-1);
+  font-size: 0.85rem;
+  outline: none;
+}
+.text-input:focus {
+  border-color: var(--color-brand-400, #4ECDC4);
+}
+
+.btn-primary {
+  background: var(--color-brand-400, #4ECDC4);
+  color: #06251f;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  justify-content: center;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in oklch, #06251f 35%, transparent);
+  border-top-color: #06251f;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── 资产卡片 hover 动效（能力 / 角色 / 技能）── */
 .asset-card {
   transition: transform 120ms ease, box-shadow 120ms ease;

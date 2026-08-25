@@ -28,6 +28,8 @@ import type {
   SessionMessage,
   Skill,
   SkillMeta,
+  Schedule,
+  ScheduleAction,
   StyleProfile,
   SystemPingResponse,
   TaskRecord,
@@ -190,6 +192,31 @@ export interface OneApi {
     list: (input?: { sessionId?: string; limit?: number }) => Promise<IpcResult<import('@shared/types').RunInfo[]>>
     /** 单个 run + 完整事件时间线（按 seq 升序；payload 已在主进程解析为对象） */
     detail: (input: { runId: string }) => Promise<IpcResult<{ run: import('@shared/types').RunInfo | null; events: import('@shared/types').RunEventInfo[] }>>
+  }
+  schedules: {
+    /** 列出全部定时任务（按创建时间升序） */
+    list: () => Promise<IpcResult<Schedule[]>>
+    create: (input: {
+      name: string
+      enabled?: boolean
+      cron: string
+      timezone?: string
+      action: ScheduleAction
+      notifyOnComplete?: boolean
+    }) => Promise<IpcResult<Schedule>>
+    update: (input: {
+      id: string
+      name?: string
+      enabled?: boolean
+      cron?: string
+      timezone?: string
+      action?: ScheduleAction
+      notifyOnComplete?: boolean
+    }) => Promise<IpcResult<Schedule>>
+    remove: (id: string) => Promise<IpcResult<{ ok: boolean }>>
+    toggle: (input: { id: string; enabled: boolean }) => Promise<IpcResult<Schedule>>
+    /** 立即触发一次（不依赖 cron 命中），返回 ok / error（not_found|already_running） */
+    runNow: (id: string) => Promise<IpcResult<{ ok: boolean; error?: string }>>
   }
   topics: {
     list: (opts?: { status?: Topic['status']; direction?: string; userId?: string }) => Promise<IpcResult<Topic[]>>
@@ -434,6 +461,14 @@ const api: OneApi = {
   runs: {
     list: (input) => ipcRenderer.invoke('runs:list', input),
     detail: (input) => ipcRenderer.invoke('runs:detail', input),
+  },
+  schedules: {
+    list: () => ipcRenderer.invoke('schedules:list'),
+    create: (input) => ipcRenderer.invoke('schedules:create', input),
+    update: (input) => ipcRenderer.invoke('schedules:update', input),
+    remove: (id) => ipcRenderer.invoke('schedules:remove', id),
+    toggle: (input) => ipcRenderer.invoke('schedules:toggle', input),
+    runNow: (id) => ipcRenderer.invoke('schedules:runNow', id),
   },
   topics: {
     list: (opts) => ipcRenderer.invoke('topics:list', opts),

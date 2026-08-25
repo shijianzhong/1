@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, nativeImage } from 'electron'
 import { registerIpcHandlers } from './ipc/index'
+import { startScheduler, stopScheduler } from './scheduler/scheduler'
 import { closeDb, getDb } from './storage/db'
 import { seedDefaultModels } from './storage/models'
 import { seedBuiltinAssets, seedKbModel } from './storage/builtin'
@@ -179,6 +180,8 @@ if (!gotLock) {
     void initKbStatus()
     registerIpcHandlers()
     startupMark('main:ipc-registered')
+    // —— 定时任务调度主循环（§定时任务）：常驻 tick，错过档逐 tick 自然追平 ——
+    startScheduler()
     createMainWindow()
 
     // macOS Dock 图标：开发模式无 .app 包，需显式设置
@@ -233,6 +236,7 @@ if (!gotLock) {
   // —— 退出前关闭 DB 连接 + 清理托盘/快捷键，防写一半断电 ——
   app.on('before-quit', () => {
     clearRunning()
+    stopScheduler() // 停调度主循环（best-effort，§定时任务）
     unregisterGlobalShortcut()
     destroyTray()
     stopAutoUpdater()

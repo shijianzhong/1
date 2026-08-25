@@ -21,7 +21,7 @@ export type ToolApprovalMode = 'auto' | 'always' | 'never'
  *  超时/取消/拒绝全混成 approval_denied，前端无法区分）。
  * 桥（onApprove catch）必发 reason；resolveApprovalDecision 对 denied 也填 reason。
  */
-export type ApprovalReason = 'approved' | 'approved_session' | 'timeout' | 'aborted' | 'denied'
+export type ApprovalReason = 'approved' | 'approved_session' | 'timeout' | 'aborted' | 'denied' | 'scheduled_headless'
 export interface ApprovalDecision {
   approved: boolean
   reason?: ApprovalReason

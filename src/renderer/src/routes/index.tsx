@@ -44,6 +44,9 @@ const SettingsPage = lazy(() =>
 const TasksPage = lazy(() =>
   import('@renderer/pages/TasksPage').then((m) => ({ default: m.TasksPage })),
 )
+const SchedulesPage = lazy(() =>
+  import('@renderer/pages/SchedulesPage').then((m) => ({ default: m.SchedulesPage })),
+)
 
 export function AppRoutes() {
   return (
@@ -63,6 +66,7 @@ export function AppRoutes() {
         <Route path="/compare" element={<ComparePage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/runs" element={<RunsPage />} />
+        <Route path="/schedules" element={<SchedulesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

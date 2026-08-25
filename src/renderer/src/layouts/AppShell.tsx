@@ -6,6 +6,7 @@ import {
   Boxes,
   Brain,
   Cable,
+  CalendarClock,
   Columns2,
   Command,
   Download,
@@ -41,6 +42,7 @@ const navItems = [
   { to: '/compare', key: 'compare', icon: Columns2 },
   { to: '/tasks', key: 'tasks', icon: Command },
   { to: '/runs', key: 'runs', icon: Activity },
+  { to: '/schedules', key: 'schedules', icon: CalendarClock },
   { to: '/settings', key: 'settings', icon: Settings },
 ] as const
 

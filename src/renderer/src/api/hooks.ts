@@ -707,6 +707,57 @@ export function useRunDetail(runId?: string) {
 
 export type { ReviewRecord, RunInfo, RunEventInfo, SampleArticle, StyleProfile, Topic }
 
+// —— 定时任务（§定时任务）——
+export function useSchedules() {
+  return useQuery({
+    queryKey: ['schedules'],
+    queryFn: () => thenUnwrap(window.one.schedules.list()),
+  })
+}
+
+export function useCreateSchedule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.schedules.create>[0]) =>
+      thenUnwrap(window.one.schedules.create(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  })
+}
+
+export function useUpdateSchedule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof window.one.schedules.update>[0]) =>
+      thenUnwrap(window.one.schedules.update(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  })
+}
+
+export function useRemoveSchedule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.schedules.remove(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  })
+}
+
+export function useToggleSchedule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { id: string; enabled: boolean }) =>
+      thenUnwrap(window.one.schedules.toggle(input)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  })
+}
+
+export function useRunScheduleNow() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => thenUnwrap(window.one.schedules.runNow(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  })
+}
+
 // —— 多模型对比（亮点③）——
 // 轻量流式状态：订阅 chat:compare:stream，按 compareId 关联、modelId 归位各路增量。
 export interface CompareModelState {

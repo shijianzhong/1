@@ -122,5 +122,10 @@
     "model_not_found": "Selected model does not exist",
     "provider_not_found": "Model's provider does not exist",
     "run_failed": "Model call failed"
+  },
+  "schedules": {
+    "invalid_cron": "Invalid cron expression",
+    "invalid_input": "Schedule parameter validation failed",
+    "not_found": "Schedule does not exist"
   }
 }
