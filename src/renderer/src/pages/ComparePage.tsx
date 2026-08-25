@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Columns2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Cable, Columns2 } from 'lucide-react'
 import { Markdown } from '@renderer/components/Markdown'
 import { useCompare } from '@renderer/api/hooks'
 import { PageToolbar } from '@renderer/components/ui/PageToolbar'
@@ -12,6 +13,7 @@ import { Badge } from '@renderer/components/ui/Badge'
 // 状态来自 useCompare（订阅 chat:compare:stream，按 modelId 归位）。
 export function ComparePage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const {
     prompt,
     setPrompt,
@@ -47,20 +49,30 @@ export function ComparePage() {
         />
         <div className="compare-models">
           <div className="compare-models__label">{t('common:compare.selectModels')}</div>
-          <div className="compare-models__list">
-            {models.map((m) => (
-              <label key={m.id} className="compare-model-chip">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(m.id)}
-                  onChange={() => toggleModel(m.id)}
-                  disabled={running}
-                />
-                <span className="compare-model-chip__name">{m.name ?? m.modelId}</span>
-                <span className="compare-model-chip__id">{m.modelId}</span>
-              </label>
-            ))}
-          </div>
+          {models.length === 0 ? (
+            <EmptyState
+              icon={Cable}
+              title={t('common:compare.noModels')}
+              hint={t('common:compare.noModelsHint')}
+              actionLabel={t('common:compare.goToModels')}
+              onClick={() => navigate('/models')}
+            />
+          ) : (
+            <div className="compare-models__list">
+              {models.map((m) => (
+                <label key={m.id} className="compare-model-chip">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(m.id)}
+                    onChange={() => toggleModel(m.id)}
+                    disabled={running}
+                  />
+                  <span className="compare-model-chip__name">{m.name ?? m.modelId}</span>
+                  <span className="compare-model-chip__id">{m.modelId}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
         <div className="compare-actions">
           <Button onClick={start} disabled={!canStart}>
@@ -69,7 +81,7 @@ export function ComparePage() {
         </div>
       </div>
 
-      {selectedIds.length === 0 ? (
+      {models.length === 0 ? null : selectedIds.length === 0 ? (
         <EmptyState icon={Columns2} title={t('common:compare.empty')} />
       ) : (
         <div className="compare-grid">
