@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { BrowserWindow } from 'electron'
 import { z } from 'zod'
 import { IpcErrorThrow } from '@shared/types'
-import type { CompareStreamEvent, LlmRequest } from '@shared/types'
+import type { CompareStreamEvent, LlmRequest, ProviderModels } from '@shared/types'
 import { withHandler } from './handler'
 import { getClient } from '../llm/retry'
-import { getModel, getProvider, resolveProviderCredentials } from '../storage/models'
+import { getProvider, resolveProviderCredentials } from '../storage/models'
 import { logger } from '../logger'
 
 // —— 多模型并行对比（亮点③）——
@@ -67,40 +67,48 @@ async function runOneModel(
   prompt: string,
   system?: string,
 ): Promise<void> {
-  const config = getModel(configId)
-  if (!config) {
-    emitCompare({
-      type: 'error',
-      compareId,
-      modelId: configId,
-      error: `model config not found: ${configId}`,
-      messageKey: 'errors:compare.model_not_found',
-    })
-    return
-  }
-  const provider = config.providerId ? getProvider(config.providerId) : null
+  const sep = configId.indexOf(':')
+  const providerId = sep > 0 ? configId.slice(0, sep) : configId
+  const usage = (sep > 0 ? configId.slice(sep + 1) : 'default') as keyof ProviderModels
+  const provider = getProvider(providerId)
   if (!provider) {
     emitCompare({
       type: 'error',
       compareId,
       modelId: configId,
-      error: `provider not found for model config ${configId}`,
+      error: `provider not found: ${providerId}`,
       messageKey: 'errors:compare.provider_not_found',
     })
     return
   }
-  const { apiKey, baseURL, authHeader, apiFormat } = resolveProviderCredentials(provider, 'default')
-  const client = getClient(config.modelId, { apiKey, baseURL, authHeader, apiFormat })
+  const creds = resolveProviderCredentials(provider, usage)
+  const modelId = creds.modelId
+  if (!modelId) {
+    emitCompare({
+      type: 'error',
+      compareId,
+      modelId: configId,
+      error: `model not found for usage ${usage} in provider ${providerId}`,
+      messageKey: 'errors:compare.model_not_found',
+    })
+    return
+  }
+  const client = getClient(modelId, {
+    apiKey: creds.apiKey,
+    baseURL: creds.baseURL,
+    authHeader: creds.authHeader,
+    apiFormat: creds.apiFormat,
+  })
 
   emitCompare({
     type: 'start',
     compareId,
     modelId: configId,
-    modelLabel: config.name ?? config.modelId,
+    modelLabel: `${provider.name} · ${modelId}`,
   })
 
   const req: LlmRequest = {
-    model: config.modelId,
+    model: modelId,
     system,
     messages: [{ role: 'user', content: prompt }],
     maxTokens: DEFAULT_MAX_TOKENS,

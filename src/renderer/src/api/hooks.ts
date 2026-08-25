@@ -3,7 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unwrap } from './client'
 import type {
   Agent,
@@ -35,6 +35,7 @@ import type {
   StyleProfile,
   Topic,
 } from '@shared/types'
+import { deriveComparableModels, type ComparableModel } from '@shared/compare'
 
 // —— TanStack Query hooks（§5.6）——
 // 集中管理服务端态（能力/角色/技能/模型列表），缓存与失效。
@@ -725,7 +726,7 @@ export interface UseCompareResult {
   setPrompt: (v: string) => void
   system: string
   setSystem: (v: string) => void
-  models: ModelConfig[]
+  models: ComparableModel[]
   selectedIds: string[]
   toggleModel: (id: string) => void
   running: boolean
@@ -734,7 +735,9 @@ export interface UseCompareResult {
 }
 
 export function useCompare(): UseCompareResult {
-  const { data: models = [] } = useModels()
+  const { data: providers = [] } = useProviders()
+  // 对比可选模型从 providers 派生（应用「模型」实为 provider 级，无独立 ModelConfig 列表）
+  const models = useMemo(() => deriveComparableModels(providers), [providers])
   const [prompt, setPrompt] = useState('')
   const [system, setSystem] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])

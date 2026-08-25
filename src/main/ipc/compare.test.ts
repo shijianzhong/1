@@ -22,31 +22,24 @@ vi.mock('../logger', () => ({
 vi.mock('../llm/retry', () => ({ getClient: getClientMock }))
 
 vi.mock('../storage/models', () => {
-  const fakeModel = (id: string, modelId: string) => ({
-    id,
-    modelId,
-    name: modelId,
-    providerId: 'prv_1',
-    isDefault: false,
-  })
+  const provider = {
+    id: 'prv_1',
+    name: 'Anthropic',
+    keyId: 'k',
+    baseUrl: undefined,
+    authHeader: undefined,
+    apiFormat: 'anthropic',
+    models: { primary: 'claude-a', reasoning: 'claude-b' },
+    enableThinking: false,
+  }
   return {
-    getModel: vi.fn((id: string) =>
-      id === 'm1' ? fakeModel('m1', 'claude-a') : id === 'm2' ? fakeModel('m2', 'claude-b') : null,
-    ),
-    getProvider: vi.fn(() => ({
-      id: 'prv_1',
-      keyId: 'k',
-      baseUrl: undefined,
-      authHeader: undefined,
-      apiFormat: 'anthropic',
-      models: {},
-      enableThinking: false,
-    })),
-    resolveProviderCredentials: vi.fn(() => ({
+    getProvider: vi.fn((id: string) => (id === 'prv_1' ? provider : null)),
+    resolveProviderCredentials: vi.fn((p: any, usage: string) => ({
       apiKey: 'k',
       baseURL: undefined,
       authHeader: undefined,
       apiFormat: 'anthropic',
+      modelId: (p.models as Record<string, string>)?.[usage],
       enableThinking: false,
     })),
   }
@@ -82,7 +75,7 @@ describe('registerCompareHandlers', () => {
   it('并发 N 路：各路 delta 带 modelId，推送 start/done/complete', async () => {
     registerCompareHandlers()
     const h = getHandler('chat:compare')
-    const res = await h({}, { prompt: 'hi', modelIds: ['m1', 'm2'] })
+    const res = await h({}, { prompt: 'hi', modelIds: ['prv_1:primary', 'prv_1:reasoning'] })
     expect(res.ok).toBe(true)
     // compareId 立即返回，不阻塞
     expect(typeof (res.data as { compareId: string }).compareId).toBe('string')
@@ -95,16 +88,17 @@ describe('registerCompareHandlers', () => {
     expect(getClientMock).toHaveBeenCalledWith('claude-b', expect.anything())
 
     // 每路：start + delta + done 齐全，且 delta 带各自 modelId
-    for (const id of ['m1', 'm2']) {
+    for (const id of ['prv_1:primary', 'prv_1:reasoning']) {
       const starts = sent.filter((e) => e.type === 'start' && e.modelId === id)
       const deltas = sent.filter((e) => e.type === 'delta' && e.modelId === id)
       const dones = sent.filter((e) => e.type === 'done' && e.modelId === id)
       expect(starts).toHaveLength(1)
-      expect(starts[0].modelLabel).toBe(id === 'm1' ? 'claude-a' : 'claude-b')
+      const mid = id === 'prv_1:primary' ? 'claude-a' : 'claude-b'
+      expect(starts[0].modelLabel).toBe(`Anthropic · ${mid}`)
       expect(deltas).toHaveLength(1)
-      expect((deltas[0].delta as { text: string }).text).toBe(`resp-${id === 'm1' ? 'claude-a' : 'claude-b'}`)
+      expect((deltas[0].delta as { text: string }).text).toBe(`resp-${mid}`)
       expect(dones).toHaveLength(1)
-      expect((dones[0] as { textLen: number }).textLen).toBe(`resp-${id === 'm1' ? 'claude-a' : 'claude-b'}`.length)
+      expect((dones[0] as { textLen: number }).textLen).toBe(`resp-${mid}`.length)
     }
     // 一次对比收尾一个 complete
     expect(sent.filter((e) => e.type === 'complete')).toHaveLength(1)
@@ -113,15 +107,15 @@ describe('registerCompareHandlers', () => {
   it('错误隔离：某模型配置不存在时其余照常完成，complete 仍推送', async () => {
     registerCompareHandlers()
     const h = getHandler('chat:compare')
-    await h({}, { prompt: 'hi', modelIds: ['m1', 'bad'] })
+    await h({}, { prompt: 'hi', modelIds: ['prv_1:primary', 'bad:primary'] })
     await waitForComplete()
 
-    // 正常路 m1：done
-    expect(sent.filter((e) => e.type === 'done' && e.modelId === 'm1')).toHaveLength(1)
-    // 错误路 bad：error 事件带 messageKey，且不走 getClient
-    const errs = sent.filter((e) => e.type === 'error' && e.modelId === 'bad')
+    // 正常路 prv_1:primary：done
+    expect(sent.filter((e) => e.type === 'done' && e.modelId === 'prv_1:primary')).toHaveLength(1)
+    // 错误路 bad:primary：provider 不存在 → provider_not_found 事件，且不走 getClient
+    const errs = sent.filter((e) => e.type === 'error' && e.modelId === 'bad:primary')
     expect(errs).toHaveLength(1)
-    expect(errs[0].messageKey).toBe('errors:compare.model_not_found')
+    expect(errs[0].messageKey).toBe('errors:compare.provider_not_found')
     expect(getClientMock).toHaveBeenCalledTimes(1) // 仅 m1
     // complete 不因单路失败而缺失
     expect(sent.filter((e) => e.type === 'complete')).toHaveLength(1)
