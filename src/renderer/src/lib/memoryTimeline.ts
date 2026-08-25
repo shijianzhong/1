@@ -1,4 +1,4 @@
-import type { L1Summary, L2Digest, L3Fact, MemorySnapshot } from '@shared/types'
+import type { MemorySnapshot } from '@shared/types'
 
 // —— 记忆时间线聚合（§三之三 D + 铁律21）——
 // 把 L1/L2/L3 三路记忆打平成按时间升序的事件流，供 MemoryPage「时间线」标签页呈现
@@ -26,13 +26,13 @@ const KIND_ORDER: Record<MemoryTimelineKind, number> = { l1: 0, l2: 1, l3: 2 }
 export function buildMemoryTimeline(snapshot: MemorySnapshot): MemoryTimelineEntry[] {
   const entries: MemoryTimelineEntry[] = []
 
-  for (const s of snapshot.l1 as L1Summary[]) {
+  for (const s of snapshot.l1) {
     entries.push({ ts: s.ts, kind: 'l1', title: s.sessionId, content: s.summary, ref: s.sessionId })
   }
-  for (const d of snapshot.l2 as L2Digest[]) {
+  for (const d of snapshot.l2) {
     entries.push({ ts: d.ts, kind: 'l2', title: d.sessionId ?? '', content: d.digest, ref: d.sessionId })
   }
-  for (const f of snapshot.l3 as L3Fact[]) {
+  for (const f of snapshot.l3) {
     entries.push({ ts: f.ts, kind: 'l3', title: f.key, content: f.value, ref: f.key })
   }
 
@@ -44,7 +44,8 @@ export function buildMemoryTimeline(snapshot: MemorySnapshot): MemoryTimelineEnt
 export function groupByDate(entries: MemoryTimelineEntry[]): Array<{ date: string; items: MemoryTimelineEntry[] }> {
   const groups: Array<{ date: string; items: MemoryTimelineEntry[] }> = []
   for (const e of entries) {
-    const date = new Date(e.ts).toISOString().slice(0, 10)
+    const d = new Date(e.ts)
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const last = groups[groups.length - 1]
     if (last && last.date === date) last.items.push(e)
     else groups.push({ date, items: [e] })

@@ -49,16 +49,27 @@ describe('buildMemoryTimeline', () => {
 
 describe('groupByDate', () => {
   it('按 YYYY-MM-DD 分组且保持组内顺序', () => {
+    // 用本地中午 12:00 构造，任意时区下都不会跨日（避开 UTC 偏移导致的日期漂移）
     const entries = buildMemoryTimeline(
       snap({
         l3: [
-          { userId: 'local', key: 'a', value: '1', ts: Date.UTC(2026, 0, 1, 10) },
-          { userId: 'local', key: 'b', value: '2', ts: Date.UTC(2026, 0, 2, 10) },
+          { userId: 'local', key: 'a', value: '1', ts: new Date(2026, 0, 1, 12).getTime() },
+          { userId: 'local', key: 'b', value: '2', ts: new Date(2026, 0, 2, 12).getTime() },
         ],
       }),
     )
     const groups = groupByDate(entries)
     expect(groups.map((g) => g.date)).toEqual(['2026-01-01', '2026-01-02'])
     expect(groups[0].items).toHaveLength(1)
+  })
+
+  it('按本地时区分组（非 UTC）：本地 23:00 的记忆归当天而非次日', () => {
+    // 回归：原实现用 toISOString 取 UTC 日期，东半球晚上 20:00 后的记忆会被归到次日。
+    // 现用本地日期；本地 23:00 的条目必须落在本地日期，而非 UTC 次日。
+    const lateLocal = new Date(2026, 0, 1, 23).getTime()
+    const entries = buildMemoryTimeline(
+      snap({ l3: [{ userId: 'local', key: 'x', value: 'v', ts: lateLocal }] }),
+    )
+    expect(groupByDate(entries)[0].date).toBe('2026-01-01')
   })
 })
