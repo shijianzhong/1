@@ -24,6 +24,7 @@ import {
   DrawerTitle,
 } from '@renderer/components/ui/Drawer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/Tabs'
+import { buildMemoryTimeline, groupByDate } from '@renderer/lib/memoryTimeline'
 
 // —— 记忆管理页（§三之三 D + 铁律21）——
 // 三个标签页：
@@ -83,6 +84,8 @@ export function MemoryPage() {
       (f) => f.key.toLowerCase().includes(q) || f.value.toLowerCase().includes(q),
     )
   }, [snap.l3, l3Query])
+
+  const timelineGroups = useMemo(() => groupByDate(buildMemoryTimeline(snap)), [snap])
 
   const onOpenL3Add = useCallback(() => {
     setOpError(null)
@@ -199,6 +202,7 @@ export function MemoryPage() {
           <TabsTrigger value="l3">{t('memory:tab.l3')}</TabsTrigger>
           <TabsTrigger value="l2">{t('memory:tab.l2')}</TabsTrigger>
           <TabsTrigger value="l1">{t('memory:tab.l1')}</TabsTrigger>
+          <TabsTrigger value="timeline">{t('memory:tab.timeline')}</TabsTrigger>
         </TabsList>
 
         {/* —— L3 长期记忆 —— */}
@@ -372,6 +376,96 @@ export function MemoryPage() {
                     <Button variant="ghost" size="sm" onClick={() => void onRemoveL1(s.sessionId)}>
                       <Trash2 size={14} /> {t('common:actions.delete')}
                     </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* —— 记忆时间线（§三之三 D + 铁律21） —— */}
+        <TabsContent value="timeline">
+          <p style={{ fontSize: '0.78rem', color: 'var(--color-fg-3)', margin: '4px 0 12px' }}>
+            {t('memory:timeline.note')}
+          </p>
+          {isLoading ? (
+            <p className="section-subtitle" style={{ margin: 0 }}>
+              {t('common:state.loading')}
+            </p>
+          ) : timelineGroups.length === 0 ? (
+            <EmptyState title={t('memory:timeline.empty')} icon={Brain} />
+          ) : (
+            <div style={{ display: 'grid', gap: 18 }}>
+              {timelineGroups.map((g) => (
+                <div key={g.date}>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--color-fg-muted)',
+                      marginBottom: 8,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {g.date}
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 10,
+                      borderLeft: '2px solid var(--color-border-1)',
+                      paddingLeft: 14,
+                    }}
+                  >
+                    {g.items.map((e, i) => {
+                      const badgeVariant =
+                        e.kind === 'l1' ? 'info' : e.kind === 'l2' ? 'brand' : 'success'
+                      const kindLabel =
+                        e.kind === 'l1'
+                          ? t('memory:timeline.l1')
+                          : e.kind === 'l2'
+                            ? t('memory:timeline.l2')
+                            : t('memory:timeline.l3')
+                      const titleText =
+                        e.kind === 'l2' && !e.title ? t('memory:timeline.crossSession') : e.title
+                      return (
+                        <div
+                          key={`${e.kind}-${e.ref ?? ''}-${e.ts}-${i}`}
+                          className="surface-panel"
+                          style={{ borderRadius: 14, padding: 14 }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <Badge variant={badgeVariant}>{kindLabel}</Badge>
+                            {titleText ? (
+                              <code
+                                style={{
+                                  fontSize: '0.74rem',
+                                  color: 'var(--color-fg-2)',
+                                  wordBreak: 'break-all',
+                                }}
+                              >
+                                {titleText}
+                              </code>
+                            ) : null}
+                            <span
+                              style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--color-fg-muted)' }}
+                            >
+                              {formatTime(e.ts)}
+                            </span>
+                          </div>
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: '0.85rem',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              color: 'var(--color-fg-2)',
+                            }}
+                          >
+                            {e.content}
+                          </p>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ))}

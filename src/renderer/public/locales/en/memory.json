@@ -4,7 +4,8 @@
   "tab": {
     "l3": "Long-term (L3)",
     "l2": "Cross-session (L2)",
-    "l1": "Session (L1)"
+    "l1": "Session (L1)",
+    "timeline": "Timeline"
   },
   "l3": {
     "add": "New fact",
@@ -47,5 +48,13 @@
     "session": "Session",
     "updated": "Updated"
   },
-  "error": "Memory operation failed: {{message}}"
+  "error": "Memory operation failed: {{message}}",
+  "timeline": {
+    "l1": "Session summary",
+    "l2": "Cross-session digest",
+    "l3": "Long-term fact",
+    "crossSession": "Cross-session",
+    "empty": "No memory timeline data yet.",
+    "note": "Shows how memory evolves with conversations, in chronological order. Spot a wrong memory? Fix it in the corresponding tab."
+  }
 }
