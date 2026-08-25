@@ -19,7 +19,13 @@ import {
   resolveUserInput,
   waitForUserInput,
 } from '../orchestrator/userInput'
-import { getSkill, getAgent, getDefaultProvider, resolveProviderCredentials } from '../storage/models'
+import {
+  getSkill,
+  getAgent,
+  getDefaultProvider,
+  resolveProviderCredentials,
+  getPersona,
+} from '../storage/models'
 import { addMessage, getSession } from '../storage/sessions'
 import { getDb } from '../storage/db'
 import { endRun, startRun, appendRunEvent } from '../storage/runEvents'
@@ -28,6 +34,8 @@ import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
 import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
 import { resolveThinkingConfig } from '../llm/thinking'
+import { buildL2Injection } from '../storage/memory/l2'
+import { withOrchestrationMemory } from '../storage/memory/compose'
 import type { AgentExecutorOptions } from '../orchestrator/patterns/agent'
 import { logger } from '../logger'
 
@@ -37,6 +45,7 @@ import { logger } from '../logger'
 // cc switch 范式：凭据 + modelId 从默认 provider 取。
 
 const STREAM_CHANNEL = 'orchestrate:stream'
+const DEFAULT_USER_ID = 'local'
 
 /**
  * 按 sessionId 隔离的活跃编排（CODE_AUDIT 断言 5.4：旧实现是模块级单例，
@@ -92,6 +101,10 @@ function makeResolveAgent(
 } {
   const hitlScope = hitlRunId ?? 'orchestrate_default'
   const effectiveWorkspaceRoot = workspaceRoot ?? (sessionId ? getSession(sessionId)?.cwd : undefined)
+  // 编排路径记忆注入（对齐 home 页 §三之三 D）：workflow 内每个 agent 都应看到
+  // 用户身份（L0）与跨会话长期摘要（L2），否则编排"失忆"。一次运行只取一次。
+  const persona = getPersona()
+  const l2Injection = buildL2Injection(DEFAULT_USER_ID)
   // 运行期 skill 缓存：同一次运行内多个节点绑定同一 skill 时只读一次磁盘
   // （每次 run 新建 resolver → 缓存随运行结束丢弃，不会吃到过期内容）
   const skillCache = new Map<string, ReturnType<typeof getSkill>>()
@@ -130,7 +143,13 @@ function makeResolveAgent(
     const hasSnapshot = data.instructions != null && data.instructions.length > 0
     const fallbackAgent = (!hasSnapshot && refAgentId) ? getAgent(refAgentId) : null
 
-    const agentInstructions = data.instructions ?? fallbackAgent?.instructions ?? ''
+    // 记忆基座：L2 跨会话摘要接末尾、L0 用户身份块接头（对齐 home.ts:320-326），
+    // 再交给 SkillContextProvider.beforeRun 注入 <skill> 块与输出纪律段。
+    const agentInstructions = withOrchestrationMemory(
+      data.instructions ?? fallbackAgent?.instructions ?? '',
+      persona,
+      l2Injection,
+    )
     const agentDescription = data.description ?? fallbackAgent?.description
     const agentSkillIds = data.skillIds ?? fallbackAgent?.skillIds ?? []
     const agentTemperature = data.temperature ?? fallbackAgent?.temperature
