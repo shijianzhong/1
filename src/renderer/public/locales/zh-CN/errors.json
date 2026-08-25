@@ -117,5 +117,10 @@
   },
   "sessions": {
     "invalid_input": "会话参数校验失败"
+  },
+  "compare": {
+    "model_not_found": "所选模型不存在",
+    "provider_not_found": "模型所属供应商不存在",
+    "run_failed": "模型调用失败"
   }
 }

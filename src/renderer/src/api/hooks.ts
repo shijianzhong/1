@@ -3,7 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { unwrap } from './client'
 import type {
   Agent,
@@ -19,6 +19,7 @@ import type {
   KbSearchResult,
   KbStatus,
   ModelConfig,
+  CompareStreamEvent,
   NativeDirDialogLabels,
   NativeFileDialogLabels,
   Persona,
@@ -704,3 +705,126 @@ export function useRunDetail(runId?: string) {
 }
 
 export type { ReviewRecord, RunInfo, RunEventInfo, SampleArticle, StyleProfile, Topic }
+
+// —— 多模型对比（亮点③）——
+// 轻量流式状态：订阅 chat:compare:stream，按 compareId 关联、modelId 归位各路增量。
+export interface CompareModelState {
+  modelId: string
+  modelLabel: string
+  text: string
+  thinking: string
+  status: 'idle' | 'streaming' | 'done' | 'error'
+  error?: string
+  messageKey?: string
+  stopReason?: string | null
+  textLen?: number
+}
+
+export interface UseCompareResult {
+  prompt: string
+  setPrompt: (v: string) => void
+  system: string
+  setSystem: (v: string) => void
+  models: ModelConfig[]
+  selectedIds: string[]
+  toggleModel: (id: string) => void
+  running: boolean
+  states: Record<string, CompareModelState>
+  start: () => void
+}
+
+export function useCompare(): UseCompareResult {
+  const { data: models = [] } = useModels()
+  const [prompt, setPrompt] = useState('')
+  const [system, setSystem] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [running, setRunning] = useState(false)
+  const [states, setStates] = useState<Record<string, CompareModelState>>({})
+  const currentCompareId = useRef<string | null>(null)
+
+  useEffect(() => {
+    const unsub = window.one.compare.onStream((event: CompareStreamEvent) => {
+      if (currentCompareId.current && event.compareId !== currentCompareId.current) return
+      switch (event.type) {
+        case 'start':
+          setStates((prev) => ({
+            ...prev,
+            [event.modelId]: {
+              modelId: event.modelId,
+              modelLabel: event.modelLabel,
+              text: '',
+              thinking: '',
+              status: 'streaming',
+            },
+          }))
+          break
+        case 'delta':
+          setStates((prev) => {
+            const s = prev[event.modelId]
+            if (!s) return prev
+            if (event.delta.type === 'text') {
+              return { ...prev, [event.modelId]: { ...s, text: s.text + event.delta.text } }
+            }
+            if (event.delta.type === 'thinking') {
+              return { ...prev, [event.modelId]: { ...s, thinking: s.thinking + event.delta.text } }
+            }
+            return prev
+          })
+          break
+        case 'done':
+          setStates((prev) => {
+            const s = prev[event.modelId]
+            if (!s) return prev
+            return {
+              ...prev,
+              [event.modelId]: { ...s, status: 'done', stopReason: event.stopReason, textLen: event.textLen },
+            }
+          })
+          break
+        case 'error':
+          setStates((prev) => {
+            const s = prev[event.modelId]
+            if (!s) return prev
+            return {
+              ...prev,
+              [event.modelId]: { ...s, status: 'error', error: event.error, messageKey: event.messageKey },
+            }
+          })
+          break
+        case 'complete':
+          setRunning(false)
+          break
+      }
+    })
+    return unsub
+  }, [])
+
+  const start = useCallback(() => {
+    if (!prompt.trim() || selectedIds.length === 0) return
+    setRunning(true)
+    setStates({})
+    void window.one.compare
+      .run({ prompt, modelIds: selectedIds, system: system || undefined })
+      .then((res) => {
+        if (res.ok) currentCompareId.current = res.data.compareId
+        else setRunning(false)
+      })
+  }, [prompt, selectedIds, system])
+
+  const toggleModel = useCallback((id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }, [])
+
+  return {
+    prompt,
+    setPrompt,
+    system,
+    setSystem,
+    models,
+    selectedIds,
+    toggleModel,
+    running,
+    states,
+    start,
+  }
+}

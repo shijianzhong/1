@@ -453,6 +453,14 @@ export type HomeStreamEvent = (
   sessionId?: string
 }
 
+/** 多模型对比流式事件（chat:compare:stream 通道），按 compareId 关联、modelId 归位各路增量 */
+export type CompareStreamEvent =
+  | { type: 'start'; compareId: string; modelId: string; modelLabel: string }
+  | { type: 'delta'; compareId: string; modelId: string; delta: LlmDelta }
+  | { type: 'done'; compareId: string; modelId: string; stopReason: string | null; textLen: number }
+  | { type: 'error'; compareId: string; modelId: string; error: string; messageKey?: string }
+  | { type: 'complete'; compareId: string }
+
 /** 重试回调参数 */
 export interface RetryInfo {
   attempt: number

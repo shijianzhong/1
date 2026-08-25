@@ -18,6 +18,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelConfig,
+  CompareStreamEvent,
   NativeDirDialogLabels,
   NativeFileDialogLabels,
   Persona,
@@ -142,6 +143,12 @@ export interface OneApi {
     cancelCreate: (input: { draftId: string }) => Promise<IpcResult<void>>
     /** 未确认创建草稿（按会话重挂确认卡） */
     listPendingDrafts: (input?: { sessionId?: string }) => Promise<IpcResult<import('@shared/types').CreateDraft[]>>
+  }
+  compare: {
+    /** 触发多模型并行对比，返回 compareId 用于关联 stream 事件 */
+    run: (input: { prompt: string; modelIds: string[]; system?: string }) => Promise<IpcResult<{ compareId: string; modelIds: string[] }>>
+    /** 订阅 chat:compare:stream，返回取消订阅函数 */
+    onStream: (cb: (e: CompareStreamEvent) => void) => () => void
   }
   orchestrate: {
     run: (input: { graph: import('@shared/types').WorkflowGraph; input: string; sessionId?: string; /** 项目根绝对路径（写入 sessions.cwd，agent 文件工具 + shell 默认 cwd 用） */ projectPath?: string }) => Promise<IpcResult<{ runId: string; output: string; stopReason: 'converged' | 'max_supersteps' | 'aborted' }>>
@@ -383,6 +390,14 @@ const api: OneApi = {
     confirmCreate: (input) => ipcRenderer.invoke('home:confirmCreate', input),
     cancelCreate: (input) => ipcRenderer.invoke('home:cancelCreate', input),
     listPendingDrafts: (input) => ipcRenderer.invoke('home:listPendingDrafts', input),
+  },
+  compare: {
+    run: (input) => ipcRenderer.invoke('chat:compare', input),
+    onStream: (cb) => {
+      const handler = (_e: unknown, event: CompareStreamEvent) => cb(event)
+      ipcRenderer.on('chat:compare:stream', handler)
+      return () => ipcRenderer.off('chat:compare:stream', handler)
+    },
   },
   orchestrate: {
     run: (input) => ipcRenderer.invoke('orchestrate:run', input),
