@@ -1597,6 +1597,34 @@ html[data-platform='darwin'] .titlebar__inner {
   background: color-mix(in oklch, var(--color-danger) 12%, transparent);
 }
 
+.side-list__item-export {
+  flex-shrink: 0;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-fg-3);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.side-list__item:hover .side-list__item-export,
+.side-list__item--active .side-list__item-export,
+.side-list__item-export:focus-visible {
+  opacity: 1;
+}
+
+.side-list__item-export:hover {
+  color: var(--color-brand-500);
+  background: color-mix(in oklch, var(--color-brand-500) 12%, transparent);
+}
+
 /* —— 思考过程 trace 容器 —— */
 .thinking-block {
   margin-bottom: 12px;

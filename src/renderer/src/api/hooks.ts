@@ -39,7 +39,7 @@ import type {
 // 集中管理服务端态（能力/角色/技能/模型列表），缓存与失效。
 // IPC 返回 Promise<IpcResult<T>>，.then(unwrap) 解包失败抛 IpcError。
 
-const thenUnwrap = <T>(p: Promise<{ ok: true; data: T } | { ok: false; code: string; message: string; retryable: boolean }>): Promise<T> =>
+export const thenUnwrap = <T>(p: Promise<{ ok: true; data: T } | { ok: false; code: string; message: string; retryable: boolean }>): Promise<T> =>
   p.then(unwrap)
 
 // —— 模型 ——

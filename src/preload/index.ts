@@ -105,6 +105,10 @@ export interface OneApi {
     addMessage: (input: { sessionId: string; role: 'user' | 'assistant' | 'tool'; content: string; meta?: unknown }) => Promise<IpcResult<SessionMessage>>
     /** 读会话项目根（cwd），无则 null */
     getCwd: (sessionId: string) => Promise<IpcResult<string | null>>
+    /** 导出会话为 Markdown 文本 */
+    export: (sessionId: string) => Promise<IpcResult<string>>
+    /** 弹出保存对话框并把 Markdown 落盘，返回保存路径；取消或会话不存在返回 null */
+    exportFile: (sessionId: string, defaultName?: string) => Promise<IpcResult<string | null>>
   }
   tasks: {
     list: () => Promise<IpcResult<TaskRecord[]>>
@@ -353,6 +357,9 @@ const api: OneApi = {
     create: (input) => ipcRenderer.invoke('sessions:create', input),
     addMessage: (input) => ipcRenderer.invoke('sessions:addMessage', input),
     getCwd: (sessionId) => ipcRenderer.invoke('sessions:getCwd', sessionId),
+    export: (sessionId) => ipcRenderer.invoke('sessions:export', sessionId),
+    exportFile: (sessionId, defaultName) =>
+      ipcRenderer.invoke('sessions:exportFile', sessionId, defaultName),
   },
   tasks: {
     list: () => ipcRenderer.invoke('tasks:list'),

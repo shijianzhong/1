@@ -7,6 +7,7 @@ import {
   Brain,
   Cable,
   Command,
+  Download,
   Plug,
   Plus,
   Settings,
@@ -18,9 +19,11 @@ import {
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
+import type { Session } from '@shared/types'
 import { useSessions } from '@renderer/api/hooks'
 import { useChatStore } from '@renderer/store/chat'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
+import { SessionExportDrawer } from '@renderer/components/SessionExportDrawer'
 import { CommandPalette } from '@renderer/components/CommandPalette'
 import { startupMark } from '@renderer/lib/startupMark'
 
@@ -107,6 +110,9 @@ export function AppShell() {
     [chatSessions, sessionsQ.data],
   )
 
+  // 会话导出抽屉（§亮点②）
+  const [exportSession, setExportSession] = useState<Session | null>(null)
+
   // Cmd+K / Ctrl+K 全局命令面板
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   useEffect(() => {
@@ -123,6 +129,11 @@ export function AppShell() {
   return (
     <>
       <CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} />
+      <SessionExportDrawer
+        session={exportSession}
+        open={!!exportSession}
+        onClose={() => setExportSession(null)}
+      />
       <div className="app-frame">
         <header className="titlebar glass-panel">
           <div className="titlebar__inner">
@@ -215,6 +226,18 @@ export function AppShell() {
                         }}
                       >
                         <Trash2 size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        className="side-list__item-export"
+                        title={t('common:actions.export')}
+                        aria-label={t('common:actions.export')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setExportSession(s)
+                        }}
+                      >
+                        <Download size={13} />
                       </button>
                     </div>
                   ))

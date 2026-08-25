@@ -1,3 +1,4 @@
+import { dialog, BrowserWindow } from 'electron'
 import { z } from 'zod'
 import type { Session, SessionMessage } from '@shared/types'
 import { withHandler } from './handler'
@@ -10,6 +11,8 @@ import {
   removeSession,
   renameSession,
 } from '../storage/sessions'
+import { sessionToMarkdown } from '../storage/export'
+import { writeFileAtomic } from '../tools/builtin/file'
 import { clearSessionToolApprovals } from '../tools/sessionApprovals'
 
 // —— 会话历史 IPC（§八之二 B）——
@@ -54,4 +57,24 @@ export function registerSessionsHandlers(): void {
   withHandler<SessionMessage>('sessions:addMessage', (_e, input) =>
     addMessage(AddMessageSchema.parse(input)),
   )
+
+  // —— 会话导出（§亮点②）——
+  withHandler<string>('sessions:export', (_e, sessionId) =>
+    sessionToMarkdown(IdSchema.parse(sessionId)),
+  )
+  withHandler<string | null>('sessions:exportFile', async (e, sessionId, defaultName) => {
+    const sid = IdSchema.parse(sessionId)
+    const name = z.string().min(1).optional().parse(defaultName) ?? 'conversation'
+    const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getAllWindows()[0] ?? null
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出会话为 Markdown',
+      defaultPath: `${name}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+    if (result.canceled || !result.filePath) return null
+    const md = sessionToMarkdown(sid)
+    if (!md) return null // 会话不存在：不落空文件
+    await writeFileAtomic(result.filePath, md)
+    return result.filePath
+  })
 }
