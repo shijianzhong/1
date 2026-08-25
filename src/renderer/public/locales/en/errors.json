@@ -114,5 +114,8 @@
   },
   "memory": {
     "invalid_input": "Memory operation param validation failed (bad key/content/timestamp format)"
+  },
+  "sessions": {
+    "invalid_input": "Session parameter validation failed"
   }
 }

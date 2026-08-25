@@ -107,8 +107,8 @@ export interface OneApi {
     getCwd: (sessionId: string) => Promise<IpcResult<string | null>>
     /** 导出会话为 Markdown 文本 */
     export: (sessionId: string) => Promise<IpcResult<string>>
-    /** 弹出保存对话框并把 Markdown 落盘，返回保存路径；取消或会话不存在返回 null */
-    exportFile: (sessionId: string, defaultName?: string) => Promise<IpcResult<string | null>>
+    /** 弹出保存对话框并把 Markdown 落盘，返回保存路径；取消或会话不存在返回 null。labels 为对话框文案（i18n 传入，铁律 T2） */
+    exportFile: (sessionId: string, defaultName: string | undefined, labels: NativeDirDialogLabels) => Promise<IpcResult<string | null>>
   }
   tasks: {
     list: () => Promise<IpcResult<TaskRecord[]>>
@@ -358,8 +358,8 @@ const api: OneApi = {
     addMessage: (input) => ipcRenderer.invoke('sessions:addMessage', input),
     getCwd: (sessionId) => ipcRenderer.invoke('sessions:getCwd', sessionId),
     export: (sessionId) => ipcRenderer.invoke('sessions:export', sessionId),
-    exportFile: (sessionId, defaultName) =>
-      ipcRenderer.invoke('sessions:exportFile', sessionId, defaultName),
+    exportFile: (sessionId, defaultName, labels) =>
+      ipcRenderer.invoke('sessions:exportFile', sessionId, defaultName, labels),
   },
   tasks: {
     list: () => ipcRenderer.invoke('tasks:list'),

@@ -114,5 +114,8 @@
   },
   "memory": {
     "invalid_input": "记忆操作参数校验失败（key/内容/时间戳格式错误）"
+  },
+  "sessions": {
+    "invalid_input": "会话参数校验失败"
   }
 }

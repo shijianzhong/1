@@ -39,7 +39,9 @@ export function SessionExportDrawer({ session, open, onClose }: Props) {
   const handleDownload = async () => {
     if (!session) return
     try {
-      const path = await thenUnwrap(window.one.sessions.exportFile(session.id, session.title))
+      const path = await thenUnwrap(
+        window.one.sessions.exportFile(session.id, session.title, { title: t('common:export.dialogTitle') }),
+      )
       setSavedPath(path)
     } catch {
       setSavedPath(null)

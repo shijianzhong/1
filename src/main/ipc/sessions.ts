@@ -13,6 +13,7 @@ import {
 } from '../storage/sessions'
 import { sessionToMarkdown } from '../storage/export'
 import { writeFileAtomic } from '../tools/builtin/file'
+import { parseDirDialogLabels } from './dialog-labels'
 import { clearSessionToolApprovals } from '../tools/sessionApprovals'
 
 // —— 会话历史 IPC（§八之二 B）——
@@ -62,12 +63,15 @@ export function registerSessionsHandlers(): void {
   withHandler<string>('sessions:export', (_e, sessionId) =>
     sessionToMarkdown(IdSchema.parse(sessionId)),
   )
-  withHandler<string | null>('sessions:exportFile', async (e, sessionId, defaultName) => {
+  withHandler<string | null>('sessions:exportFile', async (e, sessionId, defaultName, labelsRaw) => {
     const sid = IdSchema.parse(sessionId)
     const name = z.string().min(1).optional().parse(defaultName) ?? 'conversation'
+    // 对话框文案由渲染层 i18n 后传入（铁律 T2：主进程不硬编码中文，对齐 #27 NativeFileDialogLabels 模式）。
+    // 复用 parseDirDialogLabels（保存对话框只需 title，语义与目录选择版同构）。
+    const labels = parseDirDialogLabels(labelsRaw, 'errors:sessions.invalid_input')
     const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getAllWindows()[0] ?? null
     const result = await dialog.showSaveDialog(win, {
-      title: '导出会话为 Markdown',
+      title: labels.title,
       defaultPath: `${name}.md`,
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     })
