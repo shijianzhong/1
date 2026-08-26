@@ -79,7 +79,7 @@ interface OnePluginManifest {
 interface PluginLifecycle {
   onLoad(ctx: PluginHost): Promise<void>   // 注册工具/订阅/建表。⚠️ 仅适用于长生命周期插件（builtin/mcp/skill-host 级），per-run 短命对象不走此钩子。
   onUnload(reason: 'disable' | 'uninstall' | 'shutdown'): Promise<void>  // 回滚 onLoad 的 effects
-  onStart?(ctx, opts): Promise<...>        // 一次真实运行的入口（可选，如 skill 的 beforeRun）
+  onStart?(ctx, opts): Promise<...>        // 一次真实运行的入口（可选，如长生命周期插件的运行入口；Skill 的 beforeRun 走构造注入，不在此钩子）
   onStop?(): Promise<void>
 }
 
@@ -202,15 +202,20 @@ interface PluginHost {
   - **IPC 契约**：主进程经 `withHandler`（定义在 `src/main/ipc/handler.ts:12`，规范见 `CLAUDE.md` §11.3）暴露只读视图 `plugins:list` → `OnePluginManifest[]`（从 `PluginHost` 读，不另起注册表），写操作 `plugins:enable/disable/uninstall`（调 `PluginHost` 的生命周期钩子，卸载走 `onUnload`）；经 preload 白名单暴露为 `window.one.plugins.*`，返回 `IpcResult<T>` 判别联合（定义在 `src/shared/types.ts:45`，渲染层用 `isIpcFailure()` 解包）。注册/卸载事实同步记 `run_events`。
 - **验收**：在聊天里让 assistant 造一个**无副作用的声明式工具**（如一个"按指定参数生成一段技术图纸描述"或"读某文件并按固定模板整理"的工具），造完立刻被 `listAgentToolDefs` 收录、可被同会话或后续会话调用；**`/plugins` 页能看到该插件**（含 manifest 详情）；禁用后再调用返回"工具不存在"；卸载后 `unregisterByPrefix` 清干净注册、`/plugins` 页不再列出。**并实测注册点白名单 + `params` subset 校验**：声明一个白名单外的 `action`（如 `shell`）或给 `file_read` 新增一个它 schema 里不存在的参数，`register` 均应在注册点被拒并记 `run_events`。
 
-### Stage 3 — 代码型工具（`generated` B 层 + `external`，可选且后置）
-- 若确需**自定义可执行 handler 逻辑**（无法用白名单只读/检索动作组合），再做：受控 require/加载目录 + `PluginHost.tools` 白名单 + fail-closed 显式信任 + 主进程专属 + 审批闸门。
+### Stage 3 — 代码型工具（`generated_b` B 层 ✅ 落地 2026-08-26 / `external` 仍后置）
+- ✅ **`generated_b` B 层已落地**：用户/AI 经 `propose_generated_b` 提出一段可执行 handler 源码 → `CreateConfirmCard` → 用户确认 → `home:confirmCreate` 走 `validateGeneratedBSpec` 闸门（handlerSource 非空 + vm 编译期验语法 + inputSchema 结构）→ `saveGeneratedBPlugin`（manifest.json + handler.js）→ `enableBPlugin` 注册。
+- **vm 沙箱执行**（`sandbox.ts`，项目首次引入 node:vm）：`vm.runInNewContext` 编译 handler 源码，context **只注入 `executeTool`**，不暴露 require/process/global/__dirname——B handler 无法 require fs/shell。`executeTool` 是唯一能力出口，调白名单 8 动作（file_read/file_search/kb_search/web_search/glob/grep/skill_search/load_skill），白名单外返回 `action_not_whitelisted`。`runBHandler` 用 Promise.race + AbortSignal 做 60s 超时（vm timeout 只管同步段，async 在 microtask 不受管）+ 16KB 输出截断。
+- **信任闸门三态**（`manifest.trustedBy` 决定）：null（未信任）→ 注册占位工具（approvalMode='auto'，返 `trusted_required` 提示引导用户去 /plugins 信任）；非空（已信任）→ 注册真 code handler（approvalMode='always'，每次弹审批）；校验/编译失败 → 不注册任何工具，emit `plugin.registered{status:'failed'}`。信任≠免审。
+- **A/B 共用 `generated-plugins/` 目录根**，靠 id 前缀互斥（A=`gen_`、B=`genb_`，正则过滤无串扰）。信任切换：`plugins:trust` → `setTrustedBPlugin` 写盘 + disable+enable 重载切占位↔真 handler。
 - 受既有安全边界约束：渲染进程零 Node 特权，加载只发生在主进程，且只经白名单暴露能力。
-- **验收**：加载一个含任意 `require('fs')` 的演示"代码工具"在未显式信任时**默认被拒**；显式信任后才可运行；卸载回滚干净。
+- **已知限制（同步死循环 DoS）**：`vm.runInNewContext` 的 `timeout` 仅能中止同步段；若已信任的 B handler 写纯同步死循环（如 `while(true){}`），`Promise.race` 的 abort 信号无法打断同步执行，会永久占住事件循环直至进程被杀。该路径**仅在用户于 /plugins 页显式"信任"后才可达（consent-based，主动授权后的自伤面）**，不构成未授权 RCE/DoS。未来根治方向：将 B handler 执行移入 worker thread（独立线程，可 `terminate()` 强杀）。见 `sandbox.ts` 头部注释。
+- **验收**（已实现）：加载一个含任意 `require('fs')` 的 B 工具——vm 沙箱不注入 require，`require('fs')` 抛 ReferenceError；未信任时调到只返 `trusted_required` 不执行 handler 源码；显式信任后每次调用弹审批；卸载 `rmSync` 目录连 handler.js 一起删。超时/输出截断/白名单外动作拒绝均有结构化错误返回。
+- `external` kind（外部代码插件，加载目录/registry 分发）**仍后置**——文档把 external 与 B 同列但可分，Stage 3 只做 `generated_b`。
 
 ### 标优先级
 - Stage 0 + Stage 1：**核心收益**（扩展点文档 + 统一宿主）——性价比最高，风险接近零。
 - Stage 2：**本轮用户要的"现场造一个工具立刻用"**——是 `generated/A` 的最小闭环；A 只判发只读/检索白名单动作（§3），**零新增执行面**，风险低。**排在 Stage 3 之前**。
-- Stage 3：代码型能力，**后置**，与现有安全模型一起评估，严格 fail-closed。
+- Stage 3：✅ `generated_b` 代码型能力已落地（vm 沙箱 + 显式信任 + always 审批，严格 fail-closed）；`external` 仍后置。
 
 ---
 

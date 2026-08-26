@@ -23,6 +23,7 @@ const INVALIDATE_KEYS: Record<CreateDraft['kind'], string[]> = {
   skill: ['skills'],
   persona: ['persona'],
   generated: ['plugins'],
+  generated_b: ['plugins'],
 }
 
 interface Props {
@@ -75,12 +76,17 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
   const isPersona = draft.kind === 'persona'
   const nonPersonaPayload = payload as Extract<
     CreateDraft,
-    { kind: 'agent' | 'capability' | 'skill' | 'generated' }
+    { kind: 'agent' | 'capability' | 'skill' | 'generated' | 'generated_b' }
   >['payload']
   const personaPayload = payload as Extract<CreateDraft, { kind: 'persona' }>['payload']
   const generatedPayload = payload as Extract<CreateDraft, { kind: 'generated' }>['payload']
+  const generatedBPayload = payload as Extract<CreateDraft, { kind: 'generated_b' }>['payload']
   // persona 的 instructions 可空（空 = 保留当前人设，仅更新档案），始终可确认
-  const canConfirm = isPersona ? true : !!nonPersonaPayload.name?.trim()
+  // generated_b 的 handlerSource 须非空（后端 validateGeneratedBSpec 会再校验，前端只防空提交）
+  const canConfirm = isPersona
+    ? true
+    : !!nonPersonaPayload.name?.trim() &&
+      (draft.kind !== 'generated_b' || !!generatedBPayload.handlerSource.trim())
 
   return (
     <div className={`create-card create-card--${status}`}>
@@ -209,6 +215,38 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
                         className="create-card__textarea"
                         rows={8}
                         value={JSON.stringify(generatedPayload.inputSchema, null, 2)}
+                        onChange={(e) => {
+                          const text = e.target.value.trim()
+                          let schema: Record<string, unknown>
+                          try {
+                            schema = JSON.parse(text)
+                          } catch {
+                            // 解析失败暂存原文本，由确认时校验兜底；这里不阻断输入
+                            return
+                          }
+                          patch({ inputSchema: schema })
+                        }}
+                      />
+                    </Field>
+                  </>
+                ) : null}
+
+                {draft.kind === 'generated_b' ? (
+                  <>
+                    <Field label={t('home:create.field.handlerSource')}>
+                      <textarea
+                        className="create-card__textarea"
+                        rows={8}
+                        value={generatedBPayload.handlerSource}
+                        placeholder={t('home:create.field.handlerSourcePlaceholder')}
+                        onChange={(e) => patch({ handlerSource: e.target.value })}
+                      />
+                    </Field>
+                    <Field label={t('home:create.field.inputSchema')}>
+                      <textarea
+                        className="create-card__textarea"
+                        rows={8}
+                        value={JSON.stringify(generatedBPayload.inputSchema, null, 2)}
                         onChange={(e) => {
                           const text = e.target.value.trim()
                           let schema: Record<string, unknown>

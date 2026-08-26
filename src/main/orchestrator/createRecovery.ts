@@ -40,6 +40,10 @@ export function inferCreateKindFromText(text: string): CreateKind | null {
   if (/能力|编排|工作流|workflow|capability|画布/.test(t)) {
     return 'capability'
   }
+  // B（代码型）优先于 A：更具体的关键词（handler/脚本/代码工具/generated_b），避免被 A 的宽泛"工具/插件"吞掉
+  if (/代码工具|代码型|handler|脚本工具|custom.*handler|generated_b|代码\b/.test(t)) {
+    return 'generated_b'
+  }
   if (/工具|插件|generated/.test(t)) {
     return 'generated'
   }
@@ -76,6 +80,8 @@ export function createKindFromToolName(toolName: string): CreateKind | null {
       return 'persona'
     case 'propose_generated':
       return 'generated'
+    case 'propose_generated_b':
+      return 'generated_b'
     default:
       return null
   }

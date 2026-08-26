@@ -57,7 +57,8 @@ import {
 import { SkillContextProvider } from '../skills/provider'
 import { pluginHost } from '../plugins/host'
 import { saveGeneratedPlugin, enableGeneratedPlugin } from '../plugins/generated'
-import { validateGeneratedSpec } from '../plugins/whitelist'
+import { saveGeneratedBPlugin, enableGeneratedBPlugin } from '../plugins/generatedB'
+import { validateGeneratedSpec, validateGeneratedBSpec } from '../plugins/whitelist'
 import { skillHostManager } from '../plugins/skillHost'
 import { getDb } from '../storage/db'
 import { injectL0 } from '../storage/memory/l0'
@@ -1110,6 +1111,22 @@ export function registerHomeHandlers(): void {
       const file = saveGeneratedPlugin({ spec: p })
       // 立即注册（enabled=true，注册点白名单校验在 onLoad 内再兜底一次）
       await enableGeneratedPlugin(pluginHost, file.id)
+      saved = { id: file.id }
+    } else if (kind === 'generated_b') {
+      // generated/B 代码型工具：保存 manifest + handler.js + 立即 onLoad 注册占位（trustedBy=null）
+      // （docs/PLUGIN_ARCHITECTURE.md §5 Stage 3——造完立刻入库为"未信任"占位，用户须去 /plugins 信任）
+      const p = payload as Extract<CreateDraft, { kind: 'generated_b' }>['payload']
+      // 闸门前置：handlerSource 非空 + 可编译 + inputSchema 结构；失败抛 IpcErrorThrow 让前端拿 i18n key
+      const v = validateGeneratedBSpec(p)
+      if (!v.ok) {
+        throw new IpcErrorThrow(
+          v.reason === 'compile_failed' ? 'errors:plugins.compile_failed' : v.messageKey,
+          `generated_b 工具校验失败（${v.reason}）：未创建`,
+        )
+      }
+      const file = saveGeneratedBPlugin({ spec: p })
+      // 立即注册（enabled=true，trustedBy=null → 占位工具返 trusted_required，注册点校验在 onLoad 内再兜底）
+      await enableGeneratedBPlugin(pluginHost, file.id)
       saved = { id: file.id }
     } else {
       throw new Error(`未知创建类型：${String(kind)}`)

@@ -13,7 +13,7 @@ import type {
 } from '../tools/registry'
 import type { PluginEventMap, Unsubscribe } from './events'
 
-export type { OnePluginManifest, PluginKind, PluginSource, GeneratedPluginSpec } from '@shared/types'
+export type { OnePluginManifest, PluginKind, PluginSource, GeneratedPluginSpec, GeneratedBSpec } from '@shared/types'
 
 /** 工具注册 spec（PluginHost.tools.register 入参）；运行时入参校验用 zod schema */
 export interface PluginToolSpec {

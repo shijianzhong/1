@@ -12,6 +12,14 @@ import {
   loadGeneratedPluginManifest,
   uninstallGeneratedPlugin,
 } from '../plugins/generated'
+import {
+  disableGeneratedBPlugin,
+  enableGeneratedBPlugin,
+  listGeneratedBPluginsForApi,
+  loadGeneratedBPluginManifest,
+  trustGeneratedBPlugin,
+  uninstallGeneratedBPlugin,
+} from '../plugins/generatedB'
 import { skillHostManager } from '../plugins/skillHost'
 import { listSkills, setSkillEnabled, invalidateSkillsCache } from '../storage/skills/store'
 import type { OnePluginManifest } from '../plugins/contracts'
@@ -36,19 +44,25 @@ function skillToManifest(skill: Skill): OnePluginManifest {
 }
 
 export function registerPluginsHandlers(): void {
-  // —— 列出全部插件（generated + skill，统一 OnePluginManifest 视图）——
+  // —— 列出全部插件（generated/A + generated/B + skill，统一 OnePluginManifest 视图）——
   withHandler<OnePluginManifest[]>('plugins:list', () => {
     // generated 条目 id 加 'generated/' 命名空间前缀（与 types.ts OnePluginManifest 契约一致），
     // 供 UI 回传时据此路由；存储层内部始终用 bare id。
     const generated = listGeneratedPluginsForApi().map((m) => ({ ...m, id: `generated/${m.id}` }))
+    const generatedB = listGeneratedBPluginsForApi().map((m) => ({ ...m, id: `generated_b/${m.id}` }))
     const skills = listSkills().map(skillToManifest)
-    return [...generated, ...skills]
+    return [...generated, ...generatedB, ...skills]
   })
 
-  // —— 单个插件详情（generated 可展开看 manifest）——
+  // —— 单个插件详情（generated / generated_b 可展开看 manifest）——
   withHandler<OnePluginManifest | null>('plugins:get', (_e, input) => {
     const { id } = input as { id: string }
     // generated/<id> → 剥前缀转 bare 再查存储层，返回时重新加前缀保持回传一致
+    if (id.startsWith('generated_b/')) {
+      const bare = id.slice('generated_b/'.length)
+      const m = loadGeneratedBPluginManifest(bare)
+      return m ? { ...m, id: `generated_b/${m.id}` } : null
+    }
     if (id.startsWith('generated/')) {
       const bare = id.slice('generated/'.length)
       const m = loadGeneratedPluginManifest(bare)
@@ -63,10 +77,12 @@ export function registerPluginsHandlers(): void {
     return null
   })
 
-  // —— 启用插件（generated: onLoad 注册；skill: 改 frontmatter enabled）——
+  // —— 启用插件（generated/generated_b: onLoad 注册；skill: 改 frontmatter enabled）——
   withHandler<void>('plugins:enable', async (_e, input) => {
     const { id } = input as { id: string }
-    if (id.startsWith('generated/')) {
+    if (id.startsWith('generated_b/')) {
+      await enableGeneratedBPlugin(pluginHost, id.slice('generated_b/'.length))
+    } else if (id.startsWith('generated/')) {
       await enableGeneratedPlugin(pluginHost, id.slice('generated/'.length))
     } else if (id.startsWith('skill/')) {
       const skillId = id.slice('skill/'.length)
@@ -76,10 +92,12 @@ export function registerPluginsHandlers(): void {
     }
   })
 
-  // —— 禁用插件（generated: onUnload 回滚；skill: 改 frontmatter enabled）——
+  // —— 禁用插件（generated/generated_b: onUnload 回滚；skill: 改 frontmatter enabled）——
   withHandler<void>('plugins:disable', async (_e, input) => {
     const { id } = input as { id: string }
-    if (id.startsWith('generated/')) {
+    if (id.startsWith('generated_b/')) {
+      await disableGeneratedBPlugin(id.slice('generated_b/'.length))
+    } else if (id.startsWith('generated/')) {
       await disableGeneratedPlugin(id.slice('generated/'.length))
     } else if (id.startsWith('skill/')) {
       const skillId = id.slice('skill/'.length)
@@ -89,10 +107,12 @@ export function registerPluginsHandlers(): void {
     }
   })
 
-  // —— 卸载插件（generated: onUnload + 删目录；skill: 暂只禁用，删 skill 走 skills:remove）——
+  // —— 卸载插件（generated/generated_b: onUnload + 删目录；skill: 暂只禁用）——
   withHandler<void>('plugins:uninstall', async (_e, input) => {
     const { id } = input as { id: string }
-    if (id.startsWith('generated/')) {
+    if (id.startsWith('generated_b/')) {
+      await uninstallGeneratedBPlugin(id.slice('generated_b/'.length))
+    } else if (id.startsWith('generated/')) {
       await uninstallGeneratedPlugin(id.slice('generated/'.length))
     } else if (id.startsWith('skill/')) {
       // skill 卸载 = 禁用（删除走 skills:remove，避免 /plugins 误删用户技能内容）
@@ -102,6 +122,29 @@ export function registerPluginsHandlers(): void {
       skillHostManager.refreshDisabledSet()
     } else {
       throw new Error(`unknown plugin id: ${id}`)
+    }
+  })
+
+  // —— 信任 generated/B 代码型插件（写盘 trustedBy + 重载切真 handler）——
+  // B 专属：占位（untrusted）↔ 真 handler（trusted，always 审批）切换。A 无信任态，调此 handler 对 A 报错。
+  withHandler<void>('plugins:trust', async (_e, input) => {
+    const { id, trust } = input as { id: string; trust: boolean }
+    if (!id.startsWith('generated_b/')) {
+      throw new Error(`trust only applies to generated_b plugins: ${id}`)
+    }
+    const bare = id.slice('generated_b/'.length)
+    if (trust) {
+      // userId 单用户固定 'local'（无登录无鉴权，仅作信任事实记录者）
+      await trustGeneratedBPlugin(pluginHost, bare, 'local')
+    } else {
+      // 取消信任：写 trustedBy=null + 重载回占位（复用 trustGeneratedBPlugin 的重载路径，传 null 需直接调 setTrustedBPlugin）
+      // 这里只做"信任"方向；取消信任较少见，复用 trustGeneratedBPlugin 传 null 触发占位重载
+      // —— 但 trustGeneratedBPlugin 签名固定 userId，取消信任走 setTrustedBPlugin + 手动重载：
+      const { setTrustedBPlugin } = await import('../plugins/generatedB')
+      setTrustedBPlugin(bare, null)
+      // 重载：占位需经 onUnload+onLoad 切换，复用 enable/disable 的副作用路径
+      await disableGeneratedBPlugin(bare)
+      await enableGeneratedBPlugin(pluginHost, bare)
     }
   })
 }

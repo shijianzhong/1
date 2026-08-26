@@ -10,6 +10,7 @@ import { seedBuiltinAssets, seedKbModel } from './storage/builtin'
 import { registerMemoryTools } from './tools/builtin/memory'
 import { registerCreateTools } from './tools/builtin/create'
 import { registerProposeGeneratedTool } from './tools/builtin/proposeGenerated'
+import { registerProposeGeneratedBTool } from './tools/builtin/proposeGeneratedB'
 import { registerAskUserTools } from './tools/builtin/askUser'
 import { registerScheduleCreateTool } from './tools/builtin/scheduleCreate'
 import { registerWebTools } from './tools/builtin/web'
@@ -34,6 +35,7 @@ import { registerAssetCrudTools } from './tools/builtin/assetCrud'
 import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
 import { pluginHost } from './plugins/host'
 import { initGeneratedPlugins, disconnectAll as disconnectAllGenerated } from './plugins/generated'
+import { initGeneratedBPlugins, disconnectAllB } from './plugins/generatedB'
 import { skillHostManager } from './plugins/skillHost'
 import { initKbStatus } from './vector/embed'
 import { terminateEmbedWorker } from './vector/worker-client'
@@ -159,6 +161,7 @@ if (!gotLock) {
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerCreateTools() // 聊天创建工具（propose_*，不落库，确认才入库）
     registerProposeGeneratedTool() // 现场造工具（propose_generated，A 层白名单声明式，确认才注册）
+    registerProposeGeneratedBTool() // 现场造代码工具（propose_generated_b，B 层 vm 沙箱，确认才注册+信任才执行）
     registerAskUserTools() // HITL 提问工具（编排内 agent 向用户提问，挂起等作答）
     registerScheduleCreateTool() // 对话内创建定时任务（ask_user 确认后落库，15s tick 自动感知）
     registerWebTools() // 联网工具（web_search/web_read，Jina 免费免 key，零依赖随包即用）
@@ -187,6 +190,8 @@ if (!gotLock) {
     void skillHostManager.onLoad(pluginHost)
     // generated/A 声明式插件加载（enabled 的 onLoad 注册，非阻塞，单个失败不阻塞其他）
     void initGeneratedPlugins(pluginHost)
+    // generated/B 代码型插件加载（信任闸门：untrusted 占位 / trusted 真 handler always 审批，非阻塞）
+    void initGeneratedBPlugins(pluginHost)
     // KB 向量库自检：flatIndex 懒加载 + vec_dim 漂移检测（非阻塞，失败降级纯词法）
     void initKbStatus()
     registerIpcHandlers()
@@ -255,6 +260,7 @@ if (!gotLock) {
     stopAutoUpdater()
     void disconnectAllMcp() // 断开所有 MCP 服务器连接
     void disconnectAllGenerated() // 卸载所有 generated/A 声明式插件（对称 MCP，best-effort）
+    void disconnectAllB() // 卸载所有 generated/B 代码型插件（对称，best-effort）
     terminateEmbedWorker() // 终止 embed worker 子进程（best-effort，§worker-client:197）
     closeDb()
   })

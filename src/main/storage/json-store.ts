@@ -41,6 +41,14 @@ export function writeJsonFile(path: string, data: unknown): void {
   renameSync(tmp, path)
 }
 
+/** 原子写纯文本文件（同 writeJsonFile 的 temp+rename 约定，供非 JSON 源文件如 B 层 handler.js） */
+export function writeTextFile(path: string, text: string): void {
+  mkdirSync(dirname(path), { recursive: true })
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+  writeFileSync(tmp, text, 'utf8')
+  renameSync(tmp, path)
+}
+
 /** 读 JSON 文件，不存在/损坏返回 fallback */
 export function readJsonFile<T>(path: string, fallback: T): T {
   if (!existsSync(path)) return fallback

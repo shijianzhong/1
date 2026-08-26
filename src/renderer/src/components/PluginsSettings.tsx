@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Puzzle, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Puzzle, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react'
 import type { OnePluginManifest } from '@shared/types'
 import { unwrap } from '@renderer/api/client'
 import { Badge } from '@renderer/components/ui/Badge'
@@ -53,6 +53,19 @@ export function PluginsSettings() {
     await refresh()
   }
 
+  const onTrust = async (p: OnePluginManifest): Promise<void> => {
+    const trusted = p.trustedBy !== null && p.trustedBy !== undefined
+    if (trusted) {
+      // 取消信任：直接调（不二次确认，可再点回来）
+      await window.one.plugins.trust(p.id, false).then(unwrap).catch(() => {})
+    } else {
+      // 信任：二次确认（B 工具将执行用户/AI 提供的代码，每次调用仍弹审批，但信任是不可逆的"放行"动作）
+      if (!confirm(t('plugins:trustConfirm'))) return
+      await window.one.plugins.trust(p.id, true).then(unwrap).catch(() => {})
+    }
+    await refresh()
+  }
+
   if (plugins.length === 0 && !loading) {
     return (
       <p style={{ color: 'var(--color-fg-3)', fontSize: '0.85rem' }}>{t('plugins:empty')}</p>
@@ -63,7 +76,10 @@ export function PluginsSettings() {
     <div style={{ display: 'grid', gap: 12 }}>
       {plugins.map((p) => {
         const isGenerated = p.kind === 'generated'
+        const isGeneratedB = p.kind === 'generated_b'
+        const isExpandable = isGenerated || isGeneratedB
         const isOpen = expanded === p.id
+        const isTrusted = p.trustedBy !== null && p.trustedBy !== undefined
         return (
           <div
             key={p.id}
@@ -79,7 +95,7 @@ export function PluginsSettings() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {isGenerated ? (
+                {isExpandable ? (
                   <span
                     style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                     onClick={() => setExpanded(isOpen ? null : p.id)}
@@ -101,10 +117,29 @@ export function PluginsSettings() {
                 ) : (
                   <Badge variant="default">{t('plugins:disabled')}</Badge>
                 )}
+                {/* B 专属：信任态徽标（未信任显眼提示用户去信任） */}
+                {isGeneratedB ? (
+                  isTrusted ? (
+                    <Badge variant="success">{t('plugins:trusted')}</Badge>
+                  ) : (
+                    <Badge variant="warning">{t('plugins:untrusted')}</Badge>
+                  )
+                ) : null}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <Switch checked={p.enabled} onCheckedChange={() => void onToggle(p)} />
-                {isGenerated ? (
+                {/* B 专属：信任/取消信任按钮（信任前不卸载代码，可随时切回占位） */}
+                {isGeneratedB ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void onTrust(p)}
+                    title={isTrusted ? t('plugins:trust') : t('plugins:trust')}
+                  >
+                    {isTrusted ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
+                  </Button>
+                ) : null}
+                {isExpandable ? (
                   <Button variant="ghost" size="sm" onClick={() => void onUninstall(p)}>
                     <Trash2 size={14} />
                   </Button>
@@ -118,9 +153,11 @@ export function PluginsSettings() {
               {p.effects.tools.length > 0
                 ? ` · ${t('plugins:tools', { count: p.effects.tools.length })}`
                 : ''}
+              {/* B 未信任时附引导语 */}
+              {isGeneratedB && !isTrusted ? ` · ${t('plugins:untrustedHint')}` : ''}
             </div>
 
-            {/* generated 展开详情：manifest spec */}
+            {/* generated/A 展开详情：manifest spec */}
             {isGenerated && isOpen && p.spec ? (
               <div
                 style={{
@@ -159,6 +196,73 @@ export function PluginsSettings() {
                     }}
                   >
                     {JSON.stringify(p.spec.inputSchema, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            ) : null}
+
+            {/* generated/B 展开详情：handlerSource 源码 + trustedBy 事实 */}
+            {isGeneratedB && isOpen && p.specB ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  padding: 10,
+                  borderRadius: 8,
+                  background: 'var(--color-bg-2)',
+                  border: '1px solid var(--color-border)',
+                  display: 'grid',
+                  gap: 6,
+                  fontSize: '0.78rem',
+                }}
+              >
+                <SpecRow label={t('plugins:spec.toolName')} value={`generated_b/${p.specB.name}`} />
+                <SpecRow
+                  label={t('plugins:trustedBy')}
+                  value={
+                    p.trustedBy
+                      ? `${t('plugins:trusted')} · ${new Date(p.trustedBy.ts).toLocaleString()}`
+                      : t('plugins:untrusted')
+                  }
+                />
+                <div>
+                  <div style={{ color: 'var(--color-fg-3)', marginBottom: 4 }}>
+                    {t('plugins:spec.inputSchema')}
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 8,
+                      borderRadius: 6,
+                      background: 'var(--color-bg-1)',
+                      overflow: 'auto',
+                      fontSize: '0.72rem',
+                      lineHeight: 1.5,
+                      maxHeight: 160,
+                    }}
+                  >
+                    {JSON.stringify(p.specB.inputSchema, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--color-fg-3)', marginBottom: 4 }}>
+                    {t('plugins:spec.handlerSource')}
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 8,
+                      borderRadius: 6,
+                      background: 'var(--color-bg-1)',
+                      border: '1px solid var(--color-border)',
+                      overflow: 'auto',
+                      fontSize: '0.72rem',
+                      lineHeight: 1.5,
+                      maxHeight: 280,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {p.specB.handlerSource}
                   </pre>
                 </div>
               </div>

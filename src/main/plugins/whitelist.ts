@@ -7,6 +7,12 @@
 //
 // 判发方式：A 工具 handler 内部调 executeTool(白名单动作名, params, ...) 复用全部闸门 +
 // resolveConfined 围栏。白名单这里只校验"动作名 + 参数 subset"，不重复执行期校验。
+//
+// generated/B 代码型工具校验（§3 B 层 + §5 Stage 3）：validateGeneratedBSpec 校验
+// handlerSource 非空 + 可编译（vm 编译期验语法）+ inputSchema 结构。B 无 executeAction，
+// 不做白名单 action 校验；运行时白名单逃逸由 sandbox.ts 的 makeCtxExecuteTool 拦截。
+
+import vm from 'node:vm'
 
 /** 白名单动作名（注册工具名，非文件名）——只读/检索、无副作用子集 */
 export const WHITELIST_ACTIONS = [
@@ -89,6 +95,8 @@ export type ValidateFailureReason =
   | 'param_bound_too_wide'
   | 'required_missing'
   | 'invalid_input_schema'
+  | 'handler_source_empty'
+  | 'compile_failed'
 
 /**
  * generated/A spec 的动作声明部分（与 GeneratedPluginSpec 对齐，此处只取校验所需子集）。
@@ -216,4 +224,62 @@ function boundNotWider(val: unknown, spec: FieldSpec): boolean {
     return (val as unknown[]).length <= spec.max
   }
   return true
+}
+
+// —— generated/B 代码型工具校验（§3 B 层 + §5 Stage 3）——
+
+/** B spec 的 handler 声明部分（只取校验所需子集） */
+interface GeneratedBSpecLike {
+  inputSchema?: unknown
+  handlerSource?: unknown
+}
+
+/**
+ * 校验 generated/B spec：handlerSource 非空 + 可编译 + inputSchema 结构。
+ * 不做白名单 action 校验（B 无 executeAction）；运行时白名单逃逸由 sandbox.makeCtxExecuteTool 拦截。
+ *
+ * 1. handlerSource 非空字符串（trim 后 > 0）→ 否则 handler_source_empty
+ * 2. handlerSource 可编译：vm.runInNewContext 包成 (function(executeTool){ return async function handler(args, ctx){ <src> } })，
+ *    尝试编译（不执行），catch SyntaxError → compile_failed
+ * 3. inputSchema 结构：复用 A 层逻辑（type==='object' 或 undefined）→ invalid_input_schema
+ */
+export function validateGeneratedBSpec(spec: GeneratedBSpecLike): ValidateResult {
+  const source = spec.handlerSource
+  if (typeof source !== 'string' || source.trim().length === 0) {
+    return {
+      ok: false,
+      reason: 'handler_source_empty',
+      messageKey: 'errors:plugins.handler_source_empty',
+    }
+  }
+
+  // inputSchema 基本结构校验（复用 A 层口径：非 undefined 时须 type=object）
+  const schema = spec.inputSchema
+  if (
+    schema !== undefined &&
+    (typeof schema !== 'object' ||
+      schema === null ||
+      (schema as Record<string, unknown>).type !== 'object')
+  ) {
+    return {
+      ok: false,
+      reason: 'invalid_input_schema',
+      messageKey: 'errors:plugins.invalid_input_schema',
+    }
+  }
+
+  // 可编译校验：vm 编译期验语法（不执行 handler 体）
+  try {
+    const wrapped = `(function(executeTool){ return async function handler(args, ctx){ ${source} } })`
+    // 不设 timeout——编译步仅建函数对象、不执行 handler 体；Node vm 拒绝 timeout:0（须省略），否则抛 RangeError 使校验必败
+    vm.runInNewContext(wrapped, {}, { filename: 'generatedB/validate.handler.js' })
+  } catch {
+    return {
+      ok: false,
+      reason: 'compile_failed',
+      messageKey: 'errors:plugins.compile_failed',
+    }
+  }
+
+  return { ok: true }
 }

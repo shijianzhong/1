@@ -95,7 +95,12 @@
     "param_bound_too_wide": "参数约束比目标动作 schema 更宽，拒绝注册",
     "required_missing": "缺少目标动作的必填参数，拒绝注册",
     "invalid_input_schema": "inputSchema 须为 type=object 的 JSON Schema",
-    "not_found": "插件不存在或已被删除"
+    "not_found": "插件不存在或已被删除",
+    "trusted_required": "该代码工具尚未信任。请到 /plugins 页展开查看 handler 源码，确认安全后点「信任」",
+    "compile_failed": "handler 源码编译失败（语法错误），拒绝创建/注册",
+    "timeout": "代码工具执行超时（60s）",
+    "output_limit": "代码工具输出超出上限（16KB），已截断",
+    "handler_source_empty": "handler 源码为空，拒绝创建"
   },
   "secrets": {
     "key_id_required": "keyId 必填",

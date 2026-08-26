@@ -194,6 +194,8 @@ export interface OneApi {
     enable: (id: string) => Promise<IpcResult<void>>
     disable: (id: string) => Promise<IpcResult<void>>
     uninstall: (id: string) => Promise<IpcResult<void>>
+    /** 信任 generated/B 代码型插件（切占位↔真 handler）；trust=true 信任，false 取消 */
+    trust: (id: string, trust: boolean) => Promise<IpcResult<void>>
   }
   runs: {
     /** 列出 run（可按 session 过滤；默认最近 50 条，按开始时间倒序） */
@@ -472,6 +474,7 @@ const api: OneApi = {
     enable: (id) => ipcRenderer.invoke('plugins:enable', id),
     disable: (id) => ipcRenderer.invoke('plugins:disable', id),
     uninstall: (id) => ipcRenderer.invoke('plugins:uninstall', id),
+    trust: (id, trust) => ipcRenderer.invoke('plugins:trust', { id, trust }),
   },
   runs: {
     list: (input) => ipcRenderer.invoke('runs:list', input),

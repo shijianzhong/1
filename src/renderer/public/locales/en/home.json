@@ -37,6 +37,7 @@
       "skill": "Skill",
       "persona": "Persona update",
       "generated": "Declarative tool",
+      "generated_b": "Code tool",
       "unknown": "asset"
     },
     "title": "New {{kind}} preview",
@@ -52,7 +53,9 @@
       "graph": "Orchestration graph",
       "inputSchema": "Input schema (JSON Schema)",
       "executeAction": "Dispatch action",
-      "executeActionParams": "Fixed params (optional)"
+      "executeActionParams": "Fixed params (optional)",
+      "handlerSource": "Handler source (the body of async function handler(args, ctx){ ... })",
+      "handlerSourcePlaceholder": "const r = await ctx.executeTool(\"file_read\", { path: \"package.json\" });\nreturn JSON.parse(r.content).name"
     },
     "confirm": "Confirm & save",
     "savedHint": "Added to the library. See the management page.",

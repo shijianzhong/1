@@ -37,6 +37,7 @@
       "skill": "技能",
       "persona": "人设更新",
       "generated": "声明式工具",
+      "generated_b": "代码工具",
       "unknown": "资产"
     },
     "title": "新建{{kind}}预览",
@@ -52,7 +53,9 @@
       "graph": "编排图",
       "inputSchema": "入参 Schema（JSON Schema）",
       "executeAction": "判发动作",
-      "executeActionParams": "固定参数（可选）"
+      "executeActionParams": "固定参数（可选）",
+      "handlerSource": "handler 源码（async function handler(args, ctx){ ... } 函数体）",
+      "handlerSourcePlaceholder": "const r = await ctx.executeTool(\"file_read\", { path: \"package.json\" });\nreturn JSON.parse(r.content).name"
     },
     "confirm": "确认入库",
     "savedHint": "已加入对应库，可在管理页查看。",

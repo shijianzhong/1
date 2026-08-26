@@ -87,6 +87,15 @@ export function getGeneratedPluginManifestPath(id: string): string {
   return join(getGeneratedPluginDir(id), 'manifest.json')
 }
 
+/**
+ * generated/B 代码型插件 handler 源码路径（docs/PLUGIN_ARCHITECTURE.md §5 Stage 3）。
+ * 磁盘事实：config/generated-plugins/<id>/handler.js（与 manifest.json 同目录）。
+ * B 复用 generated-plugins 目录根，靠 id 前缀 genb_ 与 A 的 gen_ 互斥（正则过滤无串扰）。
+ */
+export function getGeneratedBHandlerPath(id: string): string {
+  return join(getGeneratedPluginDir(id), 'handler.js')
+}
+
 export function getVaultPath(): string {
   return join(getUserDataDir(), 'vault.bin')
 }

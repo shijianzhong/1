@@ -911,6 +911,18 @@ export type CreateDraft = {
         }
       }
     }
+  | {
+      kind: 'generated_b'
+      /** generated/B 代码型工具（docs/PLUGIN_ARCHITECTURE.md §3 B 层 + §5 Stage 3）：vm 沙箱受控加载 handler 源码，需显式信任 */
+      payload: {
+        name: string
+        description: string
+        /** LLM 可见入参 schema（JSON Schema） */
+        inputSchema: Record<string, unknown>
+        /** 可执行 handler 源码（沙箱内只能调 ctx.executeTool 白名单动作） */
+        handlerSource: string
+      }
+    }
 )
 
 /** 聊天创建状态（assistant 消息 meta.create；事实源，非模型正文） */
@@ -1332,7 +1344,7 @@ export interface McpServerStatus {
 // ============================================================================
 
 /** 插件种类（决定插件在哪个具体域生效 + 安全模型） */
-export type PluginKind = 'builtin' | 'mcp' | 'skill' | 'generated' | 'external'
+export type PluginKind = 'builtin' | 'mcp' | 'skill' | 'generated' | 'generated_b' | 'external'
 
 /** manifest.source 取值：记录「从哪分发来」，不重复 kind 语义（kind 决定域，source 只记来源） */
 export type PluginSource = 'builtin' | 'mcp' | 'skill' | 'registry' | 'external'
@@ -1357,6 +1369,16 @@ export interface OnePluginManifest {
    * 用可选字段而非判别联合——manifest 是统一视图，其他 kind 此字段不存在。
    */
   spec?: GeneratedPluginSpec
+  /**
+   * generated_b kind 的 spec（仅 kind='generated_b' 时有值）。
+   * 与 spec 平级可选字段，非判别联合——manifest 是统一视图。
+   */
+  specB?: GeneratedBSpec
+  /**
+   * 信任状态（仅 generated_b 用；null=未信任，注册占位工具返 trusted_required；
+   * 非空=已信任，注册真 code handler，approvalMode='always'）。
+   */
+  trustedBy?: { userId: string; ts: number } | null
 }
 
 /** generated/A 声明式工具 spec（只读/检索白名单动作，无新执行面） */
@@ -1372,6 +1394,18 @@ export interface GeneratedPluginSpec {
     action: string
     params?: Record<string, unknown>
   }
+}
+
+/** generated/B 代码型工具 spec（vm 沙箱受控加载 handler 源码，需显式信任） */
+export interface GeneratedBSpec {
+  /** 工具名（注册时加 `generated_b/` 前缀作为命名空间 + 所有权边界） */
+  name: string
+  /** 工具描述（LLM 可见，决定何时调用） */
+  description: string
+  /** LLM 可见的入参 schema（JSON Schema） */
+  inputSchema: Record<string, unknown>
+  /** 可执行 handler 源码（签名 async function handler(args, ctx)，沙箱内只能调 ctx.executeTool 白名单动作） */
+  handlerSource: string
 }
 
 
