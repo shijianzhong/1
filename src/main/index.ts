@@ -180,9 +180,11 @@ if (!gotLock) {
     void initKbStatus()
     registerIpcHandlers()
     startupMark('main:ipc-registered')
-    // —— 定时任务调度主循环（§定时任务）：常驻 tick，错过档逐 tick 自然追平 ——
-    startScheduler()
     createMainWindow()
+    // —— 定时任务调度主循环（§定时任务）：常驻 tick，错过档逐 tick 自然追平 ——
+    // 放窗口创建之后 + setImmediate 让 MCP/KB 异步初始化先走一步，
+    // 避免启动期到期调度抢窗口创建资源、且 agent 工具表（依赖 MCP）未就绪（#8）
+    setImmediate(() => startScheduler())
 
     // macOS Dock 图标：开发模式无 .app 包，需显式设置
     if (process.platform === 'darwin' && appIcon) {

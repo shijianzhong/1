@@ -215,8 +215,8 @@ export interface OneApi {
     }) => Promise<IpcResult<Schedule>>
     remove: (id: string) => Promise<IpcResult<{ ok: boolean }>>
     toggle: (input: { id: string; enabled: boolean }) => Promise<IpcResult<Schedule>>
-    /** 立即触发一次（不依赖 cron 命中），返回 ok / error（not_found|already_running） */
-    runNow: (id: string) => Promise<IpcResult<{ ok: boolean; error?: string }>>
+    /** 立即触发一次（fire-and-forget，不阻塞 IPC）。返回 ok / error / messageKey（not_found|already_running） */
+    runNow: (id: string) => Promise<IpcResult<{ ok: boolean; error?: string; messageKey?: string }>>
   }
   topics: {
     list: (opts?: { status?: Topic['status']; direction?: string; userId?: string }) => Promise<IpcResult<Topic[]>>

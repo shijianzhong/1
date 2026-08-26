@@ -9,7 +9,7 @@ import {
   removeSchedule,
 } from '../storage/schedules'
 import { runScheduleNow } from '../scheduler/scheduler'
-import { validateCron } from '../scheduler/cron'
+import { validateCron, hasUpcomingOccurrence } from '../scheduler/cron'
 
 // —— 定时任务 IPC（§定时任务）——
 // 入参 Zod 校验（IPC 边界不做隐式 as 断言，畸形参数在入口结构化报错）。
@@ -53,6 +53,13 @@ function assertValidCron(cron: string): void {
   const r = validateCron(cron)
   if (!r.valid) {
     throw new IpcErrorThrow('errors:schedules.invalid_cron', r.error ?? 'cron 表达式无效')
+  }
+  // 可命中性探针（#14）：拦截「2 月 31 日」等语法合法但永不命中的表达式
+  if (!hasUpcomingOccurrence(cron)) {
+    throw new IpcErrorThrow(
+      'errors:schedules.invalid_cron',
+      '该 cron 表达式在可预见范围内无命中时刻',
+    )
   }
 }
 
@@ -99,21 +106,24 @@ export function registerSchedulesHandlers(): void {
   })
 
   withHandler<{ ok: boolean }>('schedules:remove', (_e, inputRaw) => {
-    const id = IdSchema.parse(inputRaw)
+    const id = parseOrThrow(IdSchema, inputRaw)
     const ok = removeSchedule(id)
     if (!ok) throw new IpcErrorThrow('errors:schedules.not_found', '定时任务不存在')
     return { ok }
   })
 
   withHandler<Schedule>('schedules:toggle', (_e, inputRaw) => {
-    const { id, enabled } = z.object({ id: IdSchema, enabled: z.boolean() }).parse(inputRaw)
+    const { id, enabled } = parseOrThrow(
+      z.object({ id: IdSchema, enabled: z.boolean() }),
+      inputRaw,
+    )
     const updated = updateSchedule(id, { enabled })
     if (!updated) throw new IpcErrorThrow('errors:schedules.not_found', '定时任务不存在')
     return updated
   })
 
-  withHandler<{ ok: boolean; error?: string }>('schedules:runNow', (_e, inputRaw) => {
-    const id = IdSchema.parse(inputRaw)
+  withHandler<{ ok: boolean; error?: string; messageKey?: string }>('schedules:runNow', (_e, inputRaw) => {
+    const id = parseOrThrow(IdSchema, inputRaw)
     return runScheduleNow(id)
   })
 }

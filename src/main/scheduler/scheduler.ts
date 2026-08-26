@@ -1,5 +1,5 @@
 import type { Schedule } from '@shared/types'
-import { computeDueSchedules } from './engine'
+import { computeDueSchedules, resolveLastFiredBase } from './engine'
 import { runOrchestrationAction, runShellAction, notify } from './executors'
 import {
   listSchedules,
@@ -41,35 +41,54 @@ async function tick(): Promise<void> {
   }
 }
 
-/** IPC 手动触发：立即跑一次，并写回 lastFiredAt=now（避免 tick 立刻重复触发） */
-export async function runScheduleNow(id: string): Promise<{ ok: boolean; error?: string }> {
+/** IPC 手动触发：立即跑一次（fire-and-forget，不阻塞 IPC）。返回结构含 messageKey 供渲染层翻译 */
+export async function runScheduleNow(
+  id: string,
+): Promise<{ ok: boolean; error?: string; messageKey?: string }> {
   const s = getSchedule(id)
-  if (!s) return { ok: false, error: 'not_found' }
-  if (running.has(id)) return { ok: false, error: 'already_running' }
-  await fire(s, Date.now())
+  if (!s) return { ok: false, error: 'not_found', messageKey: 'errors:schedules.not_found' }
+  if (running.has(id)) {
+    return { ok: false, error: 'already_running', messageKey: 'errors:schedules.already_running' }
+  }
+  // fire-and-forget：编排可能跑数分钟，不阻塞 IPC；结果落 run_events + 可选通知
+  // advanceToNext：手动触发把 lastFiredAt 推进到下一命中点，避免 tick 同窗口重复触发（#1）
+  void fire(s, Date.now(), { advanceToNext: true }).catch((e) =>
+    logger.warn(`[scheduler] runNow fire 失败 sch=${s.id}`, e),
+  )
   return { ok: true }
 }
 
-/** 执行一次调度（按 action 类型分发），结束写回 lastFiredAt。失败仅告警，不向上抛 */
-async function fire(schedule: Schedule, occurrenceMs: number): Promise<void> {
+/**
+ * 执行一次调度（按 action 类型分发），结束写回 lastFiredAt。
+ * 失败仅告警，不向上抛。手动触发时 occurrenceMs 取 Date.now()，
+ * 但写回基准推进到「下一个 cron 命中点」，避免手动跑完 tick 又因同窗口到期重复触发（#1）。
+ */
+async function fire(
+  schedule: Schedule,
+  occurrenceMs: number,
+  opts: { advanceToNext?: boolean } = {},
+): Promise<void> {
   if (running.has(schedule.id)) return
   running.add(schedule.id)
+  let succeeded = false
   try {
     if (schedule.action.type === 'orchestration') {
       const r = await runOrchestrationAction(schedule.action.prompt, {
         modelId: schedule.action.modelId,
         name: schedule.name,
       })
+      succeeded = !r.error
       if (schedule.notifyOnComplete) {
-        notify(schedule.name, r.error ? `编排失败：${r.error}` : '编排已完成')
+        notify(schedule.name, r.error ? `Orchestration failed: ${r.error}` : 'Orchestration completed')
       }
     } else {
       const a = schedule.action
       const r = await runShellAction(a.command, a.args, a.cwd, a.timeoutMs)
+      succeeded = !r.error
       if (schedule.notifyOnComplete) {
         notify(
           schedule.name,
-          r.error ? `脚本失败：${r.error}` : `脚本已完成（退出码 ${r.code ?? '?'}）`,
+          r.error ? `Script failed: ${r.error}` : `Script completed (exit ${r.code ?? '?'})`,
         )
       }
     }
@@ -77,6 +96,17 @@ async function fire(schedule: Schedule, occurrenceMs: number): Promise<void> {
     logger.warn(`[scheduler] 执行失败 sch=${schedule.id}`, e)
   } finally {
     running.delete(schedule.id)
-    setScheduleLastFired(schedule.id, occurrenceMs)
+    // 写回基准：tick 用 occurrence（cron 命中时刻）；手动触发推进到下一命中点（#1 防双触发）
+    const base = resolveLastFiredBase(schedule, occurrenceMs, opts.advanceToNext ?? false)
+    const wrote = setScheduleLastFired(schedule.id, base)
+    if (!wrote) {
+      // 写失败：lastFiredAt 未推进，下一 tick 可能以旧基准重复触发同档（#5）
+      // 仅成功执行时才视为「该推进」——失败时保留旧基准，让 tick 下次重试该档
+      if (succeeded) {
+        logger.error(
+          `[scheduler] setScheduleLastFired 失败 sch=${schedule.id}，下 tick 可能重复触发`,
+        )
+      }
+    }
   }
 }

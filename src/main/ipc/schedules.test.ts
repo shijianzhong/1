@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ipcMain } from 'electron'
-import { isIpcFailure, type IpcResult } from '@shared/types'
+import { isIpcFailure, type IpcResult, type IpcSuccess } from '@shared/types'
 
 // —— 隔离依赖：storage/scheduler 主进程重模块（含 electron + Agent）全部 mock，
 // 仅验证 IPC 边界行为（Zod 校验 / cron 校验 / not_found / runNow 路由）。——
@@ -15,11 +15,13 @@ vi.mock('../logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.
 vi.mock('../storage/schedules', () => ({ listSchedules, createSchedule, updateSchedule, removeSchedule }))
 vi.mock('../scheduler/scheduler', () => ({ runScheduleNow }))
 // validateCron 简化：5 段且非空即合法（聚焦 IPC 边界，不重复测 cron 库）
+// hasUpcomingOccurrence 默认 true（可命中性是 @shared/cron 层的职责，IPC 测试不重复测）
 vi.mock('../scheduler/cron', () => ({
   validateCron: (expr: string) => {
     const parts = expr.trim().split(/\s+/)
     return { valid: parts.length === 5 && parts.every(Boolean), error: parts.length === 5 ? undefined : 'segment count' }
   },
+  hasUpcomingOccurrence: () => true,
 }))
 
 type Handler = (event: unknown, input: unknown) => unknown | Promise<unknown>
@@ -102,12 +104,44 @@ describe('ipc/schedules', () => {
     expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.not_found')
   })
 
+  it('toggle 畸形入参（enabled 非 boolean）→ 驳回 invalid_input', async () => {
+    await reg()
+    const res = await callWrapped('schedules:toggle', { id: 'x', enabled: 'true' })
+    expect(isIpcFailure(res)).toBe(true)
+    expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.invalid_input')
+  })
+
+  it('toggle 缺 id → 驳回 invalid_input', async () => {
+    await reg()
+    const res = await callWrapped('schedules:toggle', { enabled: true })
+    expect(isIpcFailure(res)).toBe(true)
+    expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.invalid_input')
+  })
+
+  it('remove 非字符串 id → 驳回 invalid_input', async () => {
+    await reg()
+    const res = await callWrapped('schedules:remove', 123)
+    expect(isIpcFailure(res)).toBe(true)
+    expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.invalid_input')
+  })
+
   it('runNow 路由到 runScheduleNow（外层 IpcResult 包裹业务结果）', async () => {
     await reg()
     runScheduleNow.mockReturnValue({ ok: true })
     const res = await callWrapped('schedules:runNow', 'x')
     expect(runScheduleNow).toHaveBeenCalledWith('x')
     expect(isIpcFailure(res)).toBe(false)
-    expect((res as IpcResult<{ ok: boolean }>).data).toEqual({ ok: true })
+    expect((res as IpcSuccess<{ ok: boolean }>).data).toEqual({ ok: true })
+  })
+
+  it('runNow already_running → 业务失败带 messageKey', async () => {
+    await reg()
+    runScheduleNow.mockReturnValue({ ok: false, error: 'already_running', messageKey: 'errors:schedules.already_running' })
+    const res = await callWrapped('schedules:runNow', 'x')
+    expect(isIpcFailure(res)).toBe(false)
+    expect((res as IpcSuccess<{ ok: boolean; messageKey?: string }>).data).toMatchObject({
+      ok: false,
+      messageKey: 'errors:schedules.already_running',
+    })
   })
 })

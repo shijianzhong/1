@@ -1,8 +1,9 @@
 import type { Schedule } from '@shared/types'
-import { nextOccurrence } from './cron'
+import { nextOccurrence, previewNextRun } from '@shared/cron'
 
 // —— 调度引擎（纯函数，§定时任务）——
 // 不依赖存储/电子/文件系统，便于单测锁定边界。
+// nextOccurrence/previewNextRun 已下沉 @shared/cron（主进程与渲染层共用，#13）。
 
 export interface DueSchedule {
   schedule: Schedule
@@ -33,12 +34,29 @@ export function computeDueSchedules(schedules: Schedule[], now: Date): DueSchedu
   return due
 }
 
+// previewNextRun 从 @shared/cron re-export，供旧调用方与单测保持兼容
+export { previewNextRun }
+
 /**
- * UI 预览：从「当前/上次触发」之后算起的下一次运行时刻。
- * 取 max(基准, from) 避免预览落在过去；cron 非法或无命中返回 null。
+ * 计算 fire 后应写回的 lastFiredAt 基准（纯函数，便于单测锁边界）：
+ * - 普通 tick：基准 = occurrence（本次 cron 命中时刻）。
+ * - 手动触发（advanceToNext）：推进到「下一个 cron 命中点」，
+ *   避免手动跑完、tick 又在同窗口重复触发（#1）。
+ * - 无可命中（cron 异常）时退回 occurrenceMs，不向前推进。
+ *
+ * 注意：用显式 advanceToNext 标志，而非比较 occurrenceMs === Date.now()——
+ * 后者是两次独立调用，值几乎不可能相等，会导致整条分支成为死代码（已修）。
  */
-export function previewNextRun(schedule: Schedule, from: Date = new Date()): Date | null {
-  const base = schedule.lastFiredAt != null ? new Date(schedule.lastFiredAt) : from
-  const after = new Date(Math.max(base.getTime(), from.getTime()))
-  return nextOccurrence(schedule.cron, after, schedule.timezone)
+export function resolveLastFiredBase(
+  schedule: Schedule,
+  occurrenceMs: number,
+  advanceToNext: boolean,
+): number {
+  if (advanceToNext && schedule.cron) {
+    return (
+      nextOccurrence(schedule.cron, new Date(occurrenceMs), schedule.timezone)?.getTime() ??
+      occurrenceMs
+    )
+  }
+  return occurrenceMs
 }

@@ -63,11 +63,11 @@ export async function runOrchestrationAction(
     }
     const effectiveModel = opts.modelId ?? modelId
 
-    // 记忆基座：L0 用户身份 + L2 跨会话摘要（对齐 home/orchestrate）
+    // 记忆基座：L0 用户身份 + L2 跨会话摘要（对齐 home/orchestrate，铁律 21）
     const persona = getPersona()
-    const l2 = buildL2Injection(DEFAULT_USER_ID)
     const baseInstructions = persona?.instructions ?? ''
-    const instructions = l2 ? `${baseInstructions}\n\n${l2}` : baseInstructions
+    const l2 = buildL2Injection(DEFAULT_USER_ID)
+    const instructions = withOrchestrationMemory(baseInstructions, persona, l2)
 
     const agentTools = await listToolsForAgents()
     const config: AgentConfig = {
@@ -80,12 +80,12 @@ export async function runOrchestrationAction(
     }
     const agent = new Agent(config, {
       llmOpts: { apiKey, baseURL, authHeader, apiFormat },
-      // runId 让工具事件落 run_events；onApprove 自动拒绝、onAskUser 返回空（fail-closed）
+      // runId 让工具事件落 run_events；onApprove 自动拒绝、onAskUser 返回无人值守提示（fail-closed）
       toolCtx: {
         runId,
         signal: undefined,
         onApprove: async () => ({ approved: false, reason: 'scheduled_headless' }),
-        onAskUser: async () => '',
+        onAskUser: async () => '[scheduled run: 无人值守，无法应答]',
       },
     })
     const messages: LlmMessage[] = [{ role: 'user', content: prompt }]
@@ -102,7 +102,8 @@ export async function runOrchestrationAction(
 export interface ShellRunResult {
   stdout: string
   stderr: string
-  code: number | null
+  /** 退出码（数字）或 spawn 失败的 errno 字符串（如 'EACCES'）；无错误为 0 */
+  code: number | string | null
   error?: string
   timedOut?: boolean
 }
@@ -122,23 +123,23 @@ export function runShellAction(
       resolve({ stdout: '', stderr: '', code: null, error: 'empty_command' })
       return
     }
-    const child = execFile(command, args, { cwd, timeout: timeoutMs, windowsHide: true }, (err, stdout, stderr) => {
-      if ((err as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
-        resolve({ stdout: '', stderr: '', code: null, error: 'command_not_found' })
+    // execFile 回调已涵盖所有 spawn/exit 错误（含 ENOENT/EACCES/超时 kill），
+    // 不再挂 child.on('error')：该事件与回调可能双触发，且其路径丢失 timedOut 语义。
+    execFile(command, args, { cwd, timeout: timeoutMs, windowsHide: true }, (err, stdout, stderr) => {
+      if (!err) {
+        resolve({ stdout: stdout ?? '', stderr: stderr ?? '', code: 0 })
         return
       }
-      const e = err as { killed?: boolean; code?: number; message?: string } | null
+      const e = err as NodeJS.ErrnoException & { killed?: boolean }
+      // spawn 失败（文件不存在 / 无权限）：code 是 errno 字符串
+      const code = typeof e.code === 'string' ? e.code : e.code ?? 1
       resolve({
         stdout: stdout ?? '',
         stderr: stderr ?? '',
-        code: e?.code ?? (err ? 1 : 0),
-        error: err ? e?.message : undefined,
-        timedOut: e?.killed ?? false,
+        code,
+        error: e.message,
+        timedOut: e.killed === true,
       })
-    })
-    // 超时兜底层（execFile 自身 timeout 已处理，这里仅防御性清理）
-    child.on('error', (e) => {
-      resolve({ stdout: '', stderr: '', code: null, error: e.message })
     })
   })
 }

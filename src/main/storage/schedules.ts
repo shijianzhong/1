@@ -85,15 +85,17 @@ export function removeSchedule(id: string): boolean {
   return true
 }
 
-/** 写回上次触发时刻（错过策略追平用）。失败仅告警（观测层不打断业务） */
-export function setScheduleLastFired(id: string, ts: number): void {
+/** 写回上次触发时刻（错过策略追平用）。返回是否写成功；失败仅告警（观测层不打断业务） */
+export function setScheduleLastFired(id: string, ts: number): boolean {
   try {
     const all = readAll()
     const idx = all.findIndex((s) => s.id === id)
-    if (idx < 0) return
+    if (idx < 0) return false
     all[idx] = { ...all[idx], lastFiredAt: ts, updatedAt: Date.now() }
     writeAll(all)
+    return true
   } catch (e) {
     logger.warn(`[schedules] setScheduleLastFired 失败 id=${id}`, e)
+    return false
   }
 }

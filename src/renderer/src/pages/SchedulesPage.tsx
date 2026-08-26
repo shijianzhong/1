@@ -11,7 +11,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { parseExpression } from 'cron-parser'
+import { validateCron, nextOccurrence } from '@shared/cron'
 import {
   useCreateSchedule,
   useRemoveSchedule,
@@ -23,6 +23,7 @@ import {
 import { errorMessage } from '@renderer/api/client'
 import { EmptyState } from '@renderer/components/ui/EmptyState'
 import { PageToolbar } from '@renderer/components/ui/PageToolbar'
+import { Button } from '@renderer/components/ui/Button'
 import { confirmDialog } from '@renderer/components/ui/ConfirmDialog'
 import type { Schedule, ScheduleAction } from '@shared/types'
 
@@ -30,26 +31,45 @@ import type { Schedule, ScheduleAction } from '@shared/types'
 // 列表 + 右侧抽屉编辑器：名称/启用/cron（实时校验+下次运行预览）/时区/触发目标
 // （orchestration 提示词 或 shell 命令+参数+cwd+超时）/立即运行/最近运行。
 
-/** 下次运行：from 之后的下一个命中时刻（带时区）；解析失败返回 null */
-function computeNext(cron: string, tz: string | undefined, from: Date = new Date()): Date | null {
-  try {
-    return parseExpression(cron, { currentDate: from, tz: tz || undefined }).next().toDate()
-  } catch {
-    return null
+/**
+ * 解析 shell 参数文本：支持单/双引号包裹含空格的参数（如 '/Applications/My App.app'）。
+ * 与 shell 行为一致：引号内的空格不拆分，引号外的空白为分隔符。
+ * 简易实现，不处理转义（参数路径含引号本身极少见）。
+ */
+function parseArgs(text: string): string[] {
+  const trimmed = text.trim()
+  if (!trimmed) return []
+  const args: string[] = []
+  let cur = ''
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      else cur += ch
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+    } else if (/\s/.test(ch)) {
+      if (cur) {
+        args.push(cur)
+        cur = ''
+      }
+    } else {
+      cur += ch
+    }
   }
+  if (cur) args.push(cur)
+  return args
 }
 
+/** cron 是否合法（与主进程共用 @shared/cron.validateCron，避免漂移 #13） */
 function cronValid(cron: string): boolean {
-  const trimmed = cron.trim()
-  if (!trimmed) return false
-  // 与主进程 validateCron 一致：恰好 5 段（cron-parser 对不足段静默兜底为默认值）
-  if (trimmed.split(/\s+/).length !== 5) return false
-  try {
-    parseExpression(cron)
-    return true
-  } catch {
-    return false
-  }
+  return validateCron(cron).valid
+}
+
+/** 下次运行：from（缺省当前）之后的下一个命中时刻（带时区）；解析失败返回 null */
+function computeNext(cron: string, tz: string | undefined, from: Date = new Date()): Date | null {
+  return nextOccurrence(cron, from, tz || undefined)
 }
 
 export function SchedulesPage() {
@@ -81,11 +101,7 @@ export function SchedulesPage() {
     try {
       const r = await runNowM.mutateAsync(s.id)
       if (!r.ok) {
-        setRunError(
-          r.error === 'already_running'
-            ? t('common:schedules.running')
-            : t('errors:schedules.not_found'),
-        )
+        setRunError(r.messageKey ? t(r.messageKey) : t('errors:schedules.not_found'))
       }
     } catch (e) {
       setRunError(errorMessage(e, t))
@@ -106,15 +122,10 @@ export function SchedulesPage() {
         title={t('common:schedules.title')}
         subtitle={t('common:schedules.subtitle')}
         actions={
-          <button
-            type="button"
-            className="nav-button"
-            onClick={openNew}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px' }}
-          >
+          <Button variant="default" size="sm" onClick={openNew}>
             <Plus size={14} />
             {t('common:schedules.new')}
-          </button>
+          </Button>
         }
       />
 
@@ -190,7 +201,8 @@ function ScheduleCard({
     () => new Intl.DateTimeFormat(lang, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
     [lang],
   )
-  const next = computeNext(s.cron, s.timezone)
+  // memo：parseExpression 较重，父级任何状态变更都会重渲所有卡片，缓存避免重复解析（#12）
+  const next = useMemo(() => computeNext(s.cron, s.timezone), [s.cron, s.timezone])
   const isOrch = s.action.type === 'orchestration'
 
   return (
@@ -309,16 +321,9 @@ function IconBtn({
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      className="nav-button"
-      style={{ display: 'inline-flex', padding: '6px 8px' }}
-    >
+    <Button variant="ghost" size="icon" title={title} aria-label={title} onClick={onClick}>
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -400,7 +405,10 @@ function ScheduleDrawer({
         : {
             type: 'shell',
             command: command.trim(),
-            args: argsText.trim() ? argsText.trim().split(/\s+/) : undefined,
+            args: (() => {
+              const a = parseArgs(argsText)
+              return a.length ? a : undefined
+            })(),
             cwd: cwd.trim() || undefined,
             timeoutMs: Number(timeoutMs.trim()),
           }
@@ -457,15 +465,15 @@ function ScheduleDrawer({
           <h2 className="section-title" style={{ fontSize: '1.05rem' }}>
             {isEdit ? t('common:schedules.edit') : t('common:schedules.new')}
           </h2>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="nav-button"
-            style={{ marginLeft: 'auto', display: 'inline-flex', padding: '6px 8px' }}
             aria-label={t('common:actions.close')}
+            style={{ marginLeft: 'auto' }}
           >
             <X size={16} />
-          </button>
+          </Button>
         </div>
 
         {error && (
@@ -601,19 +609,13 @@ function ScheduleDrawer({
         </label>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!valid || saving}
-            onClick={() => void save()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
+          <Button variant="default" size="sm" disabled={!valid || saving} onClick={() => void save()}>
             {saving ? <span className="spinner" /> : <Check size={15} />}
             {t('common:actions.save')}
-          </button>
-          <button type="button" className="nav-button" onClick={onClose} style={{ padding: '8px 14px' }}>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             {t('common:actions.cancel')}
-          </button>
+          </Button>
         </div>
 
         {!valid && (
@@ -656,21 +658,22 @@ function Segmented({
   label: string
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant={active ? 'outline' : 'ghost'}
+      size="sm"
       onClick={onClick}
-      className="nav-button"
-      style={{
-        padding: '6px 12px',
-        border: active ? '1px solid var(--color-brand-400, #4ECDC4)' : '1px solid var(--color-border)',
-        background: active
-          ? 'color-mix(in oklch, var(--color-brand-400) 12%, transparent)'
-          : 'transparent',
-        color: active ? 'var(--color-brand-400, #4ECDC4)' : 'var(--color-fg-1)',
-        borderRadius: 10,
-      }}
+      style={
+        active
+          ? {
+              borderColor: 'var(--color-brand-400, #4ECDC4)',
+              background: 'color-mix(in oklch, var(--color-brand-400) 12%, transparent)',
+              color: 'var(--color-brand-400, #4ECDC4)',
+            }
+          : undefined
+      }
     >
       {label}
-    </button>
+    </Button>
   )
 }

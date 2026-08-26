@@ -126,6 +126,7 @@
   "schedules": {
     "invalid_cron": "Invalid cron expression",
     "invalid_input": "Schedule parameter validation failed",
-    "not_found": "Schedule does not exist"
+    "not_found": "Schedule does not exist",
+    "already_running": "This schedule is already running"
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Schedule } from '@shared/types'
-import { computeDueSchedules, previewNextRun } from './engine'
+import { computeDueSchedules, previewNextRun, resolveLastFiredBase } from './engine'
 
 function makeSch(over: Partial<Schedule>): Schedule {
   return {
@@ -63,6 +63,29 @@ describe('engine.computeDueSchedules', () => {
     )
     expect(due).toHaveLength(1)
     expect(due[0].occurrence).toBe(t('2026-08-25T09:00:00Z'))
+  })
+})
+
+describe('engine.resolveLastFiredBase', () => {
+  it('tick（advanceToNext=false）→ 基准取 occurrence 本身', () => {
+    const sch = makeSch({ cron: '0 9 * * *' })
+    const occ = t('2026-08-24T09:00:00Z')
+    expect(resolveLastFiredBase(sch, occ, false)).toBe(occ)
+  })
+
+  it('手动触发（advanceToNext=true）→ 基准推进到下一命中点（> occurrence）', () => {
+    const sch = makeSch({ cron: '0 9 * * *', timezone: 'UTC' })
+    const occ = t('2026-08-24T08:00:00Z')
+    const base = resolveLastFiredBase(sch, occ, true)
+    expect(base).toBeGreaterThan(occ)
+    // 应为当天 09:00（下一命中），而非 occ 本身
+    expect(base).toBe(t('2026-08-24T09:00:00Z'))
+  })
+
+  it('手动触发但 cron 异常 → 退回 occurrenceMs，不向前推进', () => {
+    const sch = makeSch({ cron: 'nope' })
+    const occ = t('2026-08-24T08:00:00Z')
+    expect(resolveLastFiredBase(sch, occ, true)).toBe(occ)
   })
 })
 
