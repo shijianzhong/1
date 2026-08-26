@@ -125,6 +125,7 @@
   },
   "schedules": {
     "invalid_cron": "Invalid cron expression",
+    "invalid_timezone": "Invalid timezone (must be a valid IANA timezone, e.g. Asia/Shanghai)",
     "invalid_input": "Schedule parameter validation failed",
     "not_found": "Schedule does not exist",
     "already_running": "This schedule is already running"

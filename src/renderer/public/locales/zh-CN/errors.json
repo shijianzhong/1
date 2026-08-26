@@ -125,6 +125,7 @@
   },
   "schedules": {
     "invalid_cron": "Cron 表达式无效",
+    "invalid_timezone": "时区无效（须为合法 IANA 时区，如 Asia/Shanghai）",
     "invalid_input": "定时任务参数校验失败",
     "not_found": "定时任务不存在",
     "already_running": "该定时任务正在执行中"

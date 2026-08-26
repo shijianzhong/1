@@ -9,7 +9,7 @@ import {
   removeSchedule,
 } from '../storage/schedules'
 import { runScheduleNow } from '../scheduler/scheduler'
-import { validateCron, hasUpcomingOccurrence } from '../scheduler/cron'
+import { validateCron, hasUpcomingOccurrence, isValidTimeZone } from '../scheduler/cron'
 
 // —— 定时任务 IPC（§定时任务）——
 // 入参 Zod 校验（IPC 边界不做隐式 as 断言，畸形参数在入口结构化报错）。
@@ -63,6 +63,14 @@ function assertValidCron(cron: string): void {
   }
 }
 
+/** IANA 时区合法性校验（§定时任务）：非法时区直接结构化报错，
+ * 避免后续 nextOccurrence 返 null 导致 schedule 静默永不触发（根因防御）。 */
+function assertValidTimezone(tz?: string): void {
+  if (tz && !isValidTimeZone(tz)) {
+    throw new IpcErrorThrow('errors:schedules.invalid_timezone', `时区「${tz}」不是合法的 IANA 时区`)
+  }
+}
+
 /** Zod 解析：失败抛 IpcErrorThrow('errors:schedules.invalid_input', ...)，错误语义完整（§基线#4） */
 function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
   try {
@@ -86,6 +94,7 @@ export function registerSchedulesHandlers(): void {
   withHandler<Schedule>('schedules:create', (_e, inputRaw) => {
     const input = parseOrThrow(CreateSchema, inputRaw)
     assertValidCron(input.cron)
+    assertValidTimezone(input.timezone)
     return createSchedule({
       name: input.name,
       enabled: input.enabled,
@@ -100,6 +109,7 @@ export function registerSchedulesHandlers(): void {
     const parsed = parseOrThrow(z.object({ id: IdSchema, ...UpdateSchema.shape }), inputRaw)
     const { id, ...patch } = parsed
     if (patch.cron !== undefined) assertValidCron(patch.cron)
+    if (patch.timezone !== undefined) assertValidTimezone(patch.timezone)
     const updated = updateSchedule(id, patch)
     if (!updated) throw new IpcErrorThrow('errors:schedules.not_found', '定时任务不存在')
     return updated

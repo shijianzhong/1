@@ -16,13 +16,18 @@ vi.mock('../storage/schedules', () => ({ listSchedules, createSchedule, updateSc
 vi.mock('../scheduler/scheduler', () => ({ runScheduleNow }))
 // validateCron 简化：5 段且非空即合法（聚焦 IPC 边界，不重复测 cron 库）
 // hasUpcomingOccurrence 默认 true（可命中性是 @shared/cron 层的职责，IPC 测试不重复测）
-vi.mock('../scheduler/cron', () => ({
-  validateCron: (expr: string) => {
-    const parts = expr.trim().split(/\s+/)
-    return { valid: parts.length === 5 && parts.every(Boolean), error: parts.length === 5 ? undefined : 'segment count' }
-  },
-  hasUpcomingOccurrence: () => true,
-}))
+// 其余函数（isValidTimeZone / formatLocal）保留真实实现，避免 assertValidTimezone 调用 undefined
+vi.mock('../scheduler/cron', async () => {
+  const actual = await vi.importActual<typeof import('../scheduler/cron')>('../scheduler/cron')
+  return {
+    ...actual,
+    validateCron: (expr: string) => {
+      const parts = expr.trim().split(/\s+/)
+      return { valid: parts.length === 5 && parts.every(Boolean), error: parts.length === 5 ? undefined : 'segment count' }
+    },
+    hasUpcomingOccurrence: () => true,
+  }
+})
 
 type Handler = (event: unknown, input: unknown) => unknown | Promise<unknown>
 
@@ -78,6 +83,27 @@ describe('ipc/schedules', () => {
     })
     expect(isIpcFailure(res)).toBe(true)
     expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.invalid_input')
+  })
+
+  it('create 非法 IANA 时区 → 驳回 invalid_timezone 且不落库', async () => {
+    await reg()
+    const res = await callWrapped('schedules:create', {
+      name: 'a',
+      cron: '0 9 * * *',
+      timezone: 'Asia/Shangai', // 拼错
+      action: { type: 'orchestration', prompt: 'do it' },
+    })
+    expect(isIpcFailure(res)).toBe(true)
+    expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.invalid_timezone')
+    expect(createSchedule).not.toHaveBeenCalled()
+  })
+
+  it('update 改为非法 IANA 时区 → 驳回 invalid_timezone', async () => {
+    await reg()
+    updateSchedule.mockReturnValue({ id: 'x' })
+    const res = await callWrapped('schedules:update', { id: 'x', timezone: 'Not/AZone' })
+    expect(isIpcFailure(res)).toBe(true)
+    expect((res as { messageKey?: string }).messageKey).toBe('errors:schedules.invalid_timezone')
   })
 
   it('update 目标不存在 → 驳回 not_found', async () => {
