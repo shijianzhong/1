@@ -81,6 +81,33 @@ export function hasUpcomingOccurrence(
   return next.getTime() - from.getTime() <= windowMs
 }
 
+/**
+ * IANA 时区合法性校验（§定时任务）：用 Intl.DateTimeFormat 探活，
+ * 非法时区抛 RangeError → 返回 false。跨运行时稳定（无需 Intl.supportedValuesOf）。
+ * 用于创建/更新时拦截非法时区，避免后续 nextOccurrence 返 null 导致 schedule
+ * 静默永不触发（根因防御，非补丁）。
+ */
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 当地时刻格式化（§定时任务 UI/确认文案）：统一用进程本地时区渲染为
+ * `YYYY-MM-DD HH:mm`，避免「确认文案本地、返回值 UTC」的不一致（#tz-consistency）。
+ * 与时区无关的绝对语义以 cron/引擎的 nextOccurrence 为准。
+ */
+export function formatLocal(dt: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(
+    dt.getMinutes(),
+  )}`
+}
+
 // —— Cron 预设编辑器纯逻辑（§定时任务 UI）——
 // 渲染层下拉选常见模式（每 N 分钟 / 每 N 小时 / 每日 / 每周 / 每月），「自定义」回退原始输入。
 // detectPreset 从既有 cron 反推（编辑场景），presetToCron 由参数生成。纯函数便于单测。

@@ -10,6 +10,7 @@ import { seedBuiltinAssets, seedKbModel } from './storage/builtin'
 import { registerMemoryTools } from './tools/builtin/memory'
 import { registerCreateTools } from './tools/builtin/create'
 import { registerAskUserTools } from './tools/builtin/askUser'
+import { registerScheduleCreateTool } from './tools/builtin/scheduleCreate'
 import { registerWebTools } from './tools/builtin/web'
 import { registerOpenCliTools } from './tools/builtin/opencli'
 import { registerFileTools } from './tools/builtin/file'
@@ -154,6 +155,7 @@ if (!gotLock) {
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerCreateTools() // 聊天创建工具（propose_*，不落库，确认才入库）
     registerAskUserTools() // HITL 提问工具（编排内 agent 向用户提问，挂起等作答）
+    registerScheduleCreateTool() // 对话内创建定时任务（ask_user 确认后落库，15s tick 自动感知）
     registerWebTools() // 联网工具（web_search/web_read，Jina 免费免 key，零依赖随包即用）
     registerOpenCliTools() // OpenCLI 白名单工具（用户浏览器登录态读站，写操作拦截）
     registerFileTools() // 文件工具（file_write/read/search，限 Obsidian vault 等允许根目录）
