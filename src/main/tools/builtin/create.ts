@@ -13,7 +13,8 @@ export interface ProposeSink {
   onPropose?: (draft: CreateDraft) => void
 }
 
-function newDraftId(): string {
+/** 生成草稿 id（propose_* 工具共用，供 proposeGenerated 复用） */
+export function newDraftId(): string {
   return `draft_${randomUUID().replace(/-/g, '').slice(0, 12)}`
 }
 
@@ -34,10 +35,11 @@ const WorkflowGraphSchema = z.object({
 })
 
 /** 四类工具共用的防幻觉尾句（A1 对称） */
-const NO_CLAIM_SUCCESS =
+export const NO_CLAIM_SUCCESS =
   '调用本工具仅弹出确认卡，不等于已入库。禁止向用户宣称创建成功/已保存/已入库；须待用户在卡片上确认。'
 
-function emitPropose(ctx: unknown, draft: CreateDraft): { ok: true; draftId: string; kind: string } {
+/** 把草稿经 ctx.onPropose 推给 home IPC → emitStream proposal → 前端确认卡（propose_* 共用） */
+export function emitPropose(ctx: unknown, draft: CreateDraft): { ok: true; draftId: string; kind: string } {
   const sink = ctx as ProposeSink | undefined
   sink?.onPropose?.(draft)
   return { ok: true, draftId: draft.draftId, kind: draft.kind }

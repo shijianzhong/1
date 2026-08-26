@@ -81,6 +81,8 @@ export const SkillSchema = z.object({
   discipline: z.string().optional(),
   hasScripts: z.boolean().optional(),
   registry: RegistryProvenanceSchema.optional(),
+  /** 启停开关（frontmatter enabled，默认 true；false 时 skill-host 过滤不注入） */
+  enabled: z.boolean().optional(),
   createdAt: ts,
   updatedAt: ts,
 })

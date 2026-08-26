@@ -9,6 +9,7 @@ import { seedDefaultModels } from './storage/models'
 import { seedBuiltinAssets, seedKbModel } from './storage/builtin'
 import { registerMemoryTools } from './tools/builtin/memory'
 import { registerCreateTools } from './tools/builtin/create'
+import { registerProposeGeneratedTool } from './tools/builtin/proposeGenerated'
 import { registerAskUserTools } from './tools/builtin/askUser'
 import { registerScheduleCreateTool } from './tools/builtin/scheduleCreate'
 import { registerWebTools } from './tools/builtin/web'
@@ -31,6 +32,9 @@ import { registerReviewArchiveTools } from './tools/builtin/reviewArchive'
 import { registerAiCavityTools } from './tools/builtin/aiCavity'
 import { registerAssetCrudTools } from './tools/builtin/assetCrud'
 import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
+import { pluginHost } from './plugins/host'
+import { initGeneratedPlugins, disconnectAll as disconnectAllGenerated } from './plugins/generated'
+import { skillHostManager } from './plugins/skillHost'
 import { initKbStatus } from './vector/embed'
 import { terminateEmbedWorker } from './vector/worker-client'
 import { createTray, destroyTray } from './tray'
@@ -154,6 +158,7 @@ if (!gotLock) {
     startupMark('main:seedBuiltin')
     registerMemoryTools() // 内置记忆工具（L3 recall/search/retain）
     registerCreateTools() // 聊天创建工具（propose_*，不落库，确认才入库）
+    registerProposeGeneratedTool() // 现场造工具（propose_generated，A 层白名单声明式，确认才注册）
     registerAskUserTools() // HITL 提问工具（编排内 agent 向用户提问，挂起等作答）
     registerScheduleCreateTool() // 对话内创建定时任务（ask_user 确认后落库，15s tick 自动感知）
     registerWebTools() // 联网工具（web_search/web_read，Jina 免费免 key，零依赖随包即用）
@@ -178,6 +183,10 @@ if (!gotLock) {
     startupMark('main:tools-registered')
     // MCP 服务器异步自动连接（不阻塞启动）
     void initMcpServers()
+    // skill-host 管理器启动扫描（收集 disabledSkills，供 filterSkillIds 过滤）
+    void skillHostManager.onLoad(pluginHost)
+    // generated/A 声明式插件加载（enabled 的 onLoad 注册，非阻塞，单个失败不阻塞其他）
+    void initGeneratedPlugins(pluginHost)
     // KB 向量库自检：flatIndex 懒加载 + vec_dim 漂移检测（非阻塞，失败降级纯词法）
     void initKbStatus()
     registerIpcHandlers()
@@ -245,6 +254,7 @@ if (!gotLock) {
     destroyTray()
     stopAutoUpdater()
     void disconnectAllMcp() // 断开所有 MCP 服务器连接
+    void disconnectAllGenerated() // 卸载所有 generated/A 声明式插件（对称 MCP，best-effort）
     terminateEmbedWorker() // 终止 embed worker 子进程（best-effort，§worker-client:197）
     closeDb()
   })

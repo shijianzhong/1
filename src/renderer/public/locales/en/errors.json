@@ -88,6 +88,15 @@
     "empty_payload": "Persona update payload empty: provide instructions or a profile field",
     "propose_failed": "Create proposal failed"
   },
+  "plugins": {
+    "action_not_whitelisted": "Action is not in the read-only/retrieval whitelist; registration refused",
+    "params_not_subset": "Params are not a subset of the target action's schema (no new fields allowed); registration refused",
+    "param_type_mismatch": "Param type does not match the target action's schema; registration refused",
+    "param_bound_too_wide": "Param bounds are wider than the target action's schema; registration refused",
+    "required_missing": "Missing a required param of the target action; registration refused",
+    "invalid_input_schema": "inputSchema must be a JSON Schema with type=object",
+    "not_found": "Plugin not found or already deleted"
+  },
   "secrets": {
     "key_id_required": "keyId is required",
     "safe_storage_unavailable": "System keychain unavailable, cannot encrypt/decrypt API key"

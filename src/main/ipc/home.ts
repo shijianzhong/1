@@ -56,6 +56,9 @@ import {
 } from '../orchestrator/home'
 import { SkillContextProvider } from '../skills/provider'
 import { pluginHost } from '../plugins/host'
+import { saveGeneratedPlugin, enableGeneratedPlugin } from '../plugins/generated'
+import { validateGeneratedSpec } from '../plugins/whitelist'
+import { skillHostManager } from '../plugins/skillHost'
 import { getDb } from '../storage/db'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
@@ -332,7 +335,7 @@ export function registerHomeHandlers(): void {
     skillProviders.push(homeSkillProvider)
     const { instructions: instructionsWithSkills, injected: homeInjectedSkills } = homeSkillProvider.beforeRun({
       agentName: 'home',
-      skillIds: [...mentionSkillIds],
+      skillIds: skillHostManager.filterSkillIds([...mentionSkillIds]),
       instructions: instructionsWithL0,
     })
     if (homeInjectedSkills.length > 0) {
@@ -522,7 +525,7 @@ export function registerHomeHandlers(): void {
         skillProviders.push(nodeSkillProvider)
         const { instructions: nodeInstructions, injected: nodeInjectedSkills } = nodeSkillProvider.beforeRun({
           agentName: node.id,
-          skillIds: d.skillIds ?? [],
+          skillIds: skillHostManager.filterSkillIds(d.skillIds ?? []),
           instructions: d.instructions ?? '',
         })
         if (nodeInjectedSkills.length > 0) {
@@ -1095,6 +1098,19 @@ export function registerHomeHandlers(): void {
         profile: mergedProfile,
       })
       saved = { id: updated.id }
+    } else if (kind === 'generated') {
+      // generated/A 声明式工具：保存 manifest + 立即 onLoad 注册进 registry
+      // （docs/PLUGIN_ARCHITECTURE.md §5 Stage 2——造完立刻可用）
+      const p = payload as Extract<CreateDraft, { kind: 'generated' }>['payload']
+      // 闸门前置：非法 spec 直接报错、不落盘，避免留下 enabled 死工具（onLoad 内校验仅兜底）
+      const v = validateGeneratedSpec(p)
+      if (!v.ok) {
+        throw new Error(`generated 工具校验失败（${v.reason}）：未创建`)
+      }
+      const file = saveGeneratedPlugin({ spec: p })
+      // 立即注册（enabled=true，注册点白名单校验在 onLoad 内再兜底一次）
+      await enableGeneratedPlugin(pluginHost, file.id)
+      saved = { id: file.id }
     } else {
       throw new Error(`未知创建类型：${String(kind)}`)
     }

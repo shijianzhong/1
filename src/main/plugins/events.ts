@@ -25,7 +25,8 @@ export interface PluginEventMap {
   }
   'tool.failed': { toolName: string; runId?: string; toolUseId: string; nodeId?: string; error: string }
   'skill.injected': { agentName: string; skills: string[] }
-  'plugin.registered': { id: string; toolPrefix: string }
+  /** status:'failed' + reason 用于注册点白名单拒绝的可观测（不塞 run_events，非 per-run） */
+  'plugin.registered': { id: string; toolPrefix: string; status?: 'ok' | 'failed'; reason?: string }
   'plugin.unloaded': { id: string; reason: 'disable' | 'uninstall' | 'shutdown' }
 }
 

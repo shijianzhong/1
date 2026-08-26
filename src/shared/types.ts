@@ -643,6 +643,8 @@ export interface Skill {
   hasScripts?: boolean
   /** registry 溯源 */
   registry?: RegistryProvenance
+  /** 启停开关（frontmatter enabled，默认 true；false 时 skill-host 过滤掉不注入 beforeRun） */
+  enabled?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -891,6 +893,21 @@ export type CreateDraft = {
           alias?: string
           role?: string
           preferredLanguage?: 'zh-CN' | 'en'
+        }
+      }
+    }
+  | {
+      kind: 'generated'
+      /** generated/A 声明式工具（docs/PLUGIN_ARCHITECTURE.md §3）：只读/检索白名单动作，无新执行面 */
+      payload: {
+        name: string
+        description: string
+        /** LLM 可见入参 schema（JSON Schema） */
+        inputSchema: Record<string, unknown>
+        /** 判发目标：白名单动作 + 可选固定 params */
+        executeAction: {
+          action: string
+          params?: Record<string, unknown>
         }
       }
     }
@@ -1307,6 +1324,56 @@ export interface McpServerStatus {
   error?: string
   tools?: Array<{ name: string; description?: string }>
 }
+
+// ============================================================================
+// 插件能力统一契约（docs/PLUGIN_ARCHITECTURE.md §3）——
+// 纯数据视图，跨主/渲染/preload 共享（runtime 契约 PluginHost/PluginLifecycle
+// 仍在 src/main/plugins/contracts.ts，不跨进程）。generated/A 声明式工具 spec 也在此。
+// ============================================================================
+
+/** 插件种类（决定插件在哪个具体域生效 + 安全模型） */
+export type PluginKind = 'builtin' | 'mcp' | 'skill' | 'generated' | 'external'
+
+/** manifest.source 取值：记录「从哪分发来」，不重复 kind 语义（kind 决定域，source 只记来源） */
+export type PluginSource = 'builtin' | 'mcp' | 'skill' | 'registry' | 'external'
+
+/** 插件清单：统一插件视图（/plugins 页 + IPC plugins:list 返回类型） */
+export interface OnePluginManifest {
+  /** 全局唯一，命名空间如 'generated/<id>' | 'skill/<id>' | 'mcp/<server-id>' | 'builtin/<name>' */
+  id: string
+  kind: PluginKind
+  name: string
+  version: string
+  description: string
+  enabled: boolean
+  source: PluginSource
+  /** 可逆效果描述：卸载时按此清单回滚，不留下孤儿注册或残留数据 */
+  effects: {
+    tools: string[]
+    storage: string[]
+  }
+  /**
+   * generated kind 的 spec（仅 kind='generated' 时有值）。
+   * 用可选字段而非判别联合——manifest 是统一视图，其他 kind 此字段不存在。
+   */
+  spec?: GeneratedPluginSpec
+}
+
+/** generated/A 声明式工具 spec（只读/检索白名单动作，无新执行面） */
+export interface GeneratedPluginSpec {
+  /** 工具名（注册时加 `generated/` 前缀作为命名空间 + 所有权边界） */
+  name: string
+  /** 工具描述（LLM 可见，决定何时调用） */
+  description: string
+  /** LLM 可见的入参 schema（JSON Schema） */
+  inputSchema: Record<string, unknown>
+  /** 判发目标：白名单动作 + 可选固定 params */
+  executeAction: {
+    action: string
+    params?: Record<string, unknown>
+  }
+}
+
 
 // —— run diagnostics（运行时事实流查询层，DEEPSEEK_HARNESS_LEARNING_PLAN P0）——
 

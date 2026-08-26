@@ -18,6 +18,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelConfig,
+  OnePluginManifest,
   CompareStreamEvent,
   NativeDirDialogLabels,
   NativeFileDialogLabels,
@@ -186,6 +187,13 @@ export interface OneApi {
     connectServer: (id: string) => Promise<IpcResult<{ toolCount: number }>>
     disconnectServer: (id: string) => Promise<IpcResult<void>>
     testServer: (input: Omit<McpServerConfig, 'id'>) => Promise<IpcResult<{ toolCount: number; tools: Array<{ name: string; description?: string }> }>>
+  }
+  plugins: {
+    list: () => Promise<IpcResult<OnePluginManifest[]>>
+    get: (id: string) => Promise<IpcResult<OnePluginManifest | null>>
+    enable: (id: string) => Promise<IpcResult<void>>
+    disable: (id: string) => Promise<IpcResult<void>>
+    uninstall: (id: string) => Promise<IpcResult<void>>
   }
   runs: {
     /** 列出 run（可按 session 过滤；默认最近 50 条，按开始时间倒序） */
@@ -457,6 +465,13 @@ const api: OneApi = {
     connectServer: (id) => ipcRenderer.invoke('mcp:connectServer', id),
     disconnectServer: (id) => ipcRenderer.invoke('mcp:disconnectServer', id),
     testServer: (input) => ipcRenderer.invoke('mcp:testServer', input),
+  },
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    get: (id) => ipcRenderer.invoke('plugins:get', id),
+    enable: (id) => ipcRenderer.invoke('plugins:enable', id),
+    disable: (id) => ipcRenderer.invoke('plugins:disable', id),
+    uninstall: (id) => ipcRenderer.invoke('plugins:uninstall', id),
   },
   runs: {
     list: (input) => ipcRenderer.invoke('runs:list', input),

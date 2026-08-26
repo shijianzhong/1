@@ -36,6 +36,7 @@
       "capability": "能力",
       "skill": "技能",
       "persona": "人设更新",
+      "generated": "声明式工具",
       "unknown": "资产"
     },
     "title": "新建{{kind}}预览",
@@ -48,7 +49,10 @@
       "personaInstructions": "人设正文",
       "personaKeepHint": "留空 = 保留当前人设，仅更新档案",
       "content": "技能内容（SKILL.md）",
-      "graph": "编排图"
+      "graph": "编排图",
+      "inputSchema": "入参 Schema（JSON Schema）",
+      "executeAction": "判发动作",
+      "executeActionParams": "固定参数（可选）"
     },
     "confirm": "确认入库",
     "savedHint": "已加入对应库，可在管理页查看。",

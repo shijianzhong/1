@@ -1,6 +1,8 @@
 // —— 插件能力统一契约（docs/PLUGIN_ARCHITECTURE.md §3）——
 // 类型 only，无运行时代码；落地实现见 ./host.ts，事件载荷见 ./events.ts。
 // 复用 registry 既有类型作为单一事实源（不另造一份工具/上下文类型，避免双份维护）。
+// 跨进程数据视图（OnePluginManifest / PluginKind / GeneratedPluginSpec）定义在
+// @shared/types，此处 re-export 保持主进程单一 import 点。
 
 import type { ZodTypeAny } from 'zod'
 import type {
@@ -11,32 +13,7 @@ import type {
 } from '../tools/registry'
 import type { PluginEventMap, Unsubscribe } from './events'
 
-/** 插件种类（决定插件在哪个具体域生效 + 安全模型） */
-export type PluginKind = 'builtin' | 'mcp' | 'skill' | 'generated' | 'external'
-
-/** manifest.source 取值：记录「从哪分发来」，不重复 kind 语义（kind 决定域，source 只记来源） */
-export type PluginSource = 'builtin' | 'mcp' | 'skill' | 'registry' | 'external'
-
-/** 插件清单：统一入口 src/main/plugins/registry.ts 读它做 load/start/stop/unload */
-export interface OnePluginManifest {
-  /** 全局唯一，命名空间如 'builtin/memory' | 'mcp/server-id' | 'skill/{id}' | 'generated/cad' | 'ext/xxx' */
-  id: string
-  /** builtin | mcp | skill | generated | external（Registry 资产分发到三种再转 manifest） */
-  kind: PluginKind
-  name: string
-  version: string
-  description: string
-  enabled: boolean
-  /** 分发来源：builtin | mcp | skill | registry | external（kind 决定在哪个域值/安全模型，source 只记录"从哪分发来"） */
-  source: PluginSource
-  /** 可逆效果描述：注册了什么工具 / 注入了什么上下文 / 占用了什么存储；卸载时按此清单回滚，不留下孤儿注册或残留数据 */
-  effects: {
-    /** 注册的工具名前缀（供 unregisterByPrefix 清理） */
-    tools: string[]
-    /** 插件独占的表 / JSON 配置键（卸载时清理） */
-    storage: string[]
-  }
-}
+export type { OnePluginManifest, PluginKind, PluginSource, GeneratedPluginSpec } from '@shared/types'
 
 /** 工具注册 spec（PluginHost.tools.register 入参）；运行时入参校验用 zod schema */
 export interface PluginToolSpec {

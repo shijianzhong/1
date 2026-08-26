@@ -68,6 +68,25 @@ export function getPersonaPath(): string {
   return join(getConfigDir(), 'persona.json')
 }
 
+/**
+ * generated/A 声明式插件目录（docs/PLUGIN_ARCHITECTURE.md §5 Stage 2）。
+ * 磁盘事实：config/generated-plugins/<id>/manifest.json
+ * 与 skills 同级（config 域，可写层、随包零依赖）。
+ */
+export function getGeneratedPluginsDir(): string {
+  return join(getConfigDir(), 'generated-plugins')
+}
+
+/** 单个 generated 插件目录（config/generated-plugins/<id>） */
+export function getGeneratedPluginDir(id: string): string {
+  return join(getGeneratedPluginsDir(), id)
+}
+
+/** generated 插件 manifest 路径（config/generated-plugins/<id>/manifest.json） */
+export function getGeneratedPluginManifestPath(id: string): string {
+  return join(getGeneratedPluginDir(id), 'manifest.json')
+}
+
 export function getVaultPath(): string {
   return join(getUserDataDir(), 'vault.bin')
 }

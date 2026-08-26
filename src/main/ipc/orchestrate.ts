@@ -33,6 +33,7 @@ import { getDb } from '../storage/db'
 import { endRun, startRun, appendRunEvent } from '../storage/runEvents'
 import { SkillContextProvider } from '../skills/provider'
 import { pluginHost } from '../plugins/host'
+import { skillHostManager } from '../plugins/skillHost'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
 import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
@@ -169,7 +170,7 @@ function makeResolveAgent(
     skillProviders.push(skillProvider)
     const { instructions, injected: injectedSkills } = skillProvider.beforeRun({
       agentName,
-      skillIds: agentSkillIds,
+      skillIds: skillHostManager.filterSkillIds(agentSkillIds),
       instructions: agentInstructions,
     })
     if (injectedSkills.length > 0) {

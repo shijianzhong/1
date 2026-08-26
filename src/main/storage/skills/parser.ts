@@ -14,6 +14,8 @@ export interface ParsedSkillMd {
   discipline?: string
   /** registry provenance（frontmatter `registry_*` 字段） */
   registry?: RegistryProvenance
+  /** 启停开关（frontmatter enabled；未设默认 true，由 store 层兜默认） */
+  enabled?: boolean
   /** 从 zip 中提取的资源文件相对路径列表（仅 parseSkillZip 使用） */
   resources?: string[]
   /** 从 zip 中提取的脚本文件相对路径列表（仅 parseSkillZip 使用） */
@@ -187,6 +189,15 @@ export function parseSkillMd(text: string): ParsedSkillMd | null {
       }
     : undefined
 
+  // 启停开关：frontmatter enabled（未设默认 true，由 store 层兜默认）
+  const enabledRaw = (fm as Record<string, unknown> | undefined)?.enabled
+  const enabled =
+    typeof enabledRaw === 'boolean'
+      ? enabledRaw
+      : typeof enabledRaw === 'string'
+        ? enabledRaw === 'true'
+        : undefined
+
   return {
     name,
     description: fm?.description?.trim() || undefined,
@@ -194,6 +205,7 @@ export function parseSkillMd(text: string): ParsedSkillMd | null {
     content: body,
     discipline,
     registry,
+    enabled,
   }
 }
 
@@ -219,9 +231,11 @@ export function buildSkillMd(skill: {
   content: string
   discipline?: string
   registry?: RegistryProvenance
+  enabled?: boolean
 }): string {
   const fm: string[] = ['---', `name: ${yamlSafe(skill.name)}`]
   if (skill.description) fm.push(`description: ${yamlSafe(skill.description)}`)
+  if (skill.enabled !== undefined) fm.push(`enabled: ${skill.enabled}`)
   if (skill.tags && skill.tags.length > 0) {
     fm.push('tags:')
     for (const tag of skill.tags) fm.push(`  - ${yamlSafe(tag)}`)

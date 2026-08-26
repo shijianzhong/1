@@ -40,6 +40,9 @@ export function inferCreateKindFromText(text: string): CreateKind | null {
   if (/能力|编排|工作流|workflow|capability|画布/.test(t)) {
     return 'capability'
   }
+  if (/工具|插件|generated/.test(t)) {
+    return 'generated'
+  }
   if (/角色|\bagent\b|助手人设/.test(t)) {
     // 「助手人设」已在 persona；纯「角色/agent」
     return 'agent'
@@ -71,6 +74,8 @@ export function createKindFromToolName(toolName: string): CreateKind | null {
       return 'skill'
     case 'propose_persona':
       return 'persona'
+    case 'propose_generated':
+      return 'generated'
     default:
       return null
   }

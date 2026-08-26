@@ -10,6 +10,7 @@ import zhCnSettings from '../../public/locales/zh-CN/settings.json'
 import zhCnRegistry from '../../public/locales/zh-CN/registry.json'
 import zhCnErrors from '../../public/locales/zh-CN/errors.json'
 import zhCnMcp from '../../public/locales/zh-CN/mcp.json'
+import zhCnPlugins from '../../public/locales/zh-CN/plugins.json'
 import zhCnContent from '../../public/locales/zh-CN/content.json'
 import zhCnKb from '../../public/locales/zh-CN/kb.json'
 import zhCnMemory from '../../public/locales/zh-CN/memory.json'
@@ -20,12 +21,13 @@ import enSettings from '../../public/locales/en/settings.json'
 import enRegistry from '../../public/locales/en/registry.json'
 import enErrors from '../../public/locales/en/errors.json'
 import enMcp from '../../public/locales/en/mcp.json'
+import enPlugins from '../../public/locales/en/plugins.json'
 import enContent from '../../public/locales/en/content.json'
 import enKb from '../../public/locales/en/kb.json'
 import enMemory from '../../public/locales/en/memory.json'
 import { startupMark } from '@renderer/lib/startupMark'
 
-const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors', 'mcp', 'content', 'kb', 'memory'] as const
+const NAMESPACES = ['common', 'home', 'editor', 'settings', 'registry', 'errors', 'mcp', 'plugins', 'content', 'kb', 'memory'] as const
 
 // —— i18n（§十二）：默认 zh-CN；资源内联，禁止 HttpBackend ——
 const isDev = !!import.meta.env.DEV
@@ -46,6 +48,7 @@ void i18n
         registry: zhCnRegistry,
         errors: zhCnErrors,
         mcp: zhCnMcp,
+        plugins: zhCnPlugins,
         content: zhCnContent,
         kb: zhCnKb,
         memory: zhCnMemory,
@@ -58,6 +61,7 @@ void i18n
         registry: enRegistry,
         errors: enErrors,
         mcp: enMcp,
+        plugins: enPlugins,
         content: enContent,
         kb: enKb,
         memory: enMemory,

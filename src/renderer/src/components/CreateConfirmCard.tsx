@@ -22,6 +22,7 @@ const INVALIDATE_KEYS: Record<CreateDraft['kind'], string[]> = {
   capability: ['capabilities', 'capability'],
   skill: ['skills'],
   persona: ['persona'],
+  generated: ['plugins'],
 }
 
 interface Props {
@@ -72,8 +73,12 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
   const kindLabel = t(`home:create.kind.${draft.kind}`)
   // persona 没有 name 字段，标题与按钮禁用条件需区分
   const isPersona = draft.kind === 'persona'
-  const nonPersonaPayload = payload as Extract<CreateDraft, { kind: 'agent' | 'capability' | 'skill' }>['payload']
+  const nonPersonaPayload = payload as Extract<
+    CreateDraft,
+    { kind: 'agent' | 'capability' | 'skill' | 'generated' }
+  >['payload']
   const personaPayload = payload as Extract<CreateDraft, { kind: 'persona' }>['payload']
+  const generatedPayload = payload as Extract<CreateDraft, { kind: 'generated' }>['payload']
   // persona 的 instructions 可空（空 = 保留当前人设，仅更新档案），始终可确认
   const canConfirm = isPersona ? true : !!nonPersonaPayload.name?.trim()
 
@@ -153,6 +158,71 @@ export function CreateConfirmCard({ draft, status, onStatusChange }: Props) {
                       />
                     </Suspense>
                   </Field>
+                ) : null}
+
+                {draft.kind === 'generated' ? (
+                  <>
+                    <Field label={t('home:create.field.executeAction')}>
+                      <input
+                        className="create-card__input"
+                        value={generatedPayload.executeAction.action}
+                        onChange={(e) =>
+                          patch({
+                            executeAction: {
+                              ...generatedPayload.executeAction,
+                              action: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label={t('home:create.field.executeActionParams')}>
+                      <textarea
+                        className="create-card__textarea"
+                        rows={3}
+                        value={
+                          generatedPayload.executeAction.params
+                            ? JSON.stringify(generatedPayload.executeAction.params, null, 2)
+                            : ''
+                        }
+                        placeholder="{}"
+                        onChange={(e) => {
+                          const text = e.target.value.trim()
+                          let params: Record<string, unknown> | undefined
+                          try {
+                            params = text ? JSON.parse(text) : undefined
+                          } catch {
+                            // 解析失败暂存原文本，由确认时校验兜底；这里不阻断输入
+                            return
+                          }
+                          patch({
+                            executeAction: {
+                              ...generatedPayload.executeAction,
+                              params,
+                            },
+                          })
+                        }}
+                      />
+                    </Field>
+                    <Field label={t('home:create.field.inputSchema')}>
+                      <textarea
+                        className="create-card__textarea"
+                        rows={8}
+                        value={JSON.stringify(generatedPayload.inputSchema, null, 2)}
+                        onChange={(e) => {
+                          const text = e.target.value.trim()
+                          let schema: Record<string, unknown>
+                          try {
+                            schema = JSON.parse(text)
+                          } catch {
+                            // 解析失败暂存原文本，由确认时校验兜底；这里不阻断输入
+                            return
+                          }
+                          patch({ inputSchema: schema })
+                        }}
+                      />
+                    </Field>
+                  </>
                 ) : null}
               </>
             )}

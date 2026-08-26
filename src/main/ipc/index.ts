@@ -26,6 +26,7 @@ import { registerNativeHandlers } from './native'
 import { registerProvidersHandlers } from './providers'
 import { registerRegistryHandlers } from './registry'
 import { registerMcpHandlers } from './mcp'
+import { registerPluginsHandlers } from './plugins'
 import { registerKnowledgeHandlers } from './knowledge'
 import { registerMemoryHandlers } from './memory'
 import { registerCompareHandlers } from './compare'
@@ -287,6 +288,7 @@ export function registerIpcHandlers(): void {
   registerMcpHandlers()
   registerKnowledgeHandlers()
   registerMemoryHandlers()
+  registerPluginsHandlers() // 插件管理（/plugins 页：generated + skill 启停卸载）
   registerCompareHandlers()
   registerNativeHandlers(() => BrowserWindow.getAllWindows()[0] ?? null)
   registerUpdaterHandlers()

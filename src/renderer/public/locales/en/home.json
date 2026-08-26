@@ -36,6 +36,7 @@
       "capability": "Capability",
       "skill": "Skill",
       "persona": "Persona update",
+      "generated": "Declarative tool",
       "unknown": "asset"
     },
     "title": "New {{kind}} preview",
@@ -48,7 +49,10 @@
       "personaInstructions": "Persona instructions",
       "personaKeepHint": "Leave empty = keep current persona (profile only)",
       "content": "Skill content (SKILL.md)",
-      "graph": "Orchestration graph"
+      "graph": "Orchestration graph",
+      "inputSchema": "Input schema (JSON Schema)",
+      "executeAction": "Dispatch action",
+      "executeActionParams": "Fixed params (optional)"
     },
     "confirm": "Confirm & save",
     "savedHint": "Added to the library. See the management page.",

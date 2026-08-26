@@ -88,6 +88,15 @@
     "empty_payload": "人设更新载荷为空：至少提供人设正文或一个档案字段",
     "propose_failed": "创建提案失败"
   },
+  "plugins": {
+    "action_not_whitelisted": "动作不在只读/检索白名单内，拒绝注册",
+    "params_not_subset": "参数不是目标动作既有 schema 的子集（不得新增动作没有的参数），拒绝注册",
+    "param_type_mismatch": "参数类型与目标动作 schema 不匹配，拒绝注册",
+    "param_bound_too_wide": "参数约束比目标动作 schema 更宽，拒绝注册",
+    "required_missing": "缺少目标动作的必填参数，拒绝注册",
+    "invalid_input_schema": "inputSchema 须为 type=object 的 JSON Schema",
+    "not_found": "插件不存在或已被删除"
+  },
   "secrets": {
     "key_id_required": "keyId 必填",
     "safe_storage_unavailable": "系统密钥链不可用，无法加解密 API Key"

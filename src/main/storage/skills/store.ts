@@ -64,6 +64,8 @@ function scanSkillDir(dir: string): Skill | null {
     discipline: parsed.discipline,
     hasScripts: hasScriptsInDir(dir),
     registry: parsed.registry,
+    // frontmatter enabled 未设默认 true（启停开关默认开）
+    enabled: parsed.enabled ?? true,
     createdAt: stat.birthtimeMs || stat.mtimeMs,
     updatedAt: stat.mtimeMs,
   }
@@ -140,6 +142,8 @@ export function saveSkill(input: unknown, opts?: { now?: number }): Skill {
     // hasScripts 从目录扫描得出，不由输入控制
     hasScripts: existing?.hasScripts ?? false,
     registry: parsed.registry ?? existing?.registry,
+    // 启停开关：输入未带时保留既有值，都无则默认 true
+    enabled: parsed.enabled ?? existing?.enabled ?? true,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -163,4 +167,36 @@ export function removeSkill(id: string): void {
   deleteSkillFts(id)
   skillsCache = null
   logger.info(`[skill-store] 已删除技能目录 ${id}`)
+}
+
+/**
+ * 翻转 skill 启停开关（frontmatter enabled），不改 content/discipline。
+ * skill-host 管理器用：enabled=false → skillIds 过滤掉该 skill 不注入 beforeRun。
+ * 直接改写 SKILL.md frontmatter（不经 SkillInputSchema 全量校验，只 toggle 一行）。
+ */
+export function setSkillEnabled(id: string, enabled: boolean): Skill | null {
+  const dir = getSkillDir(id)
+  const skillMdPath = join(dir, 'SKILL.md')
+  if (!existsSync(skillMdPath)) return null
+  let text: string
+  try {
+    text = readFileSync(skillMdPath, 'utf8')
+  } catch {
+    return null
+  }
+  const parsed = parseSkillMd(text)
+  if (!parsed) return null
+  // 重新构建时带上新 enabled（content/discipline 原样保留）
+  const rebuilt = buildSkillMd({
+    name: parsed.name,
+    description: parsed.description,
+    tags: parsed.tags,
+    content: parsed.content,
+    discipline: parsed.discipline,
+    registry: parsed.registry,
+    enabled,
+  })
+  writeFileSync(skillMdPath, rebuilt, 'utf8')
+  skillsCache = null
+  return scanSkillDir(dir)
 }
