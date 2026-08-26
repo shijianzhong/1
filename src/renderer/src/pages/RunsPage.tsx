@@ -15,6 +15,7 @@ import {
 import { useRuns, useRunDetail } from '@renderer/api/hooks'
 import { EmptyState } from '@renderer/components/ui/EmptyState'
 import { PageToolbar } from '@renderer/components/ui/PageToolbar'
+import { Button } from '@renderer/components/ui/Button'
 import type { RunEventInfo, RunInfo } from '@shared/types'
 import {
   TONE_COLOR,
@@ -101,30 +102,20 @@ export function RunsPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20, height: '100%' }}>
+    <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', gap: 20, height: '100%' }}>
       <PageToolbar
         title={t('common:runs.title')}
         subtitle={t('common:runs.description')}
         actions={
           <>
-            <button
-              type="button"
-              className="nav-button"
-              onClick={toggleReplay}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px' }}
-            >
+            <Button variant="ghost" size="sm" onClick={toggleReplay}>
               {replayMode ? <List size={14} /> : <PlayCircle size={14} />}
               {replayMode ? t('common:runs.timeline') : t('common:runs.replay')}
-            </button>
-            <button
-              type="button"
-              className="nav-button"
-              onClick={refresh}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px' }}
-            >
+            </Button>
+            <Button variant="ghost" size="sm" onClick={refresh}>
               <RefreshCw size={14} />
               {t('common:runs.refresh')}
-            </button>
+            </Button>
           </>
         }
       />
