@@ -32,6 +32,7 @@ import { addMessage, getSession, listMessages, toLlmMessages } from '../storage/
 import { getDb } from '../storage/db'
 import { endRun, startRun, appendRunEvent } from '../storage/runEvents'
 import { SkillContextProvider } from '../skills/provider'
+import { pluginHost } from '../plugins/host'
 import { listToolsForAgents } from '../tools/mcp'
 import { filterToolsByAllowlist } from '../tools/allowlist'
 import { resolveApprovalDecision, rejectionToApprovalReason } from '../tools/sessionApprovals'
@@ -164,7 +165,7 @@ function makeResolveAgent(
     // —— Skill 注入（铁律22，task 7.4）：SkillContextProvider.beforeRun ——
     // <skill> XML 块（限长 24000 + 脚本清单）+ discipline 输出纪律段拼入 instructions；
     // 脚本执行经全局注册的 skill_run_script 工具（铁律23 async spawn）。
-    const skillProvider = new SkillContextProvider(getSkillCached)
+    const skillProvider = new SkillContextProvider(getSkillCached, pluginHost)
     skillProviders.push(skillProvider)
     const { instructions, injected: injectedSkills } = skillProvider.beforeRun({
       agentName,

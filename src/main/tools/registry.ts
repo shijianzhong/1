@@ -4,6 +4,7 @@ import type { LlmToolDef } from '@shared/types'
 import { logger } from '../logger'
 import { isSessionToolApproved } from './sessionApprovals'
 import { appendRunEvent } from '../storage/runEvents'
+import { pluginEvents } from '../plugins/events'
 
 // —— 工具注册表（§三之三 J + 铁律11）——
 // registerTool 把普通函数包成 FunctionTool，**必须显式构造 JSON Schema
@@ -275,6 +276,8 @@ export async function executeTool(
   appendRunEvent(runId, 'tool.started', {
     tool: name, toolUseId, nodeId, argsSummary: summarizeArgs(r.data),
   }, sessionId)
+  // 投影到 App 内实时总线（插件可订阅运行事实；不影响既有持久事实流）
+  pluginEvents.emit('tool.started', { toolName: name, runId, toolUseId, nodeId })
   let lastError: unknown
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -291,6 +294,10 @@ export async function executeTool(
         tool: name, toolUseId, nodeId, ms: Date.now() - toolStarted,
         isError, resultLen: content.length, attempts: attempt + 1,
       }, sessionId)
+      pluginEvents.emit('tool.completed', {
+        toolName: name, runId, toolUseId, nodeId,
+        ms: Date.now() - toolStarted, isError, resultLen: content.length, attempts: attempt + 1,
+      })
       return { toolUseId, content, isError }
     } catch (error) {
       lastError = error
@@ -302,6 +309,7 @@ export async function executeTool(
         appendRunEvent(runId, 'tool.failed', {
           tool: name, toolUseId, nodeId, error: 'aborted', ms: Date.now() - toolStarted,
         }, sessionId)
+        pluginEvents.emit('tool.failed', { toolName: name, runId, toolUseId, nodeId, error: 'aborted' })
         return {
           toolUseId,
           content: JSON.stringify({
@@ -322,6 +330,7 @@ export async function executeTool(
     tool: name, toolUseId, nodeId, error: message, ms: Date.now() - toolStarted,
     attempts: maxAttempts,
   }, sessionId)
+  pluginEvents.emit('tool.failed', { toolName: name, runId, toolUseId, nodeId, error: message })
   return {
     toolUseId,
     content: JSON.stringify({ error: 'tool_failed', message }),

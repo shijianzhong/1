@@ -55,6 +55,7 @@ import {
   type CreateKind,
 } from '../orchestrator/home'
 import { SkillContextProvider } from '../skills/provider'
+import { pluginHost } from '../plugins/host'
 import { getDb } from '../storage/db'
 import { injectL0 } from '../storage/memory/l0'
 import { buildL1Messages, maybeCompressL1 } from '../storage/memory/l1'
@@ -326,6 +327,7 @@ export function registerHomeHandlers(): void {
     const mentionSkillIds = new Set(mentions.skills.map((s) => s.id))
     const homeSkillProvider = new SkillContextProvider(
       (sid) => (mentionSkillIds.has(sid) ? getSkill(sid) : null),
+      pluginHost,
     )
     skillProviders.push(homeSkillProvider)
     const { instructions: instructionsWithSkills, injected: homeInjectedSkills } = homeSkillProvider.beforeRun({
@@ -516,7 +518,7 @@ export function registerHomeHandlers(): void {
         )
         // —— Skill 注入（铁律22，task 7.4）：组队图节点经 SkillContextProvider 注入 ——
         // （此前首页组队节点完全没注入 skill，与编辑器编排行为不齐）
-        const nodeSkillProvider = new SkillContextProvider((sid) => getSkill(sid))
+        const nodeSkillProvider = new SkillContextProvider((sid) => getSkill(sid), pluginHost)
         skillProviders.push(nodeSkillProvider)
         const { instructions: nodeInstructions, injected: nodeInjectedSkills } = nodeSkillProvider.beforeRun({
           agentName: node.id,

@@ -3,6 +3,7 @@ import { join, relative, sep } from 'node:path'
 import type { Skill } from '@shared/types'
 import { logger } from '../logger'
 import { getSkillsPath } from '../storage/paths'
+import type { PluginHost } from '../plugins/contracts'
 
 // —— Skill = ContextProvider（铁律22/23，task 7.4）——
 // beforeRun：绑定的 SKILL.md inline 成 <skill> XML 块（限长 24000 字 + 脚本清单）
@@ -77,7 +78,12 @@ export class SkillContextProvider {
   private agentName = ''
   private injected: InjectedSkillInfo[] = []
 
-  constructor(private readonly resolveSkill: (id: string) => Skill | null | undefined) {}
+  // host 经构造参数注入（docs/PLUGIN_ARCHITECTURE.md §3「注入方式定死」选 A）：
+  // beforeRun/afterRun 签名不变，内部经 this.host 访问 host 能力。
+  constructor(
+    private readonly resolveSkill: (id: string) => Skill | null | undefined,
+    private readonly host: PluginHost,
+  ) {}
 
   /**
    * beforeRun（铁律22）：skillIds → instructions 注入。
@@ -123,5 +129,10 @@ export class SkillContextProvider {
           .map((s) => `${s.name}${s.hasScripts ? '(含脚本)' : ''}${s.hasDiscipline ? '(含纪律)' : ''}`)
           .join(', '),
     )
+    // 经构造注入的 host 发射运行事实（插件可订阅，见 PluginEventMap.'skill.injected'）
+    this.host.events.emit('skill.injected', {
+      agentName: this.agentName,
+      skills: this.injected.map((s) => s.id),
+    })
   }
 }
