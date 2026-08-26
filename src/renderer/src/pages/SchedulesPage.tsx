@@ -11,7 +11,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { validateCron, nextOccurrence } from '@shared/cron'
+import {
+  validateCron,
+  nextOccurrence,
+  detectPreset,
+  presetToCron,
+  CRON_WEEKDAYS,
+  type CronMode,
+  type CronPresetState,
+} from '@shared/cron'
 import {
   useCreateSchedule,
   useRemoveSchedule,
@@ -117,7 +125,18 @@ export function SchedulesPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20, height: '100%' }}>
+    <div
+      style={{
+        maxWidth: 1200,
+        margin: '0 auto',
+        display: 'grid',
+        gap: 20,
+        height: '100%',
+        // 第一行 PageToolbar 塌缩到内容高度，末行列表区吃剩余高度（局部滚动），
+        // 避免默认行拉伸把标题行撑高
+        gridTemplateRows: 'auto 1fr',
+      }}
+    >
       <PageToolbar
         title={t('common:schedules.title')}
         subtitle={t('common:schedules.subtitle')}
@@ -129,23 +148,22 @@ export function SchedulesPage() {
         }
       />
 
-      {runError && (
-        <div
-          role="alert"
-          style={{
-            background: 'color-mix(in oklch, var(--color-danger, #e5484d) 12%, transparent)',
-            border: '1px solid var(--color-danger, #e5484d)',
-            color: 'var(--color-danger, #e5484d)',
-            borderRadius: 12,
-            padding: '8px 12px',
-            fontSize: '0.8rem',
-          }}
-        >
-          {runError}
-        </div>
-      )}
-
       <div style={{ overflowY: 'auto', display: 'grid', gap: 10, alignContent: 'start', minHeight: 0 }}>
+        {runError && (
+          <div
+            role="alert"
+            style={{
+              background: 'color-mix(in oklch, var(--color-danger, #e5484d) 12%, transparent)',
+              border: '1px solid var(--color-danger, #e5484d)',
+              color: 'var(--color-danger, #e5484d)',
+              borderRadius: 12,
+              padding: '8px 12px',
+              fontSize: '0.8rem',
+            }}
+          >
+            {runError}
+          </div>
+        )}
         {schedulesQ.isLoading ? (
           <EmptyState text={t('common:state.loading')} />
         ) : schedules.length === 0 ? (
@@ -440,7 +458,9 @@ function ScheduleDrawer({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.35)',
+        background: 'var(--overlay-bg, rgba(0,0,0,0.45))',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         display: 'flex',
         justifyContent: 'flex-end',
         zIndex: 50,
@@ -448,7 +468,6 @@ function ScheduleDrawer({
       onClick={onClose}
     >
       <div
-        className="glass-panel"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 'min(520px, 92vw)',
@@ -459,6 +478,10 @@ function ScheduleDrawer({
           display: 'grid',
           gap: 16,
           alignContent: 'start',
+          // 实色背景 + 强模糊：玻璃态但内容清晰可读（旧 glass-panel 0.6 透明透字）
+          background: 'var(--color-bg-1)',
+          borderLeft: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-3, 0 12px 32px rgba(0,0,0,0.35))',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -508,13 +531,7 @@ function ScheduleDrawer({
         </label>
 
         <Field label={t('common:schedules.cron')}>
-          <input
-            className="text-input"
-            value={cron}
-            onChange={(e) => setCron(e.target.value)}
-            placeholder={t('common:schedules.cronPh')}
-            style={{ width: '100%', fontFamily: 'var(--font-mono, monospace)' }}
-          />
+          <CronField cron={cron} onChange={setCron} t={t} />
           {!cronOk ? (
             <span style={{ color: 'var(--color-danger, #e5484d)', fontSize: '0.72rem' }}>
               {t('common:schedules.cronInvalid')}
@@ -676,4 +693,233 @@ function Segmented({
       {label}
     </Button>
   )
+}
+
+// —— Cron 预设编辑器：下拉选常见模式（每 N 分钟 / 每 N 小时 / 每日 / 每周 / 每月），
+// 选「自定义」回退到原始 5 段输入。预设变化即生成对应 cron 字符串（受控）。
+// detectPreset/presetToCron 已下沉 @shared/cron（主进程与渲染层共用，便于单测）。
+const WEEKDAY_KEYS = [
+  'common:schedules.weekdays.sun',
+  'common:schedules.weekdays.mon',
+  'common:schedules.weekdays.tue',
+  'common:schedules.weekdays.wed',
+  'common:schedules.weekdays.thu',
+  'common:schedules.weekdays.fri',
+  'common:schedules.weekdays.sat',
+]
+
+function CronField({
+  cron,
+  onChange,
+  t,
+}: {
+  cron: string
+  onChange: (cron: string) => void
+  t: (key: string) => string
+}) {
+  const [preset, setPreset] = useState<CronPresetState>(() => detectPreset(cron))
+  const isCustom = preset.mode === 'custom'
+
+  // 切换模式时重新生成 cron（custom 保留原值，不改写）
+  const updateMode = (mode: CronMode) => {
+    const next = { ...preset, mode }
+    setPreset(next)
+    if (mode !== 'custom') {
+      const gen = presetToCron(next)
+      if (gen) onChange(gen)
+    }
+  }
+  // 改参数即重生成并上抛
+  const updateParam = (patch: Partial<CronPresetState>) => {
+    const next = { ...preset, ...patch }
+    setPreset(next)
+    if (next.mode !== 'custom') {
+      const gen = presetToCron(next)
+      if (gen) onChange(gen)
+    }
+  }
+
+  const numInput = (value: number, patch: (v: number) => Partial<CronPresetState>, max: number) => (
+    <input
+      type="number"
+      min={1}
+      max={max}
+      value={value}
+      onChange={(e) => {
+        const v = Number(e.target.value)
+        if (Number.isFinite(v) && v >= 1 && v <= max) updateParam(patch(v))
+      }}
+      className="text-input"
+      style={{ width: 80 }}
+    />
+  )
+
+  // HH:MM 时刻输入：TimeInput 组件持本地文本 state，光标稳定可自由编辑小时/分钟，
+  // 失焦时标准化补零，避免受控补零打断光标（根因：value 重渲染重置光标）。
+  const timeInput = () => (
+    <TimeInput hour={preset.hour} minute={preset.minute} onChange={updateParam} />
+  )
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <select
+        className="text-input"
+        value={preset.mode}
+        onChange={(e) => updateMode(e.target.value as CronMode)}
+        style={{ width: '100%' }}
+      >
+        <option value="everyNMin">{t('common:schedules.cronEveryNMin')}</option>
+        <option value="everyNHour">{t('common:schedules.cronEveryNHour')}</option>
+        <option value="dailyAt">{t('common:schedules.cronDailyAt')}</option>
+        <option value="weeklyAt">{t('common:schedules.cronWeeklyAt')}</option>
+        <option value="monthlyAt">{t('common:schedules.cronMonthlyAt')}</option>
+        <option value="custom">{t('common:schedules.cronCustom')}</option>
+      </select>
+
+      {preset.mode === 'everyNMin' && (
+        <Row>
+          <Label>{t('common:schedules.cronMinutes')}</Label>
+          {numInput(preset.minuteInterval, (v) => ({ minuteInterval: v }), 59)}
+        </Row>
+      )}
+      {preset.mode === 'everyNHour' && (
+        <Row>
+          <Label>{t('common:schedules.cronHours')}</Label>
+          {numInput(preset.hourInterval, (v) => ({ hourInterval: v }), 23)}
+        </Row>
+      )}
+      {preset.mode === 'dailyAt' && (
+        <Row>
+          {timeInput()}
+          <Label>{t('common:schedules.cronDailyHint')}</Label>
+        </Row>
+      )}
+      {preset.mode === 'weeklyAt' && (
+        <Row>
+          <select
+            className="text-input"
+            value={preset.dow}
+            onChange={(e) => updateParam({ dow: Number(e.target.value) })}
+            style={{ width: 120 }}
+          >
+            {CRON_WEEKDAYS.map((dv) => (
+              <option key={dv} value={dv}>
+                {t(WEEKDAY_KEYS[dv])}
+              </option>
+            ))}
+          </select>
+          {timeInput()}
+          <Label>{t('common:schedules.cronWeeklyHint')}</Label>
+        </Row>
+      )}
+      {preset.mode === 'monthlyAt' && (
+        <Row>
+          <Label>{t('common:schedules.cronDayOfMonth')}</Label>
+          {numInput(preset.dom, (v) => ({ dom: v }), 31)}
+          {timeInput()}
+          <Label>{t('common:schedules.cronMonthlyHint')}</Label>
+        </Row>
+      )}
+      {isCustom && (
+        <input
+          className="text-input"
+          value={cron}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={t('common:schedules.cronPh')}
+          style={{ width: '100%', fontFamily: 'var(--font-mono, monospace)' }}
+        />
+      )}
+    </div>
+  )
+}
+
+// HH:MM 时刻输入——以行内文字样式直接编辑（如「每天 08:00」里直接改 08:00）。
+// 用本地文本 state 持住编辑过程：onChange 只更新本地文本（不被补零打断光标），
+// 仅当解析出合法 hour/minute 时上抛 cron；失焦时把显示标准化为补零形式。
+// 根因：若 value 直接绑补零后的派生串，每次输入立即重算+重渲染会重置光标到开头，
+// 且小时位插数字易失配正则 → 小时几乎改不动。本地 state 解开这个耦合。
+function TimeInput({
+  hour,
+  minute,
+  onChange,
+}: {
+  hour: number
+  minute: number
+  onChange: (patch: Partial<CronPresetState>) => void
+}) {
+  // 本地文本：初始与 props 同步（补零），编辑期间自由持住，失焦标准化
+  const [text, setText] = useState(() => fmt(hour, minute))
+  const [focused, setFocused] = useState(false)
+
+  // 非编辑态下 props 变化时同步显示（如模式切换、detectPreset 反推）
+  const displayed = focused ? text : fmt(hour, minute)
+
+  return (
+    <input
+      type="text"
+      value={displayed}
+      onChange={(e) => {
+        const raw = e.target.value
+        setText(raw)
+        // 容忍输入过程：匹配 H:MM / HH:MM / H:M / 末尾无分钟等
+        const m = /^(\d{1,2}):?(\d{0,2})/.exec(raw)
+        if (m) {
+          const h = Number(m[1])
+          const mi = m[2] === '' ? minute : Number(m[2]) // 缺分钟位时保留原值，不强制清零
+          if (h >= 0 && h <= 23 && mi >= 0 && mi <= 59) {
+            onChange({ hour: h, minute: mi })
+          }
+        }
+      }}
+      onFocus={(e) => {
+        setFocused(true)
+        setText(fmt(hour, minute))
+        // 聚焦时全选，方便整体覆盖输入
+        requestAnimationFrame(() => e.currentTarget.select())
+      }}
+      onBlur={() => {
+        setFocused(false)
+        // 失焦标准化：解析当前文本，合法则补零回写，非法回退到 props 值
+        const m = /^(\d{1,2}):(\d{1,2})/.exec(text)
+        if (m) {
+          const h = Number(m[1])
+          const mi = Number(m[2])
+          if (h >= 0 && h <= 23 && mi >= 0 && mi <= 59) {
+            onChange({ hour: h, minute: mi })
+            return
+          }
+        }
+      }}
+      placeholder="08:00"
+      aria-label="time"
+      style={{
+        width: 'auto',
+        fontFamily: 'var(--font-mono, monospace)',
+        fontSize: 'inherit',
+        background: focused ? 'var(--color-bg-2)' : 'transparent',
+        border: 'none',
+        borderBottom: '1px dashed',
+        borderBottomColor: focused ? 'var(--color-brand-400, #4ECDC4)' : 'var(--color-border)',
+        borderRadius: 0,
+        padding: '0 2px',
+        color: 'var(--color-fg-1)',
+        outline: 'none',
+        cursor: 'text',
+      }}
+      size={5}
+    />
+  )
+}
+
+function fmt(h: number, m: number): string {
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function Row({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{children}</div>
+  )
+}
+function Label({ children }: { children: ReactNode }) {
+  return <span style={{ fontSize: '0.75rem', color: 'var(--color-fg-2)' }}>{children}</span>
 }

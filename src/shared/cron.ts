@@ -80,3 +80,79 @@ export function hasUpcomingOccurrence(
   if (!next) return false
   return next.getTime() - from.getTime() <= windowMs
 }
+
+// —— Cron 预设编辑器纯逻辑（§定时任务 UI）——
+// 渲染层下拉选常见模式（每 N 分钟 / 每 N 小时 / 每日 / 每周 / 每月），「自定义」回退原始输入。
+// detectPreset 从既有 cron 反推（编辑场景），presetToCron 由参数生成。纯函数便于单测。
+
+export type CronMode = 'everyNMin' | 'everyNHour' | 'dailyAt' | 'weeklyAt' | 'monthlyAt' | 'custom'
+
+export interface CronPresetState {
+  mode: CronMode
+  minuteInterval: number
+  hourInterval: number
+  hour: number
+  minute: number
+  dow: number
+  dom: number
+}
+
+export const CRON_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const
+
+const DEFAULT_PRESET: CronPresetState = {
+  mode: 'custom',
+  minuteInterval: 30,
+  hourInterval: 6,
+  hour: 9,
+  minute: 0,
+  dow: 1,
+  dom: 1,
+}
+
+/** 从 cron 字符串反推预设；推不上返回 custom（保留默认参数） */
+export function detectPreset(cron: string): CronPresetState {
+  const parts = cron.trim().split(/\s+/)
+  if (parts.length !== 5) return { ...DEFAULT_PRESET }
+  const [m, h, d, mon, w] = parts
+  // 每 N 分钟：*/N * * * *
+  const minMatch = /^\*\/(\d+)$/.exec(m)
+  if (minMatch && h === '*' && d === '*' && mon === '*' && w === '*') {
+    return { ...DEFAULT_PRESET, mode: 'everyNMin', minuteInterval: Number(minMatch[1]) }
+  }
+  // 每 N 小时：0 */N * * *（分钟位=0，小时位=*/N）
+  const hourMatch = /^\*\/(\d+)$/.exec(h)
+  if (m === '0' && hourMatch && d === '*' && mon === '*' && w === '*') {
+    return { ...DEFAULT_PRESET, mode: 'everyNHour', hourInterval: Number(hourMatch[1]) }
+  }
+  // 每月某日 H:M：M H D * *
+  if (/^\d+$/.test(m) && /^\d+$/.test(h) && /^\d+$/.test(d) && mon === '*' && w === '*') {
+    return { ...DEFAULT_PRESET, mode: 'monthlyAt', minute: Number(m), hour: Number(h), dom: Number(d) }
+  }
+  // 每周某天 H:M：M H * * W
+  if (/^\d+$/.test(m) && /^\d+$/.test(h) && d === '*' && mon === '*' && /^\d+$/.test(w)) {
+    return { ...DEFAULT_PRESET, mode: 'weeklyAt', minute: Number(m), hour: Number(h), dow: Number(w) }
+  }
+  // 每日 H:M：M H * * *
+  if (/^\d+$/.test(m) && /^\d+$/.test(h) && d === '*' && mon === '*' && w === '*') {
+    return { ...DEFAULT_PRESET, mode: 'dailyAt', minute: Number(m), hour: Number(h) }
+  }
+  return { ...DEFAULT_PRESET }
+}
+
+/** 由预设状态生成 cron 字符串；custom 返回空串（由调用方保留原值） */
+export function presetToCron(s: CronPresetState): string {
+  switch (s.mode) {
+    case 'everyNMin':
+      return `*/${s.minuteInterval} * * * *`
+    case 'everyNHour':
+      return `0 */${s.hourInterval} * * *`
+    case 'dailyAt':
+      return `${s.minute} ${s.hour} * * *`
+    case 'weeklyAt':
+      return `${s.minute} ${s.hour} * * ${s.dow}`
+    case 'monthlyAt':
+      return `${s.minute} ${s.hour} ${s.dom} * *`
+    default:
+      return ''
+  }
+}
