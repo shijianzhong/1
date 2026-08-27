@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registerTool } from '../registry'
-import type { CreateDraft } from '@shared/types'
+import type { CreateDraft, PluginConfigField } from '@shared/types'
 import { emitPropose, newDraftId, NO_CLAIM_SUCCESS } from './create'
 
 // —— 现场造代码工具（docs/PLUGIN_ARCHITECTURE.md §3"生成形态 B 层" + §5 Stage 3）——
@@ -24,6 +24,16 @@ const InputSchemaJson = z
   })
   .describe('LLM 可见入参 schema（JSON Schema，type=object）')
 
+/** 单个 configSchema 字段（与 PluginConfigField 同形） */
+const ConfigFieldJson = z.object({
+  name: z.string().min(1).describe('配置字段名（handler 经 ctx.config 按此名取用）'),
+  type: z.enum(['string', 'number', 'boolean']).describe('字段类型'),
+  secret: z.boolean().optional().describe('是否密钥型（经 vault keyId 引用，明文不落盘/渲染层）'),
+  vaultKeyId: z.string().optional().describe('密钥型字段的 vault keyId（secret=true 时必填）'),
+  default: z.union([z.string(), z.number(), z.boolean()]).optional().describe('非 secret 字段的默认值'),
+  description: z.string().optional().describe('字段说明'),
+})
+
 /** 注册 propose_generated_b 工具（不落库，确认才入库——对齐 propose_* 范式） */
 export function registerProposeGeneratedBTool(): void {
   registerTool(
@@ -45,6 +55,13 @@ export function registerProposeGeneratedBTool(): void {
         '可执行 handler 源码（JS async 函数体，不包含外层 function 声明）。'
           + '示例：`const r = await ctx.executeTool("file_read", { path: "package.json" }); return JSON.parse(r.content).name`',
       ),
+      configSchema: z
+        .array(ConfigFieldJson)
+        .optional()
+        .describe(
+          '可选：插件配置项声明。secret 字段经 vault keyId 引用（明文不落盘）；'
+            + '非 secret 字段可给 default。运行时注入 handler 的 ctx.config，handler 经 ctx.config[name] 取用。',
+        ),
     }),
     async (args, ctx) => {
       const a = args as {
@@ -52,6 +69,7 @@ export function registerProposeGeneratedBTool(): void {
         description: string
         inputSchema: Record<string, unknown>
         handlerSource: string
+        configSchema?: unknown
       }
       const draft: CreateDraft = {
         draftId: newDraftId(),
@@ -61,6 +79,7 @@ export function registerProposeGeneratedBTool(): void {
           description: a.description,
           inputSchema: a.inputSchema,
           handlerSource: a.handlerSource,
+          ...(a.configSchema ? { configSchema: a.configSchema as PluginConfigField[] } : {}),
         },
       }
       return emitPropose(ctx, draft)

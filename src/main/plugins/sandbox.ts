@@ -20,8 +20,11 @@ import vm from 'node:vm'
 import { executeTool, newToolUseId, type ToolContext, type ToolResult } from '../tools/registry'
 import { WHITELIST_ACTIONS, type WhitelistAction } from './whitelist'
 
-/** B handler 编译产物：签名为 async (args, ctx) => unknown */
-export type BHandler = (args: unknown, ctx: { executeTool: BExecuteTool }) => Promise<unknown>
+/** B handler 编译产物：签名为 async (args, ctx) => unknown；ctx 注入 config（插件 configSchema 解析结果） */
+export type BHandler = (
+  args: unknown,
+  ctx: { executeTool: BExecuteTool; config?: Record<string, unknown> },
+) => Promise<unknown>
 /** B handler 工厂：编译产物先绑 executeTool 才得到 BHandler（运行时绑定，编译期不绑） */
 export type BHandlerFactory = (executeTool: BExecuteTool) => BHandler
 /** 沙箱内 ctx.executeTool 签名：调白名单动作，返回 ToolResult */
@@ -51,9 +54,10 @@ export function compileBHandler(source: string, id: string): BHandlerFactory {
  * 构造沙箱内 ctx.executeTool：白名单闸门 + 透传外层 B 的 ToolContext。
  * B handler 内调 executeTool(action, args) → 检查 action 在白名单 → 调 registry.executeTool
  * 复用全部闸门（zod/preCheck/approval/重试/run_events）。白名单外→返回 action_not_whitelisted 错误。
- * TODO(stage): handler ctx 目前只注入 executeTool，无 config/secrets 出口——插件的 secret 型
- * configSchema 字段尚未解析进 ctx。后续应在本函数按插件 manifest.configSchema 调 host.secrets.get(keyId)
- * 解出明文并随 args 注入 handler（host.secrets 声明见 src/main/plugins/contracts.ts）。
+ *
+ * 注意：ctx.config 不在本函数解析，而是在插件 onLoad 时由 config.ts resolvePluginConfig 按
+ * manifest.configSchema 解析好（secret 走 host.secrets.get 解出明文），随 args 一并注入 handler
+ * （见 runBHandler：handler(args, { executeTool, config })）。本函数只负责 executeTool 白名单出口。
  */
 function makeCtxExecuteTool(bCtx: ToolContext, signal?: AbortSignal): BExecuteTool {
   return async (action: string, args: Record<string, unknown>): Promise<ToolResult> => {
@@ -84,6 +88,7 @@ export async function runBHandler(
   factory: BHandlerFactory,
   args: unknown,
   bCtx: ToolContext,
+  config?: Record<string, unknown>,
 ): Promise<ToolResult> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS)
@@ -96,7 +101,7 @@ export async function runBHandler(
   try {
     const handler = factory(execute)
     const result = await Promise.race([
-      handler(args, { executeTool: execute }),
+      handler(args, { executeTool: execute, config }),
       new Promise<never>((_, reject) => {
         ac.signal.addEventListener(
           'abort',

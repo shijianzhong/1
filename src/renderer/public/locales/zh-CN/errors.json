@@ -100,7 +100,11 @@
     "compile_failed": "handler 源码编译失败（语法错误），拒绝创建/注册",
     "timeout": "代码工具执行超时（60s）",
     "output_limit": "代码工具输出超出上限（16KB），已截断",
-    "handler_source_empty": "handler 源码为空，拒绝创建"
+    "handler_source_empty": "handler 源码为空，拒绝创建",
+    "invalid_config_schema": "configSchema 非法（须为字段数组），拒绝注册",
+    "config_field_name": "配置字段 name 缺失或为空，拒绝注册",
+    "config_field_type": "配置字段 type 须为 string/number/boolean，且 default 类型须匹配，拒绝注册",
+    "config_secret_key": "密钥型字段须绑定 vaultKeyId，拒绝注册"
   },
   "secrets": {
     "key_id_required": "keyId 必填",

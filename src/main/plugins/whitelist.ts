@@ -13,6 +13,7 @@
 // 不做白名单 action 校验；运行时白名单逃逸由 sandbox.ts 的 makeCtxExecuteTool 拦截。
 
 import vm from 'node:vm'
+import type { PluginConfigField } from '@shared/types'
 
 /** 白名单动作名（注册工具名，非文件名）——只读/检索、无副作用子集 */
 export const WHITELIST_ACTIONS = [
@@ -97,6 +98,10 @@ export type ValidateFailureReason =
   | 'invalid_input_schema'
   | 'handler_source_empty'
   | 'compile_failed'
+  | 'invalid_config_schema'
+  | 'config_field_name'
+  | 'config_field_type'
+  | 'config_secret_key'
 
 /**
  * generated/A spec 的动作声明部分（与 GeneratedPluginSpec 对齐，此处只取校验所需子集）。
@@ -281,5 +286,65 @@ export function validateGeneratedBSpec(spec: GeneratedBSpecLike): ValidateResult
     }
   }
 
+  return { ok: true }
+}
+
+/**
+ * 校验插件 configSchema（注册点 fail-closed 闸门，与 spec 校验同纪律）。
+ * 每个字段：
+ * 1. name 非空字符串
+ * 2. type ∈ string|number|boolean
+ * 3. secret=true 必须带 vaultKeyId（非空）——否则密钥型字段无从解析
+ * 4. default（若声明）类型须与 type 一致
+ * 拒绝一律返回 { ok:false, reason, messageKey }，调用方据此不注册 + 记 pluginEvents。
+ */
+export function validatePluginConfigSchema(
+  configSchema: PluginConfigField[] | null | undefined,
+): ValidateResult {
+  if (configSchema === undefined || configSchema === null) return { ok: true }
+  if (!Array.isArray(configSchema)) {
+    return {
+      ok: false,
+      reason: 'invalid_config_schema',
+      messageKey: 'errors:plugins.invalid_config_schema',
+    }
+  }
+  const allowedTypes = new Set(['string', 'number', 'boolean'])
+  for (const f of configSchema) {
+    if (!f || typeof f.name !== 'string' || f.name.trim() === '') {
+      return {
+        ok: false,
+        reason: 'config_field_name',
+        messageKey: 'errors:plugins.config_field_name',
+      }
+    }
+    if (!allowedTypes.has(f.type)) {
+      return {
+        ok: false,
+        reason: 'config_field_type',
+        messageKey: 'errors:plugins.config_field_type',
+      }
+    }
+    if (f.secret && (typeof f.vaultKeyId !== 'string' || f.vaultKeyId.trim() === '')) {
+      return {
+        ok: false,
+        reason: 'config_secret_key',
+        messageKey: 'errors:plugins.config_secret_key',
+      }
+    }
+    if (f.default !== undefined) {
+      const typeOk =
+        (f.type === 'string' && typeof f.default === 'string') ||
+        (f.type === 'number' && typeof f.default === 'number') ||
+        (f.type === 'boolean' && typeof f.default === 'boolean')
+      if (!typeOk) {
+        return {
+          ok: false,
+          reason: 'config_field_type',
+          messageKey: 'errors:plugins.config_field_type',
+        }
+      }
+    }
+  }
   return { ok: true }
 }

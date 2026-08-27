@@ -921,6 +921,8 @@ export type CreateDraft = {
         inputSchema: Record<string, unknown>
         /** 可执行 handler 源码（沙箱内只能调 ctx.executeTool 白名单动作） */
         handlerSource: string
+        /** 可选：插件配置项声明（secret 字段经 vault keyId 引用，明文不落盘；运行时注入 handler ctx.config） */
+        configSchema?: PluginConfigField[]
       }
     }
 )
@@ -1414,13 +1416,15 @@ export interface GeneratedBSpec {
 
 /** 插件配置字段声明（OnePluginManifest.configSchema 元素） */
 export interface PluginConfigField {
-  /** 字段名（插件 handler 经 host.config / host.secrets 按此名取用） */
+  /** 字段名（插件 handler 经 ctx.config 按此名取用） */
   name: string
   type: 'string' | 'number' | 'boolean'
   /** 是否为密钥型字段（经 vault keyId 引用，明文不落渲染层） */
   secret?: boolean
-  /** 密钥型字段的 vault keyId（secret=true 时必填，框架经 vault.getKey 解析明文） */
+  /** 密钥型字段的 vault keyId（secret=true 时必填，框架经 vault.getKey 解析明文后注入 ctx.config） */
   vaultKeyId?: string
+  /** 非 secret 字段的默认值（运行时注入 ctx.config[name]；未声明则 undefined） */
+  default?: string | number | boolean
   description?: string
 }
 

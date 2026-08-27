@@ -1124,7 +1124,7 @@ export function registerHomeHandlers(): void {
           `generated_b 工具校验失败（${v.reason}）：未创建`,
         )
       }
-      const file = saveGeneratedBPlugin({ spec: p })
+      const file = saveGeneratedBPlugin({ spec: p, configSchema: p.configSchema })
       // 立即注册（enabled=true，trustedBy=null → 占位工具返 trusted_required，注册点校验在 onLoad 内再兜底）
       await enableGeneratedBPlugin(pluginHost, file.id)
       saved = { id: file.id }

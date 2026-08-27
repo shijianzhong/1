@@ -7,11 +7,15 @@ import {
 import { validateGeneratedBSpec } from './whitelist'
 import { pluginEvents } from './events'
 import type { PluginHost, PluginToolSpec, PluginHandle } from './contracts'
-import type { GeneratedBSpec } from '@shared/types'
+import type { GeneratedBSpec, PluginConfigField } from '@shared/types'
 
 function makeManifest(
   spec: GeneratedBSpec,
-  opts: { id?: string; trustedBy?: GeneratedBPluginManifest['trustedBy'] } = {},
+  opts: {
+    id?: string
+    trustedBy?: GeneratedBPluginManifest['trustedBy']
+    configSchema?: PluginConfigField[]
+  } = {},
 ): GeneratedBPluginManifest {
   const id = opts.id ?? 'genb_test1'
   return {
@@ -24,11 +28,14 @@ function makeManifest(
     source: 'builtin',
     specB: spec,
     trustedBy: opts.trustedBy ?? null,
+    configSchema: opts.configSchema,
     effects: { tools: [`${GENERATED_B_TOOL_PREFIX}${spec.name}`], storage: [] },
   }
 }
 
-function makeHost() {
+function makeHost(
+  opts: { secrets?: { get: (k: string) => Promise<string | null> } } = {},
+) {
   const register = vi.fn((_spec: PluginToolSpec): PluginHandle => ({
     name: _spec.name,
     unregister: vi.fn(),
@@ -36,6 +43,7 @@ function makeHost() {
   const host = {
     tools: { register, unregister: vi.fn(() => 0), list: vi.fn(() => []) },
     events: pluginEvents,
+    ...(opts.secrets ? { secrets: opts.secrets } : {}),
   } as unknown as PluginHost
   return { host, register }
 }
@@ -134,5 +142,61 @@ describe('GeneratedBPlugin.onLoad（信任三态 fail-closed）', () => {
     pluginEvents.on('plugin.registered', (p) => got.push(p))
     await new GeneratedBPlugin(makeManifest(validSpec, { trustedBy: null })).onLoad(host)
     expect(got[0]?.status).toBe('ok')
+  })
+})
+
+describe('GeneratedBPlugin.onLoad（configSchema 注入 + 注册点校验）', () => {
+  beforeEach(() => pluginEvents.clear())
+
+  const configSpec: GeneratedBSpec = {
+    name: 'cfg_tool',
+    description: 'with config',
+    inputSchema: { type: 'object' },
+    handlerSource: 'return JSON.stringify(ctx.config)',
+  }
+
+  it('已信任 + configSchema → ctx.config 注入 handler（secret 走 vault 明文）', async () => {
+    const { host, register } = makeHost({
+      secrets: { get: async (k) => (k === 'k1' ? 'PLAIN1' : null) },
+    })
+    const schema: PluginConfigField[] = [
+      { name: 'base', type: 'string', default: 'https://b' },
+      { name: 'tok', type: 'string', secret: true, vaultKeyId: 'k1' },
+    ]
+    await new GeneratedBPlugin(
+      makeManifest(configSpec, { trustedBy: { userId: 'local', ts: 1 }, configSchema: schema }),
+    ).onLoad(host)
+    expect(register).toHaveBeenCalledTimes(1)
+    const specArg = register.mock.calls[0][0]
+    expect(specArg.approvalMode).toBe('always')
+    const handler = specArg.handler as (a: unknown, c: unknown) => Promise<{ content: string }>
+    const out = await handler({}, {})
+    expect(JSON.parse(out.content)).toEqual({ base: 'https://b', tok: 'PLAIN1' })
+  })
+
+  it('非法 configSchema（字段 name 空）→ 不注册 + emit failed（config_field_name）', async () => {
+    const { host, register } = makeHost()
+    const got: Array<{ status?: string; reason?: string }> = []
+    pluginEvents.on('plugin.registered', (p) => got.push(p))
+    const badSchema: PluginConfigField[] = [{ name: '', type: 'string' }]
+    await new GeneratedBPlugin(
+      makeManifest(validSpec, { trustedBy: { userId: 'local', ts: 1 }, configSchema: badSchema }),
+    ).onLoad(host)
+    expect(register).not.toHaveBeenCalled()
+    expect(got[0]?.status).toBe('failed')
+    expect(got[0]?.reason).toBe('config_field_name')
+  })
+
+  it('secret 缺 vaultKeyId → 不注册 + emit failed（config_secret_key）', async () => {
+    const { host, register } = makeHost()
+    const got: Array<{ status?: string; reason?: string }> = []
+    pluginEvents.on('plugin.registered', (p) => got.push(p))
+    const badSchema: PluginConfigField[] = [{ name: 'tok', type: 'string', secret: true }]
+    await new GeneratedBPlugin(
+      makeManifest(validSpec, { trustedBy: { userId: 'local', ts: 1 }, configSchema: badSchema }),
+    ).onLoad(host)
+    expect(register).not.toHaveBeenCalled()
+    expect(got[0]?.status).toBe('failed')
+    expect(got[0]?.reason).toBe('config_secret_key')
   })
 })

@@ -21,7 +21,8 @@ import {
 import { readJsonFile, writeJsonFile, writeTextFile } from '../storage/json-store'
 import { newToolUseId, type ToolContext } from '../tools/registry'
 import { pluginEvents } from './events'
-import { validateGeneratedBSpec } from './whitelist'
+import { validateGeneratedBSpec, validatePluginConfigSchema } from './whitelist'
+import { resolvePluginConfig } from './config'
 import { compileBHandler, runBHandler } from './sandbox'
 import type { GeneratedBSpec } from './contracts'
 import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
@@ -118,6 +119,21 @@ export class ExternalPlugin implements PluginLifecycle {
       return
     }
 
+    // —— configSchema 注册点校验（fail-closed，与 spec 同源闸门）——
+    const cfgResult = validatePluginConfigSchema(this.manifest.configSchema)
+    if (!cfgResult.ok) {
+      pluginEvents.emit('plugin.registered', {
+        id: this.manifest.id,
+        toolPrefix: toolName,
+        status: 'failed',
+        reason: cfgResult.reason,
+      })
+      logger.error(
+        `[external] 拒绝注册 ${toolName}（configSchema）：${cfgResult.reason}（${cfgResult.messageKey}）`,
+      )
+      return
+    }
+
     const trusted = this.manifest.trustedBy !== null
     const looseZod = z.record(z.string(), z.unknown())
 
@@ -139,7 +155,20 @@ export class ExternalPlugin implements PluginLifecycle {
         }),
       })
     } else {
-      // —— 已信任：注册真 code handler（approvalMode='always'，每次弹审批）——
+      // —— 已信任：解析 configSchema → ctx.config（secret 走 vault，明文不落渲染层/沙箱）——
+      const resolved = await resolvePluginConfig(host, this.manifest.configSchema)
+      if (!resolved.ok) {
+        pluginEvents.emit('plugin.registered', {
+          id: this.manifest.id,
+          toolPrefix: toolName,
+          status: 'failed',
+          reason: resolved.reason,
+        })
+        logger.error(
+          `[external] 拒绝注册 ${toolName}（config 解析失败）：${resolved.reason}（${resolved.messageKey}）`,
+        )
+        return
+      }
       const factory = compileBHandler(spec.handlerSource, this.manifest.id)
       this.handle = host.tools.register({
         name: toolName,
@@ -148,7 +177,7 @@ export class ExternalPlugin implements PluginLifecycle {
         approvalMode: 'always',
         options: { inputSchemaOverride: spec.inputSchema },
         handler: async (args, ctx: ToolContext) => {
-          const res = await runBHandler(factory, args, ctx)
+          const res = await runBHandler(factory, args, ctx, resolved.config)
           return {
             content: res.content,
             isError: res.isError,

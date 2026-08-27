@@ -69,10 +69,9 @@ export interface PluginHost {
   storage?: PluginStorage
   /**
    * 密钥引用：插件按 vault keyId 取解密明文（主进程，明文不落渲染层，铁律3）；secret 型配置字段经此解析。
-   * TODO(stage): 当前为声明态 API，运行时尚未有人调用——configSchema 现为 /plugins 页只读展示，
-   * sandbox 的 B/external handler ctx 也未注入 config/secrets。后续 stage 应在 makeCtxExecuteTool
-   * 构造 handler ctx 时按插件 configSchema 解析 secret 字段（调 host.secrets.get）后随 args 注入，
-   * 见 src/main/plugins/sandbox.ts makeCtxExecuteTool。
+   * 调用点在 config.ts resolvePluginConfig——插件 onLoad（trusted 分支）时按 manifest.configSchema
+   * 对 secret 字段调 host.secrets.get(vaultKeyId) 解出明文、随非 secret 的 default 一起拼成 ctx.config，
+   * 再注入 B/external handler 的 ctx.config（明文只存在于主进程内存，不进渲染层/沙箱代码字符串）。
    */
   secrets?: {
     get(keyId: string): Promise<string | null>

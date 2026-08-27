@@ -100,7 +100,11 @@
     "compile_failed": "Handler source failed to compile (syntax error); creation/registration refused",
     "timeout": "Code tool execution timed out (60s)",
     "output_limit": "Code tool output exceeded the limit (16KB); truncated",
-    "handler_source_empty": "Handler source is empty; creation refused"
+    "handler_source_empty": "Handler source is empty; creation refused",
+    "invalid_config_schema": "configSchema is invalid (must be an array of fields); registration refused",
+    "config_field_name": "Config field name is missing or empty; registration refused",
+    "config_field_type": "Config field type must be string/number/boolean and default must match; registration refused",
+    "config_secret_key": "Secret field must bind a vaultKeyId; registration refused"
   },
   "secrets": {
     "key_id_required": "keyId is required",
