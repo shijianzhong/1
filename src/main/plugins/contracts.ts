@@ -67,7 +67,13 @@ export interface PluginHost {
   }
   /** 只允许插件声明并清理自己的表/JSON（可选 P2+） */
   storage?: PluginStorage
-  /** 密钥引用：插件按 vault keyId 取解密明文（主进程，明文不落渲染层，铁律3）；secret 型配置字段经此解析 */
+  /**
+   * 密钥引用：插件按 vault keyId 取解密明文（主进程，明文不落渲染层，铁律3）；secret 型配置字段经此解析。
+   * TODO(stage): 当前为声明态 API，运行时尚未有人调用——configSchema 现为 /plugins 页只读展示，
+   * sandbox 的 B/external handler ctx 也未注入 config/secrets。后续 stage 应在 makeCtxExecuteTool
+   * 构造 handler ctx 时按插件 configSchema 解析 secret 字段（调 host.secrets.get）后随 args 注入，
+   * 见 src/main/plugins/sandbox.ts makeCtxExecuteTool。
+   */
   secrets?: {
     get(keyId: string): Promise<string | null>
   }

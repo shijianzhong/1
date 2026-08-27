@@ -18,7 +18,7 @@ import {
   getExternalPluginManifestPath,
   getExternalPluginsDir,
 } from '../storage/paths'
-import { readJsonFile, removeFile, writeJsonFile, writeTextFile } from '../storage/json-store'
+import { readJsonFile, writeJsonFile, writeTextFile } from '../storage/json-store'
 import { newToolUseId, type ToolContext } from '../tools/registry'
 import { pluginEvents } from './events'
 import { validateGeneratedBSpec } from './whitelist'
@@ -274,8 +274,6 @@ export function removeExternalPlugin(id: string): void {
     throw new Error(`external plugin dir escapes base: ${dir}`)
   }
   rmSync(dir, { recursive: true, force: true })
-  removeFile(getExternalPluginManifestPath(id))
-  removeFile(getExternalPluginHandlerPath(id))
 }
 
 // —— 启动时加载全部 enabled 的 external 插件（仿 initGeneratedPlugins，Promise.allSettled 非阻塞）——

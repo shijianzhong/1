@@ -51,6 +51,9 @@ export function compileBHandler(source: string, id: string): BHandlerFactory {
  * 构造沙箱内 ctx.executeTool：白名单闸门 + 透传外层 B 的 ToolContext。
  * B handler 内调 executeTool(action, args) → 检查 action 在白名单 → 调 registry.executeTool
  * 复用全部闸门（zod/preCheck/approval/重试/run_events）。白名单外→返回 action_not_whitelisted 错误。
+ * TODO(stage): handler ctx 目前只注入 executeTool，无 config/secrets 出口——插件的 secret 型
+ * configSchema 字段尚未解析进 ctx。后续应在本函数按插件 manifest.configSchema 调 host.secrets.get(keyId)
+ * 解出明文并随 args 注入 handler（host.secrets 声明见 src/main/plugins/contracts.ts）。
  */
 function makeCtxExecuteTool(bCtx: ToolContext, signal?: AbortSignal): BExecuteTool {
   return async (action: string, args: Record<string, unknown>): Promise<ToolResult> => {

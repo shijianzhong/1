@@ -85,9 +85,9 @@ export function registerPluginsHandlers(): void {
     const builtinManifest: OnePluginManifest = {
       id: 'builtin',
       kind: 'builtin',
-      name: '内置工具集',
+      name: '',
       version: '0.1.0',
-      description: `应用内置 ${builtinTools.length} 个工具（静态打包，不可卸载）`,
+      description: '',
       enabled: true,
       source: 'builtin',
       effects: { tools: builtinTools.map((t) => t.name), storage: [] },

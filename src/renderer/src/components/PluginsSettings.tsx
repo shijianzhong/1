@@ -82,6 +82,7 @@ export function PluginsSettings() {
         const isCodePlugin = isGeneratedB || isExternal
         const isExpandable = isGenerated || isCodePlugin
         const isToggleable = isGenerated || isCodePlugin || p.kind === 'skill'
+        const isBuiltin = p.kind === 'builtin'
         const isOpen = expanded === p.id
         const isTrusted = p.trustedBy !== null && p.trustedBy !== undefined
         return (
@@ -114,7 +115,7 @@ export function PluginsSettings() {
                 ) : (
                   <Puzzle size={16} style={{ color: 'var(--color-fg-3)' }} />
                 )}
-                <span style={{ fontWeight: 500, fontSize: '0.88rem' }}>{p.name}</span>
+                <span style={{ fontWeight: 500, fontSize: '0.88rem' }}>{isBuiltin ? t('plugins:builtin.name') : p.name}</span>
                 <Badge variant="default">{t(`plugins:kind.${p.kind}`)}</Badge>
                 {p.enabled ? (
                   <Badge variant="success">{t('plugins:enabled')}</Badge>
@@ -138,7 +139,7 @@ export function PluginsSettings() {
                     variant="ghost"
                     size="sm"
                     onClick={() => void onTrust(p)}
-                    title={isTrusted ? t('plugins:trust') : t('plugins:trust')}
+                    title={t('plugins:trust')}
                   >
                     {isTrusted ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
                   </Button>
@@ -153,12 +154,14 @@ export function PluginsSettings() {
 
             {/* 摘要行 */}
             <div style={{ fontSize: '0.78rem', color: 'var(--color-fg-3)' }}>
-              {p.description || t('plugins:noDescription')}
+              {isBuiltin
+                ? t('plugins:builtin.desc')
+                : p.description || t('plugins:noDescription')}
               {p.effects.tools.length > 0
                 ? ` · ${t('plugins:tools', { count: p.effects.tools.length })}`
                 : ''}
               {/* B 未信任时附引导语 */}
-              {isGeneratedB && !isTrusted ? ` · ${t('plugins:untrustedHint')}` : ''}
+              {isCodePlugin && !isTrusted ? ` · ${t('plugins:untrustedHint')}` : ''}
             </div>
 
             {/* generated/A 展开详情：manifest spec */}
