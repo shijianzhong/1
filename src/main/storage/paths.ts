@@ -96,6 +96,30 @@ export function getGeneratedBHandlerPath(id: string): string {
   return join(getGeneratedPluginDir(id), 'handler.js')
 }
 
+/**
+ * external 代码型插件目录（docs/PLUGIN_ARCHITECTURE.md Stage 3 external kind）。
+ * 磁盘事实：config/external-plugins/<id>/{manifest.json, handler.js}。
+ * 与 generated-plugins 同级（config 域，可写层），独立目录以区分 external（外部分发代码插件）。
+ */
+export function getExternalPluginsDir(): string {
+  return join(getConfigDir(), 'external-plugins')
+}
+
+/** 单个 external 插件目录（config/external-plugins/<id>） */
+export function getExternalPluginDir(id: string): string {
+  return join(getExternalPluginsDir(), id)
+}
+
+/** external 插件 manifest 路径（config/external-plugins/<id>/manifest.json） */
+export function getExternalPluginManifestPath(id: string): string {
+  return join(getExternalPluginDir(id), 'manifest.json')
+}
+
+/** external 插件 handler 源码路径（config/external-plugins/<id>/handler.js，与 manifest 同目录） */
+export function getExternalPluginHandlerPath(id: string): string {
+  return join(getExternalPluginDir(id), 'handler.js')
+}
+
 export function getVaultPath(): string {
   return join(getUserDataDir(), 'vault.bin')
 }

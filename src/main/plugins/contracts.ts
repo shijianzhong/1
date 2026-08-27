@@ -67,4 +67,8 @@ export interface PluginHost {
   }
   /** 只允许插件声明并清理自己的表/JSON（可选 P2+） */
   storage?: PluginStorage
+  /** 密钥引用：插件按 vault keyId 取解密明文（主进程，明文不落渲染层，铁律3）；secret 型配置字段经此解析 */
+  secrets?: {
+    get(keyId: string): Promise<string | null>
+  }
 }

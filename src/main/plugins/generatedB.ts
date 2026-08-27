@@ -29,6 +29,7 @@ import { validateGeneratedBSpec } from './whitelist'
 import { compileBHandler, runBHandler } from './sandbox'
 import type { GeneratedBSpec } from './contracts'
 import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
+import type { PluginConfigField } from '@shared/types'
 import { logger } from '../logger'
 
 /** 工具名命名空间前缀（所有权边界 + unregisterByPrefix 清理；区别于 A 的 generated/） */
@@ -58,12 +59,14 @@ export interface GeneratedBPluginManifest extends OnePluginManifest {
   trustedBy: { userId: string; ts: number } | null
 }
 
-/** manifest 持久化结构（外层包装：id + spec + enabled + trustedBy + 元信息） */
+/** manifest 持久化结构（外层包装：id + spec + enabled + trustedBy + configSchema + 元信息） */
 interface GeneratedBPluginFile {
   id: string
   spec: GeneratedBSpec
   enabled: boolean
   trustedBy: { userId: string; ts: number } | null
+  /** 插件配置项声明（secret 字段经 vaultKeyId 引用，明文不落盘） */
+  configSchema?: PluginConfigField[]
   createdAt: number
   updatedAt: number
 }
@@ -84,6 +87,7 @@ function fileToManifest(file: GeneratedBPluginFile): GeneratedBPluginManifest {
     source: 'builtin',
     specB: file.spec,
     trustedBy: file.trustedBy,
+    configSchema: file.configSchema,
     effects: {
       tools: [toolName],
       storage: [],
@@ -179,12 +183,14 @@ export class GeneratedBPlugin implements PluginLifecycle {
 
 // —— 持久化（config/generated-plugins/<id>/{manifest.json, handler.js}，原子写盘 §11.4）——
 
-/** 保存 B 插件（新建或覆盖）；manifest.json 存 spec（含 handlerSource）+ trustedBy，handler.js 存纯源码 */
+/** 保存 B 插件（新建或覆盖）；manifest.json 存 spec（含 handlerSource）+ trustedBy + configSchema，handler.js 存纯源码 */
 export function saveGeneratedBPlugin(input: {
   id?: string
   spec: GeneratedBSpec
   enabled?: boolean
   trustedBy?: { userId: string; ts: number } | null
+  /** 插件配置项声明；传入则持久化，覆盖既有 configSchema */
+  configSchema?: PluginConfigField[]
 }): GeneratedBPluginFile {
   const now = Date.now()
   if (input.id !== undefined && !isValidGeneratedBId(input.id)) {
@@ -197,6 +203,7 @@ export function saveGeneratedBPlugin(input: {
     spec: input.spec,
     enabled: input.enabled ?? existing?.enabled ?? true,
     trustedBy: input.trustedBy ?? existing?.trustedBy ?? null,
+    configSchema: input.configSchema ?? existing?.configSchema,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

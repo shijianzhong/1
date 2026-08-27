@@ -24,6 +24,7 @@ import { pluginEvents } from './events'
 import { validateGeneratedSpec } from './whitelist'
 import type { GeneratedPluginSpec } from './contracts'
 import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
+import type { PluginConfigField } from '@shared/types'
 import { logger } from '../logger'
 
 /** 工具名命名空间前缀（所有权边界 + unregisterByPrefix 清理） */
@@ -51,11 +52,13 @@ export interface GeneratedPluginManifest extends OnePluginManifest {
   spec: GeneratedPluginSpec
 }
 
-/** manifest 持久化结构（外层包装：id + spec + enabled + 元信息） */
+/** manifest 持久化结构（外层包装：id + spec + enabled + configSchema + 元信息） */
 interface GeneratedPluginFile {
   id: string
   spec: GeneratedPluginSpec
   enabled: boolean
+  /** 插件配置项声明（secret 字段经 vaultKeyId 引用，明文不落盘） */
+  configSchema?: PluginConfigField[]
   createdAt: number
   updatedAt: number
 }
@@ -75,6 +78,7 @@ function fileToManifest(file: GeneratedPluginFile): GeneratedPluginManifest {
     enabled: file.enabled,
     source: 'builtin',
     spec: file.spec,
+    configSchema: file.configSchema,
     effects: {
       tools: [toolName],
       storage: [],
@@ -154,6 +158,8 @@ export function saveGeneratedPlugin(input: {
   id?: string
   spec: GeneratedPluginSpec
   enabled?: boolean
+  /** 插件配置项声明；传入则持久化，覆盖既有 configSchema */
+  configSchema?: PluginConfigField[]
 }): GeneratedPluginFile {
   const now = Date.now()
   // 外部传入 id 必须合法（随机 slug）；不合法直接拒绝写盘（防路径逃逸）
@@ -166,6 +172,7 @@ export function saveGeneratedPlugin(input: {
     id,
     spec: input.spec,
     enabled: input.enabled ?? existing?.enabled ?? true,
+    configSchema: input.configSchema ?? existing?.configSchema,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

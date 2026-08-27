@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ChevronDown, ChevronRight, Puzzle, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react'
-import type { OnePluginManifest } from '@shared/types'
+import type { OnePluginManifest, PluginConfigField } from '@shared/types'
 import { unwrap } from '@renderer/api/client'
 import { Badge } from '@renderer/components/ui/Badge'
 import { Button } from '@renderer/components/ui/Button'
@@ -77,7 +78,10 @@ export function PluginsSettings() {
       {plugins.map((p) => {
         const isGenerated = p.kind === 'generated'
         const isGeneratedB = p.kind === 'generated_b'
-        const isExpandable = isGenerated || isGeneratedB
+        const isExternal = p.kind === 'external'
+        const isCodePlugin = isGeneratedB || isExternal
+        const isExpandable = isGenerated || isCodePlugin
+        const isToggleable = isGenerated || isCodePlugin || p.kind === 'skill'
         const isOpen = expanded === p.id
         const isTrusted = p.trustedBy !== null && p.trustedBy !== undefined
         return (
@@ -118,7 +122,7 @@ export function PluginsSettings() {
                   <Badge variant="default">{t('plugins:disabled')}</Badge>
                 )}
                 {/* B 专属：信任态徽标（未信任显眼提示用户去信任） */}
-                {isGeneratedB ? (
+                {isCodePlugin ? (
                   isTrusted ? (
                     <Badge variant="success">{t('plugins:trusted')}</Badge>
                   ) : (
@@ -127,9 +131,9 @@ export function PluginsSettings() {
                 ) : null}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Switch checked={p.enabled} onCheckedChange={() => void onToggle(p)} />
+                {isToggleable && <Switch checked={p.enabled} onCheckedChange={() => void onToggle(p)} />}
                 {/* B 专属：信任/取消信任按钮（信任前不卸载代码，可随时切回占位） */}
-                {isGeneratedB ? (
+                {isCodePlugin ? (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -201,8 +205,12 @@ export function PluginsSettings() {
               </div>
             ) : null}
 
-            {/* generated/B 展开详情：handlerSource 源码 + trustedBy 事实 */}
-            {isGeneratedB && isOpen && p.specB ? (
+            {/* generated/B / external 展开详情：handlerSource 源码 + trustedBy 事实（同代码型结构） */}
+            {isCodePlugin && isOpen && (p.specB || p.specExternal) ? (
+              (() => {
+                const spec = (p.specB ?? p.specExternal)!
+                const toolPrefix = isGeneratedB ? `generated_b/${spec.name}` : `external/${spec.name}`
+                return (
               <div
                 style={{
                   marginTop: 4,
@@ -215,7 +223,7 @@ export function PluginsSettings() {
                   fontSize: '0.78rem',
                 }}
               >
-                <SpecRow label={t('plugins:spec.toolName')} value={`generated_b/${p.specB.name}`} />
+                <SpecRow label={t('plugins:spec.toolName')} value={toolPrefix} />
                 <SpecRow
                   label={t('plugins:trustedBy')}
                   value={
@@ -240,7 +248,7 @@ export function PluginsSettings() {
                       maxHeight: 160,
                     }}
                   >
-                    {JSON.stringify(p.specB.inputSchema, null, 2)}
+                    {JSON.stringify(spec.inputSchema, null, 2)}
                   </pre>
                 </div>
                 <div>
@@ -262,10 +270,17 @@ export function PluginsSettings() {
                       wordBreak: 'break-all',
                     }}
                   >
-                    {p.specB.handlerSource}
+                    {spec.handlerSource}
                   </pre>
                 </div>
               </div>
+                )
+              })()
+            ) : null}
+
+            {/* 配置项声明（插件 configSchema，只读展示；secret 字段仅显示 vault keyId，明文不落渲染层） */}
+            {isOpen && p.configSchema && p.configSchema.length > 0 ? (
+              <ConfigSchemaBlock fields={p.configSchema} t={t} />
             ) : null}
           </div>
         )
@@ -279,6 +294,51 @@ function SpecRow({ label, value }: { label: string; value: string }) {
     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
       <span style={{ color: 'var(--color-fg-3)', minWidth: 96, flexShrink: 0 }}>{label}</span>
       <span style={{ wordBreak: 'break-all' }}>{value}</span>
+    </div>
+  )
+}
+
+/** 插件配置项声明（configSchema）只读展示；secret 字段只暴露 vault keyId（明文不落渲染层，铁律3） */
+function ConfigSchemaBlock({ fields, t }: { fields: PluginConfigField[]; t: TFunction }) {
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        padding: 10,
+        borderRadius: 8,
+        background: 'var(--color-bg-2)',
+        border: '1px solid var(--color-border)',
+        display: 'grid',
+        gap: 6,
+        fontSize: '0.78rem',
+      }}
+    >
+      <div style={{ color: 'var(--color-fg-3)', marginBottom: 4 }}>{t('plugins:config.title')}</div>
+      {fields.map((f, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'grid',
+            gap: 4,
+            padding: 8,
+            borderRadius: 6,
+            background: 'var(--color-bg-1)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <SpecRow label={t('plugins:config.name')} value={f.name} />
+          <SpecRow label={t('plugins:config.type')} value={f.type} />
+          {f.description ? (
+            <SpecRow label={t('plugins:config.desc')} value={f.description} />
+          ) : null}
+          {f.secret ? (
+            <SpecRow
+              label={t('plugins:config.secret')}
+              value={f.vaultKeyId ? `vault:${f.vaultKeyId}` : t('plugins:config.noKeyId')}
+            />
+          ) : null}
+        </div>
+      ))}
     </div>
   )
 }

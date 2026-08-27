@@ -1,0 +1,373 @@
+// —— external 代码型插件（docs/PLUGIN_ARCHITECTURE.md §5 Stage 3 external kind）——
+//
+// 外部分发的代码插件，持久化为 config/external-plugins/<id>/{manifest.json, handler.js}。
+// 执行模型与 generated_b 同构：vm 沙箱编译 handler 源码，context 只注入 executeTool，
+// 不暴露 require/process/fs。信任三态：untrusted 注册占位（返 trusted_required），
+// trusted 注册真 handler（approvalMode='always'）。
+//
+// 与 generated_b 的区别：generated_b 由 AI/用户在聊天里现场造（genb_ 前缀 +
+// generated-plugins 目录）；external 由外部目录/registry 分发加载（ext_ 前缀 +
+// 独立 external-plugins 目录）。两者共享 vm 沙箱与信任模型，互不串扰。
+
+import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { relative } from 'node:path'
+import { z } from 'zod'
+import {
+  getExternalPluginDir,
+  getExternalPluginHandlerPath,
+  getExternalPluginManifestPath,
+  getExternalPluginsDir,
+} from '../storage/paths'
+import { readJsonFile, removeFile, writeJsonFile, writeTextFile } from '../storage/json-store'
+import { newToolUseId, type ToolContext } from '../tools/registry'
+import { pluginEvents } from './events'
+import { validateGeneratedBSpec } from './whitelist'
+import { compileBHandler, runBHandler } from './sandbox'
+import type { GeneratedBSpec } from './contracts'
+import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
+import type { PluginConfigField } from '@shared/types'
+import { logger } from '../logger'
+
+/** 工具名命名空间前缀（所有权边界 + unregisterByPrefix 清理；区别于 A 的 generated/、B 的 generated_b/） */
+export const EXTERNAL_TOOL_PREFIX = 'external/'
+
+/**
+ * external id 合法性：随机 slug 形如 ext_<base36+random>，纯字母数字。
+ * 与 A 的 gen_、B 的 genb_ 前缀互斥（正则过滤无串扰）。
+ * 用于防御路径穿越——存储层按 id 拼路径（join + rmSync），非法 id 不得进入读/删路径。
+ */
+const EXTERNAL_ID_RE = /^ext_[A-Za-z0-9]+$/
+export function isValidExternalId(id: string): boolean {
+  return EXTERNAL_ID_RE.test(id)
+}
+
+/** 子路径是否仍位于父目录内（OS 无关，防 .. 逃逸） */
+function isInsideDir(parent: string, child: string): boolean {
+  const rel = relative(parent, child)
+  return rel === '' || !rel.startsWith('..')
+}
+
+/** external 插件 manifest：OnePluginManifest + specExternal */
+export interface ExternalPluginManifest extends OnePluginManifest {
+  kind: 'external'
+  source: 'builtin' | 'registry' | 'external'
+  specExternal: GeneratedBSpec
+  trustedBy: { userId: string; ts: number } | null
+  configSchema?: PluginConfigField[]
+}
+
+/** manifest 持久化结构（外层包装：id + spec + enabled + trustedBy + configSchema + 元信息） */
+interface ExternalPluginFile {
+  id: string
+  spec: GeneratedBSpec
+  enabled: boolean
+  trustedBy: { userId: string; ts: number } | null
+  configSchema?: PluginConfigField[]
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * 从持久化文件 → OnePluginManifest（统一插件视图，供 /plugins 页展示）。
+ * specExternal.name 是工具名（如 extract_pkg），manifest.id 是 external/<slug>。
+ */
+function fileToManifest(file: ExternalPluginFile): ExternalPluginManifest {
+  const toolName = `${EXTERNAL_TOOL_PREFIX}${file.spec.name}`
+  return {
+    id: file.id,
+    kind: 'external',
+    name: file.spec.name,
+    version: '0.1.0',
+    description: file.spec.description,
+    enabled: file.enabled,
+    source: 'external',
+    specExternal: file.spec,
+    trustedBy: file.trustedBy,
+    configSchema: file.configSchema,
+    effects: {
+      tools: [toolName],
+      storage: [],
+    },
+  }
+}
+
+/** 单个 external 插件（长生命周期，manifest 驱动 + 信任闸门） */
+export class ExternalPlugin implements PluginLifecycle {
+  private handle: { unregister: () => void } | null = null
+  constructor(private readonly manifest: ExternalPluginManifest) {}
+
+  get id(): string {
+    return this.manifest.id
+  }
+
+  async onLoad(host: PluginHost): Promise<void> {
+    const spec = this.manifest.specExternal
+    // —— 注册点校验（fail-closed）——handlerSource 非空 + 可编译 + inputSchema 结构
+    const result = validateGeneratedBSpec(spec)
+    const toolName = `${EXTERNAL_TOOL_PREFIX}${spec.name}`
+    if (!result.ok) {
+      pluginEvents.emit('plugin.registered', {
+        id: this.manifest.id,
+        toolPrefix: toolName,
+        status: 'failed',
+        reason: result.reason,
+      })
+      logger.error(
+        `[external] 拒绝注册 ${toolName}：${result.reason}（${result.messageKey}）`,
+      )
+      return
+    }
+
+    const trusted = this.manifest.trustedBy !== null
+    const looseZod = z.record(z.string(), z.unknown())
+
+    if (!trusted) {
+      // —— 未信任：注册占位工具（approvalMode='auto'，不弹审批）——
+      // 占位就是要被 LLM 调到、返回 trusted_required 提示让 LLM 引导用户去 /plugins 页信任。
+      this.handle = host.tools.register({
+        name: toolName,
+        description: `${spec.description} [${'未信任'}]`,
+        params: looseZod,
+        approvalMode: 'auto',
+        options: { inputSchemaOverride: spec.inputSchema },
+        handler: async () => ({
+          content: JSON.stringify({
+            error: 'trusted_required',
+            messageKey: 'errors:plugins.trusted_required',
+          }),
+          isError: true,
+        }),
+      })
+    } else {
+      // —— 已信任：注册真 code handler（approvalMode='always'，每次弹审批）——
+      const factory = compileBHandler(spec.handlerSource, this.manifest.id)
+      this.handle = host.tools.register({
+        name: toolName,
+        description: spec.description,
+        params: looseZod,
+        approvalMode: 'always',
+        options: { inputSchemaOverride: spec.inputSchema },
+        handler: async (args, ctx: ToolContext) => {
+          const res = await runBHandler(factory, args, ctx)
+          return {
+            content: res.content,
+            isError: res.isError,
+            toolUseId: ctx.toolUseId ?? newToolUseId(),
+          }
+        },
+      })
+    }
+
+    pluginEvents.emit('plugin.registered', {
+      id: this.manifest.id,
+      toolPrefix: toolName,
+      status: 'ok',
+    })
+    logger.info(
+      `[external] 已注册 ${toolName}（${trusted ? 'trusted' : 'untrusted 占位'}）`,
+    )
+  }
+
+  async onUnload(reason: 'disable' | 'uninstall' | 'shutdown'): Promise<void> {
+    this.handle?.unregister()
+    this.handle = null
+    pluginEvents.emit('plugin.unloaded', { id: this.manifest.id, reason })
+    logger.info(`[external] 已卸载 ${this.manifest.id}（${reason}）`)
+  }
+}
+
+// —— 持久化（config/external-plugins/<id>/{manifest.json, handler.js}，原子写盘 §11.4）——
+
+/** 保存 external 插件（新建或覆盖）；manifest.json 存 spec（含 handlerSource）+ trustedBy + configSchema，handler.js 存纯源码 */
+export function saveExternalPlugin(input: {
+  id?: string
+  spec: GeneratedBSpec
+  enabled?: boolean
+  trustedBy?: { userId: string; ts: number } | null
+  configSchema?: PluginConfigField[]
+}): ExternalPluginFile {
+  const now = Date.now()
+  if (input.id !== undefined && !isValidExternalId(input.id)) {
+    throw new Error(`invalid external plugin id: ${input.id}`)
+  }
+  const existing = input.id ? loadExternalPluginFile(input.id) : null
+  const id = input.id ?? `ext_${now.toString(36)}${Math.random().toString(36).slice(2, 10)}`
+  const file: ExternalPluginFile = {
+    id,
+    spec: input.spec,
+    enabled: input.enabled ?? existing?.enabled ?? true,
+    trustedBy: input.trustedBy ?? existing?.trustedBy ?? null,
+    configSchema: input.configSchema ?? existing?.configSchema,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  // manifest.json 存完整 file（含 handlerSource 字符串）
+  writeJsonFile(getExternalPluginManifestPath(id), file)
+  // handler.js 存纯源码（供查看/编辑，不经 JSON 转义）；原子写盘，与 manifest.json 同约定（§11.4）
+  writeTextFile(getExternalPluginHandlerPath(id), file.spec.handlerSource)
+  return file
+}
+
+/** 读单个 manifest 文件（原始持久化结构）；非法 id 或 file.id 与请求不符直接跳过（防 .. 逃逸 + 篡改） */
+function loadExternalPluginFile(id: string): ExternalPluginFile | null {
+  if (!isValidExternalId(id)) return null
+  const path = getExternalPluginManifestPath(id)
+  if (!existsSync(path)) return null
+  const file = readJsonFile<ExternalPluginFile | null>(path, null)
+  if (!file || file.id !== id) return null
+  return file
+}
+
+/** 读单个 manifest（OnePluginManifest 视图，供 /plugins 页） */
+export function loadExternalPluginManifest(id: string): ExternalPluginManifest | null {
+  const file = loadExternalPluginFile(id)
+  return file ? fileToManifest(file) : null
+}
+
+/** 列出全部 external 插件 manifest（OnePluginManifest 视图，按更新时间倒序） */
+export function listExternalPluginManifests(): ExternalPluginManifest[] {
+  const dir = getExternalPluginsDir()
+  if (!existsSync(dir)) return []
+  const files: ExternalPluginFile[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const file = loadExternalPluginFile(entry.name)
+    if (file) files.push(file)
+  }
+  return files.sort((a, b) => b.updatedAt - a.updatedAt).map(fileToManifest)
+}
+
+/** 翻转 enabled（持久化，不直接 onUnload——由 IPC 层调 onUnload/onLoad） */
+export function setExternalPluginEnabled(
+  id: string,
+  enabled: boolean,
+): ExternalPluginFile | null {
+  const file = loadExternalPluginFile(id)
+  if (!file) return null
+  file.enabled = enabled
+  file.updatedAt = Date.now()
+  writeJsonFile(getExternalPluginManifestPath(id), file)
+  return file
+}
+
+/** 翻转信任（持久化 + 重载切占位↔真 handler） */
+export function setTrustedExternalPlugin(
+  id: string,
+  trustedBy: { userId: string; ts: number } | null,
+): ExternalPluginFile | null {
+  const file = loadExternalPluginFile(id)
+  if (!file) return null
+  file.trustedBy = trustedBy
+  file.updatedAt = Date.now()
+  writeJsonFile(getExternalPluginManifestPath(id), file)
+  return file
+}
+
+/** 删除 external 插件目录（卸载时调用）；非法 id 或路径逃逸 base 一律拒绝（fail-closed 删路径） */
+export function removeExternalPlugin(id: string): void {
+  if (!isValidExternalId(id)) {
+    throw new Error(`invalid external plugin id: ${id}`)
+  }
+  const dir = getExternalPluginDir(id)
+  const base = getExternalPluginsDir()
+  if (!isInsideDir(base, dir)) {
+    throw new Error(`external plugin dir escapes base: ${dir}`)
+  }
+  rmSync(dir, { recursive: true, force: true })
+  removeFile(getExternalPluginManifestPath(id))
+  removeFile(getExternalPluginHandlerPath(id))
+}
+
+// —— 启动时加载全部 enabled 的 external 插件（仿 initGeneratedPlugins，Promise.allSettled 非阻塞）——
+
+/** 进程内缓存：已 onLoad 的 ExternalPlugin 实例（id → instance），供 enable/disable/uninstall 复用 */
+const loadedExternalPlugins = new Map<string, ExternalPlugin>()
+
+/** 启动时加载全部 external 插件：enabled 的 onLoad 注册，disabled 的只留 manifest。单个失败不阻塞其他。 */
+export async function initExternalPlugins(host: PluginHost): Promise<void> {
+  const manifests = listExternalPluginManifests()
+  if (manifests.length === 0) return
+  await Promise.allSettled(
+    manifests.map(async (manifest) => {
+      const plugin = new ExternalPlugin(manifest)
+      loadedExternalPlugins.set(manifest.id, plugin)
+      if (manifest.enabled) {
+        try {
+          await plugin.onLoad(host)
+        } catch (e) {
+          logger.error(`[external] 启动加载 ${manifest.id} 失败`, e)
+        }
+      }
+    }),
+  )
+  logger.info(`[external] 启动加载完成：${manifests.length} 个插件`)
+}
+
+/** 启用一个 external 插件（onLoad 注册）——供 IPC plugins:enable */
+export async function enableExternalPlugin(host: PluginHost, id: string): Promise<void> {
+  const manifest = loadExternalPluginManifest(id)
+  if (!manifest) throw new Error(`external plugin not found: ${id}`)
+  setExternalPluginEnabled(id, true)
+  let plugin = loadedExternalPlugins.get(id)
+  if (!plugin) {
+    plugin = new ExternalPlugin(manifest)
+    loadedExternalPlugins.set(id, plugin)
+  }
+  await plugin.onLoad(host)
+}
+
+/** 禁用一个 external 插件（onUnload 回滚）——供 IPC plugins:disable */
+export async function disableExternalPlugin(id: string): Promise<void> {
+  setExternalPluginEnabled(id, false)
+  const plugin = loadedExternalPlugins.get(id)
+  if (plugin) {
+    await plugin.onUnload('disable')
+  }
+}
+
+/** 卸载一个 external 插件（onUnload + 删目录）——供 IPC plugins:uninstall */
+export async function uninstallExternalPlugin(id: string): Promise<void> {
+  const plugin = loadedExternalPlugins.get(id)
+  if (plugin) {
+    await plugin.onUnload('uninstall')
+    loadedExternalPlugins.delete(id)
+  }
+  removeExternalPlugin(id)
+}
+
+/** 信任一个 external 插件（写盘 trustedBy + 重载切真 handler）——供 IPC plugins:trust */
+export async function trustExternalPlugin(
+  host: PluginHost,
+  id: string,
+  userId: string,
+): Promise<void> {
+  const trustedBy = { userId, ts: Date.now() }
+  setTrustedExternalPlugin(id, trustedBy)
+  const existing = loadedExternalPlugins.get(id)
+  if (existing) {
+    await existing.onUnload('disable')
+    const manifest = loadExternalPluginManifest(id)
+    if (manifest) {
+      const plugin = new ExternalPlugin(manifest)
+      loadedExternalPlugins.set(id, plugin)
+      await plugin.onLoad(host)
+    }
+  }
+}
+
+/** 列出全部 external 插件 manifest（供 IPC plugins:list） */
+export function listExternalPluginsForApi(): ExternalPluginManifest[] {
+  return listExternalPluginManifests()
+}
+
+/** 进程退出时卸载全部 external 插件（onUnload('shutdown')，对称 disconnectAll） */
+export async function disconnectAllExternal(): Promise<void> {
+  for (const plugin of loadedExternalPlugins.values()) {
+    try {
+      await plugin.onUnload('shutdown')
+    } catch (e) {
+      logger.error(`[external] shutdown 卸载 ${plugin.id} 失败`, e)
+    }
+  }
+  loadedExternalPlugins.clear()
+}

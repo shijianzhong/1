@@ -10,6 +10,7 @@ import {
   type ToolDef,
 } from '../tools/registry'
 import { pluginEvents } from './events'
+import { getKey } from '../secrets/vault'
 import type { PluginHost, PluginHandle, PluginToolSpec } from './contracts'
 
 class PluginHostImpl implements PluginHost {
@@ -40,6 +41,13 @@ class PluginHostImpl implements PluginHost {
 
   // 直接复用全局单例总线（与 registry 写盘处 emit 的是同一实例）
   events = pluginEvents
+
+  // 密钥引用能力：插件按 vault keyId 取解密明文（主进程，明文不落渲染层，铁律3）
+  secrets = {
+    async get(keyId: string): Promise<string | null> {
+      return getKey(keyId)
+    },
+  }
 }
 
 /** 全局单例 host 句柄（host 能力本应跨运行稳定单例，与 pluginEvents 同设）；SkillContextProvider 仍 per-run new，经构造参数注入此句柄，不把 SkillContextProvider 自身做成单例 */

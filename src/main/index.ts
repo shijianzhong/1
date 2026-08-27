@@ -32,10 +32,8 @@ import { registerPosterTools } from './tools/builtin/poster'
 import { registerReviewArchiveTools } from './tools/builtin/reviewArchive'
 import { registerAiCavityTools } from './tools/builtin/aiCavity'
 import { registerAssetCrudTools } from './tools/builtin/assetCrud'
-import { initMcpServers, disconnectAll as disconnectAllMcp } from './tools/mcp'
 import { pluginHost } from './plugins/host'
-import { initGeneratedPlugins, disconnectAll as disconnectAllGenerated } from './plugins/generated'
-import { initGeneratedBPlugins, disconnectAllB } from './plugins/generatedB'
+import { initAllPlugins, disposeAllPlugins } from './plugins/registry'
 import { skillHostManager } from './plugins/skillHost'
 import { initKbStatus } from './vector/embed'
 import { terminateEmbedWorker } from './vector/worker-client'
@@ -185,13 +183,10 @@ if (!gotLock) {
     registerAssetCrudTools() // 资产库 CRUD（topic/sample_article/style_profile 读写，§2.4）
     startupMark('main:tools-registered')
     // MCP 服务器异步自动连接（不阻塞启动）
-    void initMcpServers()
+    // 插件统一生命周期编排：聚合 MCP/generated/generated_b/external 的加载（loadEvery + startAll enabled，非阻塞）
+    void initAllPlugins(pluginHost)
     // skill-host 管理器启动扫描（收集 disabledSkills，供 filterSkillIds 过滤）
     void skillHostManager.onLoad(pluginHost)
-    // generated/A 声明式插件加载（enabled 的 onLoad 注册，非阻塞，单个失败不阻塞其他）
-    void initGeneratedPlugins(pluginHost)
-    // generated/B 代码型插件加载（信任闸门：untrusted 占位 / trusted 真 handler always 审批，非阻塞）
-    void initGeneratedBPlugins(pluginHost)
     // KB 向量库自检：flatIndex 懒加载 + vec_dim 漂移检测（非阻塞，失败降级纯词法）
     void initKbStatus()
     registerIpcHandlers()
@@ -258,9 +253,7 @@ if (!gotLock) {
     unregisterGlobalShortcut()
     destroyTray()
     stopAutoUpdater()
-    void disconnectAllMcp() // 断开所有 MCP 服务器连接
-    void disconnectAllGenerated() // 卸载所有 generated/A 声明式插件（对称 MCP，best-effort）
-    void disconnectAllB() // 卸载所有 generated/B 代码型插件（对称，best-effort）
+    void disposeAllPlugins() // 卸载全部插件（MCP/generated/generated_b/external，对称，best-effort）
     terminateEmbedWorker() // 终止 embed worker 子进程（best-effort，§worker-client:197）
     closeDb()
   })

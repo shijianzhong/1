@@ -1374,11 +1374,15 @@ export interface OnePluginManifest {
    * 与 spec 平级可选字段，非判别联合——manifest 是统一视图。
    */
   specB?: GeneratedBSpec
+  /** external kind 的 spec（仅 kind='external' 时有值；与 generated_b 同代码型结构：handlerSource 经 vm 沙箱执行） */
+  specExternal?: GeneratedBSpec
   /**
-   * 信任状态（仅 generated_b 用；null=未信任，注册占位工具返 trusted_required；
+   * 信任状态（generated_b / external 用；null=未信任，注册占位工具返 trusted_required；
    * 非空=已信任，注册真 code handler，approvalMode='always'）。
    */
   trustedBy?: { userId: string; ts: number } | null
+  /** 插件配置项声明（声明式资源，框架提供存取；secret 字段经 vault keyId 引用，明文不落渲染层） */
+  configSchema?: PluginConfigField[]
 }
 
 /** generated/A 声明式工具 spec（只读/检索白名单动作，无新执行面） */
@@ -1406,6 +1410,18 @@ export interface GeneratedBSpec {
   inputSchema: Record<string, unknown>
   /** 可执行 handler 源码（签名 async function handler(args, ctx)，沙箱内只能调 ctx.executeTool 白名单动作） */
   handlerSource: string
+}
+
+/** 插件配置字段声明（OnePluginManifest.configSchema 元素） */
+export interface PluginConfigField {
+  /** 字段名（插件 handler 经 host.config / host.secrets 按此名取用） */
+  name: string
+  type: 'string' | 'number' | 'boolean'
+  /** 是否为密钥型字段（经 vault keyId 引用，明文不落渲染层） */
+  secret?: boolean
+  /** 密钥型字段的 vault keyId（secret=true 时必填，框架经 vault.getKey 解析明文） */
+  vaultKeyId?: string
+  description?: string
 }
 
 
