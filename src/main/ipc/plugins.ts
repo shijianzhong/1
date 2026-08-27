@@ -54,14 +54,43 @@ function skillToManifest(skill: Skill): OnePluginManifest {
   }
 }
 
+/** 解析 configSchema 里 secret 字段的密钥绑定状态（vaultKeyId 在 vault 中是否存在），注入 transient secretBound 供 /plugins 页标"未绑定密钥"。vault 缺失/查询异常一律按未绑定处理（fail-safe）。 */
+async function withSecretBound(m: OnePluginManifest): Promise<OnePluginManifest> {
+  if (!m.configSchema || m.configSchema.length === 0) return m
+  const secrets = pluginHost.secrets
+  const configSchema = await Promise.all(
+    m.configSchema.map(async (f) => {
+      if (!f.secret || !f.vaultKeyId) return f
+      let bound = false
+      try {
+        bound = (await secrets?.get(f.vaultKeyId)) != null
+      } catch {
+        bound = false
+      }
+      return { ...f, secretBound: bound }
+    }),
+  )
+  return { ...m, configSchema }
+}
+
 export function registerPluginsHandlers(): void {
   // —— 列出全部插件（generated/A + generated/B + skill，统一 OnePluginManifest 视图）——
   withHandler<OnePluginManifest[]>('plugins:list', async () => {
     // generated 条目 id 加 'generated/' 命名空间前缀（与 types.ts OnePluginManifest 契约一致），
     // 供 UI 回传时据此路由；存储层内部始终用 bare id。
     const generated = listGeneratedPluginsForApi().map((m) => ({ ...m, id: `generated/${m.id}` }))
-    const generatedB = listGeneratedBPluginsForApi().map((m) => ({ ...m, id: `generated_b/${m.id}` }))
-    const external = listExternalPluginsForApi().map((m) => ({ ...m, id: `external/${m.id}` }))
+    const generatedB = await Promise.all(
+      listGeneratedBPluginsForApi().map(async (m) => ({
+        ...(await withSecretBound(m)),
+        id: `generated_b/${m.id}`,
+      })),
+    )
+    const external = await Promise.all(
+      listExternalPluginsForApi().map(async (m) => ({
+        ...(await withSecretBound(m)),
+        id: `external/${m.id}`,
+      })),
+    )
     const skills = listSkills().map(skillToManifest)
     // MCP 投影（只读展示，启停走 McpSettings 页）；enabled 来自 server 配置
     const mcpServers = await loadMcpConfig()

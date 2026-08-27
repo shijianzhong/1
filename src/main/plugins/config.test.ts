@@ -76,11 +76,9 @@ describe('validatePluginConfigSchema（注册点 fail-closed 闸门）', () => {
   })
 })
 
-describe('resolvePluginConfig（运行时解析注入 ctx.config）', () => {
-  it('undefined → ok，config={}', async () => {
-    const r = await resolvePluginConfig(makeHost(), undefined)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.config).toEqual({})
+describe('resolvePluginConfig（运行时解析注入 ctx.config，假定 schema 已通过校验）', () => {
+  it('undefined → config={}', async () => {
+    expect(await resolvePluginConfig(makeHost(), undefined)).toEqual({})
   })
 
   it('非 secret 字段注入声明的 default', async () => {
@@ -89,9 +87,11 @@ describe('resolvePluginConfig（运行时解析注入 ctx.config）', () => {
       { name: 'n', type: 'number', default: 2 },
       { name: 'flag', type: 'boolean', default: true },
     ]
-    const r = await resolvePluginConfig(makeHost(), schema)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.config).toEqual({ base: 'https://b', n: 2, flag: true })
+    expect(await resolvePluginConfig(makeHost(), schema)).toEqual({
+      base: 'https://b',
+      n: 2,
+      flag: true,
+    })
   })
 
   it('secret 字段经 host.secrets.get 解析明文', async () => {
@@ -99,26 +99,13 @@ describe('resolvePluginConfig（运行时解析注入 ctx.config）', () => {
     const schema: PluginConfigField[] = [
       { name: 'tok', type: 'string', secret: true, vaultKeyId: 'k1' },
     ]
-    const r = await resolvePluginConfig(makeHost({ get }), schema)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.config).toEqual({ tok: 'PLAIN1' })
+    expect(await resolvePluginConfig(makeHost({ get }), schema)).toEqual({ tok: 'PLAIN1' })
   })
 
   it('host.secrets 未提供 → secret 字段解析为 null（fail-safe，不抛）', async () => {
     const schema: PluginConfigField[] = [
       { name: 'tok', type: 'string', secret: true, vaultKeyId: 'k1' },
     ]
-    const r = await resolvePluginConfig(makeHost(), schema)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.config).toEqual({ tok: null })
-  })
-
-  it('非法 configSchema → 复用 ValidateResult（reason + messageKey），不进入解析', async () => {
-    const r = await resolvePluginConfig(makeHost(), [{ name: '', type: 'string' }])
-    expect(r.ok).toBe(false)
-    if (!r.ok) {
-      expect(r.reason).toBe('config_field_name')
-      expect(r.messageKey).toBe('errors:plugins.config_field_name')
-    }
+    expect(await resolvePluginConfig(makeHost(), schema)).toEqual({ tok: null })
   })
 })

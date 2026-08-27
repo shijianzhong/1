@@ -161,19 +161,8 @@ export class GeneratedBPlugin implements PluginLifecycle {
       })
     } else {
       // —— 已信任：解析 configSchema → ctx.config（secret 走 vault，明文不落渲染层/沙箱）——
-      const resolved = await resolvePluginConfig(host, this.manifest.configSchema)
-      if (!resolved.ok) {
-        pluginEvents.emit('plugin.registered', {
-          id: this.manifest.id,
-          toolPrefix: toolName,
-          status: 'failed',
-          reason: resolved.reason,
-        })
-        logger.error(
-          `[generated-B] 拒绝注册 ${toolName}（config 解析失败）：${resolved.reason}（${resolved.messageKey}）`,
-        )
-        return
-      }
+      // configSchema 结构校验已在上方注册点闸门完成（两分支都过），此处仅做运行时解析。
+      const config = await resolvePluginConfig(host, this.manifest.configSchema)
       const factory = compileBHandler(spec.handlerSource, this.manifest.id)
       this.handle = host.tools.register({
         name: toolName,
@@ -182,7 +171,7 @@ export class GeneratedBPlugin implements PluginLifecycle {
         approvalMode: 'always',
         options: { inputSchemaOverride: spec.inputSchema },
         handler: async (args, ctx: ToolContext) => {
-          const res = await runBHandler(factory, args, ctx, resolved.config)
+          const res = await runBHandler(factory, args, ctx, config)
           return {
             content: res.content,
             isError: res.isError,

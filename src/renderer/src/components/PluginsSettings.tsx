@@ -337,7 +337,7 @@ function ConfigSchemaBlock({ fields, t }: { fields: PluginConfigField[]; t: TFun
           {f.secret ? (
             <SpecRow
               label={t('plugins:config.secret')}
-              value={f.vaultKeyId ? `vault:${f.vaultKeyId}` : t('plugins:config.noKeyId')}
+              value={f.secretBound ? `vault:${f.vaultKeyId}` : t('plugins:config.noKeyId')}
             />
           ) : null}
         </div>

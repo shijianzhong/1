@@ -30,7 +30,7 @@ const ConfigFieldJson = z.object({
   type: z.enum(['string', 'number', 'boolean']).describe('字段类型'),
   secret: z.boolean().optional().describe('是否密钥型（经 vault keyId 引用，明文不落盘/渲染层）'),
   vaultKeyId: z.string().optional().describe('密钥型字段的 vault keyId（secret=true 时必填）'),
-  default: z.union([z.string(), z.number(), z.boolean()]).optional().describe('非 secret 字段的默认值'),
+  default: z.union([z.string(), z.number(), z.boolean()]).nullable().optional().describe('非 secret 字段的默认值（null/缺省均表无默认，不报错）'),
   description: z.string().optional().describe('字段说明'),
 })
 
@@ -79,7 +79,15 @@ export function registerProposeGeneratedBTool(): void {
           description: a.description,
           inputSchema: a.inputSchema,
           handlerSource: a.handlerSource,
-          ...(a.configSchema ? { configSchema: a.configSchema as PluginConfigField[] } : {}),
+          ...(a.configSchema
+            ? {
+                // 归一：default 为 null（LLM 误输出）按"无默认"处理，剥离该字段，避免落库后类型不符
+                configSchema: (a.configSchema as PluginConfigField[]).map((f) => {
+                  const { default: d, ...rest } = f
+                  return d == null ? rest : f
+                }),
+              }
+            : {}),
         },
       }
       return emitPropose(ctx, draft)

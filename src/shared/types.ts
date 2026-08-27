@@ -924,6 +924,7 @@ export type CreateDraft = {
         /** 可选：插件配置项声明（secret 字段经 vault keyId 引用，明文不落盘；运行时注入 handler ctx.config） */
         configSchema?: PluginConfigField[]
       }
+      /** 注：external kind 不在此路径——external 经外部目录/registry 分发加载（ext_ 前缀 + external-plugins 目录），不经聊天造 propose 工具，故无对应 confirmCreate 分支（设计如此，非遗漏） */
     }
 )
 
@@ -1423,6 +1424,8 @@ export interface PluginConfigField {
   secret?: boolean
   /** 密钥型字段的 vault keyId（secret=true 时必填，框架经 vault.getKey 解析明文后注入 ctx.config） */
   vaultKeyId?: string
+  /** 运行时 transient：vaultKeyId 指向的密钥在 vault 中是否存在（主进程于 plugins:list 经 host.secrets.get 解析注入；声明态可缺省，渲染层据此标"未绑定密钥"） */
+  secretBound?: boolean
   /** 非 secret 字段的默认值（运行时注入 ctx.config[name]；未声明则 undefined） */
   default?: string | number | boolean
   description?: string
