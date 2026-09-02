@@ -24,7 +24,7 @@ import { pluginEvents } from './events'
 import { validateGeneratedSpec } from './whitelist'
 import type { GeneratedPluginSpec } from './contracts'
 import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
-import type { PluginConfigField } from '@shared/types'
+import { IpcErrorThrow } from '@shared/types'
 import { logger } from '../logger'
 
 /** 工具名命名空间前缀（所有权边界 + unregisterByPrefix 清理） */
@@ -42,7 +42,7 @@ export function isValidGeneratedId(id: string): boolean {
 /** 子路径是否仍位于父目录内（OS 无关，防 .. 逃逸） */
 function isInsideDir(parent: string, child: string): boolean {
   const rel = relative(parent, child)
-  return rel === '' || (!rel.startsWith('..') && !relative(parent, child).startsWith('..'))
+  return rel === '' || !rel.startsWith('..')
 }
 
 /** generated 插件 manifest：OnePluginManifest + spec */
@@ -52,13 +52,11 @@ export interface GeneratedPluginManifest extends OnePluginManifest {
   spec: GeneratedPluginSpec
 }
 
-/** manifest 持久化结构（外层包装：id + spec + enabled + configSchema + 元信息） */
+/** manifest 持久化结构（外层包装：id + spec + enabled + 元信息） */
 interface GeneratedPluginFile {
   id: string
   spec: GeneratedPluginSpec
   enabled: boolean
-  /** 插件配置项声明（secret 字段经 vaultKeyId 引用，明文不落盘） */
-  configSchema?: PluginConfigField[]
   createdAt: number
   updatedAt: number
 }
@@ -78,7 +76,6 @@ function fileToManifest(file: GeneratedPluginFile): GeneratedPluginManifest {
     enabled: file.enabled,
     source: 'builtin',
     spec: file.spec,
-    configSchema: file.configSchema,
     effects: {
       tools: [toolName],
       storage: [],
@@ -124,8 +121,8 @@ export class GeneratedPlugin implements PluginLifecycle {
       approvalMode: 'auto', // A 层：白名单只读/检索动作，auto（动作自身继承围栏/审批）
       options: { inputSchemaOverride: spec.inputSchema },
       handler: async (args, ctx: ToolContext) => {
-        // 透传 args 给 executeTool（与 fixedParams 合并）——复用全部闸门 +
-        // resolveConfined 围栏（file_read 等自动继承）。toolUseId 透传或新生成。
+        // 透传 args 给 executeTool（fixedParams 是默认值/校验锚点，运行时 args 同名键覆盖）——
+        // 复用全部闸门 + resolveConfined 围栏（file_read 等自动继承）。toolUseId 透传或新生成。
         const merged = { ...fixedParams, ...(args as Record<string, unknown>) }
         const toolUseId = ctx.toolUseId ?? newToolUseId()
         const res = await executeTool(action, merged, toolUseId, ctx)
@@ -152,27 +149,43 @@ export class GeneratedPlugin implements PluginLifecycle {
 }
 
 // —— 持久化（config/generated-plugins/<id>/manifest.json，原子写盘 §11.4）——
+// 注：A 层无 configSchema——handler 是固定判发逻辑（executeTool 白名单动作），
+// 没有 ctx.config 注入点，配置项无从消费；configSchema 是 B/external（代码型）专属。
+
+/**
+ * 工具名冲突检查：同命名空间内 spec.name 不得被其他 id 占用。
+ * 工具名是 registry 所有权边界（onUnload 按名 unregister）——两插件同名会导致
+ * 后注册覆盖先注册（registerTool 冲突仅 warn），且卸载其一会把另一个的注册误卸。
+ */
+function assertToolNameAvailable(name: string, selfId?: string): void {
+  for (const m of listGeneratedPluginManifests()) {
+    if (m.id !== selfId && m.spec.name === name) {
+      throw new IpcErrorThrow(
+        'errors:plugins.tool_name_conflict',
+        `generated tool name conflict: ${name} (owned by ${m.id})`,
+      )
+    }
+  }
+}
 
 /** 保存 generated 插件 manifest（新建或覆盖） */
 export function saveGeneratedPlugin(input: {
   id?: string
   spec: GeneratedPluginSpec
   enabled?: boolean
-  /** 插件配置项声明；传入则持久化，覆盖既有 configSchema */
-  configSchema?: PluginConfigField[]
 }): GeneratedPluginFile {
   const now = Date.now()
   // 外部传入 id 必须合法（随机 slug）；不合法直接拒绝写盘（防路径逃逸）
   if (input.id !== undefined && !isValidGeneratedId(input.id)) {
     throw new Error(`invalid generated plugin id: ${input.id}`)
   }
+  assertToolNameAvailable(input.spec.name, input.id)
   const existing = input.id ? loadGeneratedPluginFile(input.id) : null
   const id = input.id ?? `gen_${now.toString(36)}${Math.random().toString(36).slice(2, 10)}`
   const file: GeneratedPluginFile = {
     id,
     spec: input.spec,
     enabled: input.enabled ?? existing?.enabled ?? true,
-    configSchema: input.configSchema ?? existing?.configSchema,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

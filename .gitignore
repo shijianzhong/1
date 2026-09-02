@@ -21,3 +21,6 @@ one-code-review/
 
 # local tooling data (WorkBuddy memory/skills, not part of the product)
 .workbuddy/
+
+# creator-buddy Skill 包，本地素材不入库
+creator-buddy-main/

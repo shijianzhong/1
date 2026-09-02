@@ -104,7 +104,8 @@
     "invalid_config_schema": "configSchema 非法（须为字段数组），拒绝注册",
     "config_field_name": "配置字段 name 缺失或为空，拒绝注册",
     "config_field_type": "配置字段 type 须为 string/number/boolean，且 default 类型须匹配，拒绝注册",
-    "config_secret_key": "密钥型字段须绑定 vaultKeyId，拒绝注册"
+    "config_secret_key": "密钥型字段须绑定 vaultKeyId，拒绝注册",
+    "tool_name_conflict": "工具名已被其他插件占用，拒绝创建/注册"
   },
   "secrets": {
     "key_id_required": "keyId 必填",

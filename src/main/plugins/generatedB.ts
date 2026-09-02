@@ -30,7 +30,7 @@ import { resolvePluginConfig } from './config'
 import { compileBHandler, runBHandler } from './sandbox'
 import type { GeneratedBSpec } from './contracts'
 import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
-import type { PluginConfigField } from '@shared/types'
+import { IpcErrorThrow, type PluginConfigField } from '@shared/types'
 import { logger } from '../logger'
 
 /** 工具名命名空间前缀（所有权边界 + unregisterByPrefix 清理；区别于 A 的 generated/） */
@@ -147,7 +147,8 @@ export class GeneratedBPlugin implements PluginLifecycle {
       // 若占位也 always，用户审批了占位才看到「未信任」会很困惑。
       this.handle = host.tools.register({
         name: toolName,
-        description: `${spec.description} [${'未信任'}]`,
+        // TODO(i18n)：「未信任」标记硬编码在 LLM 可见 description（跟随主助手中文人设），英文 persona 场景待统一
+        description: `${spec.description} [未信任]`,
         params: looseZod,
         approvalMode: 'auto',
         options: { inputSchemaOverride: spec.inputSchema },
@@ -201,6 +202,22 @@ export class GeneratedBPlugin implements PluginLifecycle {
 
 // —— 持久化（config/generated-plugins/<id>/{manifest.json, handler.js}，原子写盘 §11.4）——
 
+/**
+ * 工具名冲突检查：同命名空间内 spec.name 不得被其他 id 占用。
+ * 工具名是 registry 所有权边界（onUnload 按名 unregister）——两插件同名会导致
+ * 后注册覆盖先注册（registerTool 冲突仅 warn），且卸载其一会把另一个的注册误卸。
+ */
+function assertToolNameAvailable(name: string, selfId?: string): void {
+  for (const m of listGeneratedBPluginManifests()) {
+    if (m.id !== selfId && m.specB.name === name) {
+      throw new IpcErrorThrow(
+        'errors:plugins.tool_name_conflict',
+        `generated_b tool name conflict: ${name} (owned by ${m.id})`,
+      )
+    }
+  }
+}
+
 /** 保存 B 插件（新建或覆盖）；manifest.json 存 spec（含 handlerSource）+ trustedBy + configSchema，handler.js 存纯源码 */
 export function saveGeneratedBPlugin(input: {
   id?: string
@@ -214,6 +231,7 @@ export function saveGeneratedBPlugin(input: {
   if (input.id !== undefined && !isValidGeneratedBId(input.id)) {
     throw new Error(`invalid generated_b plugin id: ${input.id}`)
   }
+  assertToolNameAvailable(input.spec.name, input.id)
   const existing = input.id ? loadGeneratedBPluginFile(input.id) : null
   const id = input.id ?? `genb_${now.toString(36)}${Math.random().toString(36).slice(2, 10)}`
   const file: GeneratedBPluginFile = {
@@ -360,25 +378,26 @@ export async function uninstallGeneratedBPlugin(id: string): Promise<void> {
   removeGeneratedBPlugin(id)
 }
 
-/** 信任一个 B 插件（写盘 trustedBy + 重载切真 handler）——供 IPC plugins:trust */
-export async function trustGeneratedBPlugin(
+/**
+ * 设置信任态并按需重载（plugins:trust 唯一入口，信任/取消信任同路径）。
+ * disabled 插件只落盘 trustedBy、不动 registry——启用时才按新信任态注册，
+ * 防"信任一个已禁用插件 → 工具绕过 enabled 闸门悄悄上线"。
+ */
+export async function setBPluginTrusted(
   host: PluginHost,
   id: string,
-  userId: string,
+  trustedBy: { userId: string; ts: number } | null,
 ): Promise<void> {
-  const trustedBy = { userId, ts: Date.now() }
-  setTrustedBPlugin(id, trustedBy)
-  // 重载：先卸载占位工具，再 onLoad 注册真 handler（trustedBy 现在非空）
+  const file = setTrustedBPlugin(id, trustedBy)
+  if (!file) throw new Error(`generated_b plugin not found: ${id}`)
+  if (!file.enabled) return
   const existing = loadedBPlugins.get(id)
-  if (existing) {
-    await existing.onUnload('disable')
-    const manifest = loadGeneratedBPluginManifest(id)
-    if (manifest) {
-      const plugin = new GeneratedBPlugin(manifest)
-      loadedBPlugins.set(id, plugin)
-      await plugin.onLoad(host)
-    }
-  }
+  if (existing) await existing.onUnload('disable')
+  const manifest = loadGeneratedBPluginManifest(id)
+  if (!manifest) throw new Error(`generated_b plugin manifest missing: ${id}`)
+  const plugin = new GeneratedBPlugin(manifest)
+  loadedBPlugins.set(id, plugin)
+  await plugin.onLoad(host)
 }
 
 /** 列出全部 B 插件 manifest（供 IPC plugins:list） */

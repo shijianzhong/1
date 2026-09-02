@@ -1,13 +1,38 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { rmSync } from 'node:fs'
+
+// 持久化路径指向临时目录（save/setBPluginTrusted 测试碰盘；onLoad 纯内存不碰盘）
+vi.mock('../storage/paths', async () => {
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = mkdtempSync(join(tmpdir(), 'genb-test-'))
+  return {
+    getGeneratedPluginsDir: () => dir,
+    getGeneratedPluginDir: (id: string) => join(dir, id),
+    getGeneratedPluginManifestPath: (id: string) => join(dir, id, 'manifest.json'),
+    getGeneratedBHandlerPath: (id: string) => join(dir, id, 'handler.js'),
+  }
+})
+
 import {
   GeneratedBPlugin,
   GENERATED_B_TOOL_PREFIX,
+  loadGeneratedBPluginManifest,
+  saveGeneratedBPlugin,
+  setBPluginTrusted,
   type GeneratedBPluginManifest,
 } from './generatedB'
+import { getGeneratedPluginsDir } from '../storage/paths'
 import { validateGeneratedBSpec } from './whitelist'
 import { pluginEvents } from './events'
+import { IpcErrorThrow } from '@shared/types'
 import type { PluginHost, PluginToolSpec, PluginHandle } from './contracts'
 import type { GeneratedBSpec, PluginConfigField } from '@shared/types'
+
+afterAll(() => {
+  rmSync(getGeneratedPluginsDir(), { recursive: true, force: true })
+})
 
 function makeManifest(
   spec: GeneratedBSpec,
@@ -198,5 +223,89 @@ describe('GeneratedBPlugin.onLoad（configSchema 注入 + 注册点校验）', (
     expect(register).not.toHaveBeenCalled()
     expect(got[0]?.status).toBe('failed')
     expect(got[0]?.reason).toBe('config_secret_key')
+  })
+})
+
+describe('saveGeneratedBPlugin 工具名冲突检查', () => {
+  it('同名不同 id → 抛 tool_name_conflict（IpcErrorThrow 带 messageKey）', () => {
+    saveGeneratedBPlugin({ spec: { ...validSpec, name: 'conflict_tool' } })
+    try {
+      saveGeneratedBPlugin({ spec: { ...validSpec, name: 'conflict_tool' } })
+      expect.unreachable('应抛冲突')
+    } catch (e) {
+      expect(e).toBeInstanceOf(IpcErrorThrow)
+      expect((e as IpcErrorThrow).messageKey).toBe('errors:plugins.tool_name_conflict')
+    }
+  })
+
+  it('同 id 覆盖保存（更新自身）→ 不抛', () => {
+    const f = saveGeneratedBPlugin({ spec: { ...validSpec, name: 'self_update_tool' } })
+    expect(() =>
+      saveGeneratedBPlugin({ id: f.id, spec: { ...validSpec, name: 'self_update_tool' } }),
+    ).not.toThrow()
+  })
+})
+
+describe('setBPluginTrusted（enabled 闸门：disabled 只落盘不动 registry）', () => {
+  it('disabled 插件信任 → 只落盘 trustedBy，不注册工具', async () => {
+    const file = saveGeneratedBPlugin({
+      spec: { ...validSpec, name: 'disabled_trust_tool' },
+      enabled: false,
+    })
+    const { host, register } = makeHost()
+    await setBPluginTrusted(host, file.id, { userId: 'local', ts: 1 })
+    expect(register).not.toHaveBeenCalled()
+    expect(loadGeneratedBPluginManifest(file.id)?.trustedBy).not.toBeNull()
+  })
+
+  it('disabled 插件取消信任 → 不触发 enable（enabled 保持 false）', async () => {
+    const file = saveGeneratedBPlugin({
+      spec: { ...validSpec, name: 'disabled_untrust_tool' },
+      enabled: false,
+      trustedBy: { userId: 'local', ts: 1 },
+    })
+    const { host, register } = makeHost()
+    await setBPluginTrusted(host, file.id, null)
+    expect(register).not.toHaveBeenCalled()
+    const m = loadGeneratedBPluginManifest(file.id)
+    expect(m?.trustedBy).toBeNull()
+    expect(m?.enabled).toBe(false)
+  })
+
+  it('enabled 插件信任 → 重载注册真 handler（always）', async () => {
+    const file = saveGeneratedBPlugin({
+      spec: { ...validSpec, name: 'enabled_trust_tool' },
+      enabled: true,
+    })
+    const { host, register } = makeHost()
+    await setBPluginTrusted(host, file.id, { userId: 'local', ts: 1 })
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(register.mock.calls[0][0].approvalMode).toBe('always')
+  })
+
+  it('enabled 插件取消信任 → 重载回占位（auto + trusted_required）', async () => {
+    const file = saveGeneratedBPlugin({
+      spec: { ...validSpec, name: 'enabled_untrust_tool' },
+      enabled: true,
+      trustedBy: { userId: 'local', ts: 1 },
+    })
+    const { host, register } = makeHost()
+    await setBPluginTrusted(host, file.id, null)
+    expect(register).toHaveBeenCalledTimes(1)
+    const specArg = register.mock.calls[0][0]
+    expect(specArg.approvalMode).toBe('auto')
+    const handler = specArg.handler as (
+      a: unknown,
+      c: unknown,
+    ) => Promise<{ isError: boolean; content: string }>
+    const out = await handler({}, {})
+    expect(out.content).toContain('trusted_required')
+  })
+
+  it('不存在的 id → 抛 not found', async () => {
+    const { host } = makeHost()
+    await expect(
+      setBPluginTrusted(host, 'genb_nonexistent', { userId: 'local', ts: 1 }),
+    ).rejects.toThrow(/not found/)
   })
 })

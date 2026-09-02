@@ -104,7 +104,8 @@
     "invalid_config_schema": "configSchema is invalid (must be an array of fields); registration refused",
     "config_field_name": "Config field name is missing or empty; registration refused",
     "config_field_type": "Config field type must be string/number/boolean and default must match; registration refused",
-    "config_secret_key": "Secret field must bind a vaultKeyId; registration refused"
+    "config_secret_key": "Secret field must bind a vaultKeyId; registration refused",
+    "tool_name_conflict": "Tool name is already taken by another plugin; creation/registration refused"
   },
   "secrets": {
     "key_id_required": "keyId is required",

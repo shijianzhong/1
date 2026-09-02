@@ -1,13 +1,38 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { rmSync } from 'node:fs'
+
+// 持久化路径指向临时目录（save/setExternalPluginTrusted 测试碰盘；onLoad 纯内存不碰盘）
+vi.mock('../storage/paths', async () => {
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = mkdtempSync(join(tmpdir(), 'ext-test-'))
+  return {
+    getExternalPluginsDir: () => dir,
+    getExternalPluginDir: (id: string) => join(dir, id),
+    getExternalPluginManifestPath: (id: string) => join(dir, id, 'manifest.json'),
+    getExternalPluginHandlerPath: (id: string) => join(dir, id, 'handler.js'),
+  }
+})
+
 import {
   ExternalPlugin,
   EXTERNAL_TOOL_PREFIX,
   isValidExternalId,
+  loadExternalPluginManifest,
+  saveExternalPlugin,
+  setExternalPluginTrusted,
   type ExternalPluginManifest,
 } from './external'
+import { getExternalPluginsDir } from '../storage/paths'
 import { pluginEvents } from './events'
+import { IpcErrorThrow } from '@shared/types'
 import type { PluginHost, PluginToolSpec, PluginHandle } from './contracts'
 import type { GeneratedBSpec, PluginConfigField } from '@shared/types'
+
+afterAll(() => {
+  rmSync(getExternalPluginsDir(), { recursive: true, force: true })
+})
 
 function makeManifest(
   spec: GeneratedBSpec,
@@ -173,5 +198,56 @@ describe('ExternalPlugin.onLoad（configSchema 注入 + 注册点校验，与 ge
     expect(register).not.toHaveBeenCalled()
     expect(got[0]?.status).toBe('failed')
     expect(got[0]?.reason).toBe('config_secret_key')
+  })
+})
+
+describe('saveExternalPlugin 工具名冲突检查', () => {
+  it('同名不同 id → 抛 tool_name_conflict（IpcErrorThrow 带 messageKey）', () => {
+    saveExternalPlugin({ spec: { ...validSpec, name: 'ext_conflict_tool' } })
+    try {
+      saveExternalPlugin({ spec: { ...validSpec, name: 'ext_conflict_tool' } })
+      expect.unreachable('应抛冲突')
+    } catch (e) {
+      expect(e).toBeInstanceOf(IpcErrorThrow)
+      expect((e as IpcErrorThrow).messageKey).toBe('errors:plugins.tool_name_conflict')
+    }
+  })
+})
+
+describe('setExternalPluginTrusted（enabled 闸门，与 generated_b 同构）', () => {
+  it('disabled 插件信任 → 只落盘 trustedBy，不注册工具', async () => {
+    const file = saveExternalPlugin({
+      spec: { ...validSpec, name: 'ext_disabled_trust' },
+      enabled: false,
+    })
+    const { host, register } = makeHost()
+    await setExternalPluginTrusted(host, file.id, { userId: 'local', ts: 1 })
+    expect(register).not.toHaveBeenCalled()
+    expect(loadExternalPluginManifest(file.id)?.trustedBy).not.toBeNull()
+  })
+
+  it('disabled 插件取消信任 → 不触发 enable（enabled 保持 false）', async () => {
+    const file = saveExternalPlugin({
+      spec: { ...validSpec, name: 'ext_disabled_untrust' },
+      enabled: false,
+      trustedBy: { userId: 'local', ts: 1 },
+    })
+    const { host, register } = makeHost()
+    await setExternalPluginTrusted(host, file.id, null)
+    expect(register).not.toHaveBeenCalled()
+    const m = loadExternalPluginManifest(file.id)
+    expect(m?.trustedBy).toBeNull()
+    expect(m?.enabled).toBe(false)
+  })
+
+  it('enabled 插件信任 → 重载注册真 handler（always）', async () => {
+    const file = saveExternalPlugin({
+      spec: { ...validSpec, name: 'ext_enabled_trust' },
+      enabled: true,
+    })
+    const { host, register } = makeHost()
+    await setExternalPluginTrusted(host, file.id, { userId: 'local', ts: 1 })
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(register.mock.calls[0][0].approvalMode).toBe('always')
   })
 })

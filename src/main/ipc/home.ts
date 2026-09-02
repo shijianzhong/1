@@ -1106,7 +1106,7 @@ export function registerHomeHandlers(): void {
       // 闸门前置：非法 spec 直接报错、不落盘，避免留下 enabled 死工具（onLoad 内校验仅兜底）
       const v = validateGeneratedSpec(p)
       if (!v.ok) {
-        throw new Error(`generated 工具校验失败（${v.reason}）：未创建`)
+        throw new IpcErrorThrow(v.messageKey, `generated 工具校验失败（${v.reason}）：未创建`)
       }
       const file = saveGeneratedPlugin({ spec: p })
       // 立即注册（enabled=true，注册点白名单校验在 onLoad 内再兜底一次）

@@ -1,8 +1,34 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { GeneratedPlugin, GENERATED_TOOL_PREFIX, type GeneratedPluginManifest } from './generated'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
+import { rmSync } from 'node:fs'
+
+// 持久化路径指向临时目录（save 冲突检查测试碰盘；onLoad 纯内存不碰盘）
+vi.mock('../storage/paths', async () => {
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = mkdtempSync(join(tmpdir(), 'gen-test-'))
+  return {
+    getGeneratedPluginsDir: () => dir,
+    getGeneratedPluginDir: (id: string) => join(dir, id),
+    getGeneratedPluginManifestPath: (id: string) => join(dir, id, 'manifest.json'),
+  }
+})
+
+import {
+  GeneratedPlugin,
+  GENERATED_TOOL_PREFIX,
+  saveGeneratedPlugin,
+  type GeneratedPluginManifest,
+} from './generated'
+import { getGeneratedPluginsDir } from '../storage/paths'
 import { pluginEvents } from './events'
+import { IpcErrorThrow } from '@shared/types'
 import type { PluginHost, PluginToolSpec, PluginHandle } from './contracts'
 import type { GeneratedPluginSpec } from '@shared/types'
+
+afterAll(() => {
+  rmSync(getGeneratedPluginsDir(), { recursive: true, force: true })
+})
 
 function makeManifest(spec: GeneratedPluginSpec, id = 'gen_test1'): GeneratedPluginManifest {
   return {
@@ -78,5 +104,25 @@ describe('GeneratedPlugin.onLoad（注册点 fail-closed）', () => {
     }
     await new GeneratedPlugin(makeManifest(bad)).onLoad(host)
     expect(register).not.toHaveBeenCalled()
+  })
+})
+
+describe('saveGeneratedPlugin 工具名冲突检查', () => {
+  it('同名不同 id → 抛 tool_name_conflict（IpcErrorThrow 带 messageKey）', () => {
+    saveGeneratedPlugin({ spec: { ...validSpec, name: 'conflict_a' } })
+    try {
+      saveGeneratedPlugin({ spec: { ...validSpec, name: 'conflict_a' } })
+      expect.unreachable('应抛冲突')
+    } catch (e) {
+      expect(e).toBeInstanceOf(IpcErrorThrow)
+      expect((e as IpcErrorThrow).messageKey).toBe('errors:plugins.tool_name_conflict')
+    }
+  })
+
+  it('同 id 覆盖保存（更新自身）→ 不抛', () => {
+    const f = saveGeneratedPlugin({ spec: { ...validSpec, name: 'self_update_a' } })
+    expect(() =>
+      saveGeneratedPlugin({ id: f.id, spec: { ...validSpec, name: 'self_update_a' } }),
+    ).not.toThrow()
   })
 })

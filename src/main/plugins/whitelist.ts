@@ -134,7 +134,7 @@ export function validateGeneratedSpec(spec: GeneratedSpecLike): ValidateResult {
     return {
       ok: false,
       reason: 'action_not_whitelisted',
-      messageKey: 'errors.plugins.action_not_whitelisted',
+      messageKey: 'errors:plugins.action_not_whitelisted',
     }
   }
   const allowedFields = WHITELIST_PARAM_SCHEMAS[action as WhitelistAction]
@@ -150,7 +150,7 @@ export function validateGeneratedSpec(spec: GeneratedSpecLike): ValidateResult {
     return {
       ok: false,
       reason: 'invalid_input_schema',
-      messageKey: 'errors.plugins.invalid_input_schema',
+      messageKey: 'errors:plugins.invalid_input_schema',
     }
   }
 
@@ -162,7 +162,7 @@ export function validateGeneratedSpec(spec: GeneratedSpecLike): ValidateResult {
       return {
         ok: false,
         reason: 'params_not_subset',
-        messageKey: 'errors.plugins.params_not_subset',
+        messageKey: 'errors:plugins.params_not_subset',
       }
     }
     // 3. 类型兼容
@@ -171,7 +171,7 @@ export function validateGeneratedSpec(spec: GeneratedSpecLike): ValidateResult {
       return {
         ok: false,
         reason: 'param_type_mismatch',
-        messageKey: 'errors.plugins.param_type_mismatch',
+        messageKey: 'errors:plugins.param_type_mismatch',
       }
     }
     // 4. bounds 不得更宽（generated 的数值/数组长度不得超出白名单上界，
@@ -180,7 +180,7 @@ export function validateGeneratedSpec(spec: GeneratedSpecLike): ValidateResult {
       return {
         ok: false,
         reason: 'param_bound_too_wide',
-        messageKey: 'errors.plugins.param_bound_too_wide',
+        messageKey: 'errors:plugins.param_bound_too_wide',
       }
     }
   }
@@ -192,7 +192,7 @@ export function validateGeneratedSpec(spec: GeneratedSpecLike): ValidateResult {
       return {
         ok: false,
         reason: 'required_missing',
-        messageKey: 'errors.plugins.required_missing',
+        messageKey: 'errors:plugins.required_missing',
       }
     }
   }

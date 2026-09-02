@@ -8,6 +8,10 @@
 // 与 generated_b 的区别：generated_b 由 AI/用户在聊天里现场造（genb_ 前缀 +
 // generated-plugins 目录）；external 由外部目录/registry 分发加载（ext_ 前缀 +
 // 独立 external-plugins 目录）。两者共享 vm 沙箱与信任模型，互不串扰。
+//
+// 【已知缺口】external 当前只有加载链（读 config/external-plugins → 注册 → /plugins
+// 管理），无分发入口——saveExternalPlugin 尚无生产调用方，插件只能手工落盘；
+// registry 分发/目录导入 IPC 待接（见 task.md 缺口区）。
 
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { relative } from 'node:path'
@@ -26,7 +30,7 @@ import { resolvePluginConfig } from './config'
 import { compileBHandler, runBHandler } from './sandbox'
 import type { GeneratedBSpec } from './contracts'
 import type { OnePluginManifest, PluginHost, PluginLifecycle } from './contracts'
-import type { PluginConfigField } from '@shared/types'
+import { IpcErrorThrow, type PluginConfigField } from '@shared/types'
 import { logger } from '../logger'
 
 /** 工具名命名空间前缀（所有权边界 + unregisterByPrefix 清理；区别于 A 的 generated/、B 的 generated_b/） */
@@ -142,7 +146,8 @@ export class ExternalPlugin implements PluginLifecycle {
       // 占位就是要被 LLM 调到、返回 trusted_required 提示让 LLM 引导用户去 /plugins 页信任。
       this.handle = host.tools.register({
         name: toolName,
-        description: `${spec.description} [${'未信任'}]`,
+        // TODO(i18n)：「未信任」标记硬编码在 LLM 可见 description（跟随主助手中文人设），英文 persona 场景待统一
+        description: `${spec.description} [未信任]`,
         params: looseZod,
         approvalMode: 'auto',
         options: { inputSchemaOverride: spec.inputSchema },
@@ -196,6 +201,21 @@ export class ExternalPlugin implements PluginLifecycle {
 
 // —— 持久化（config/external-plugins/<id>/{manifest.json, handler.js}，原子写盘 §11.4）——
 
+/**
+ * 工具名冲突检查：同命名空间内 spec.name 不得被其他 id 占用（同 generated_b 的纪律）。
+ * 工具名是 registry 所有权边界——两插件同名会导致后注册覆盖先注册、卸载其一误卸另一个。
+ */
+function assertToolNameAvailable(name: string, selfId?: string): void {
+  for (const m of listExternalPluginManifests()) {
+    if (m.id !== selfId && m.specExternal.name === name) {
+      throw new IpcErrorThrow(
+        'errors:plugins.tool_name_conflict',
+        `external tool name conflict: ${name} (owned by ${m.id})`,
+      )
+    }
+  }
+}
+
 /** 保存 external 插件（新建或覆盖）；manifest.json 存 spec（含 handlerSource）+ trustedBy + configSchema，handler.js 存纯源码 */
 export function saveExternalPlugin(input: {
   id?: string
@@ -208,6 +228,7 @@ export function saveExternalPlugin(input: {
   if (input.id !== undefined && !isValidExternalId(input.id)) {
     throw new Error(`invalid external plugin id: ${input.id}`)
   }
+  assertToolNameAvailable(input.spec.name, input.id)
   const existing = input.id ? loadExternalPluginFile(input.id) : null
   const id = input.id ?? `ext_${now.toString(36)}${Math.random().toString(36).slice(2, 10)}`
   const file: ExternalPluginFile = {
@@ -351,24 +372,26 @@ export async function uninstallExternalPlugin(id: string): Promise<void> {
   removeExternalPlugin(id)
 }
 
-/** 信任一个 external 插件（写盘 trustedBy + 重载切真 handler）——供 IPC plugins:trust */
-export async function trustExternalPlugin(
+/**
+ * 设置信任态并按需重载（plugins:trust 唯一入口，信任/取消信任同路径，与 generated_b 同构）。
+ * disabled 插件只落盘 trustedBy、不动 registry——启用时才按新信任态注册，
+ * 防"信任一个已禁用插件 → 工具绕过 enabled 闸门悄悄上线"。
+ */
+export async function setExternalPluginTrusted(
   host: PluginHost,
   id: string,
-  userId: string,
+  trustedBy: { userId: string; ts: number } | null,
 ): Promise<void> {
-  const trustedBy = { userId, ts: Date.now() }
-  setTrustedExternalPlugin(id, trustedBy)
+  const file = setTrustedExternalPlugin(id, trustedBy)
+  if (!file) throw new Error(`external plugin not found: ${id}`)
+  if (!file.enabled) return
   const existing = loadedExternalPlugins.get(id)
-  if (existing) {
-    await existing.onUnload('disable')
-    const manifest = loadExternalPluginManifest(id)
-    if (manifest) {
-      const plugin = new ExternalPlugin(manifest)
-      loadedExternalPlugins.set(id, plugin)
-      await plugin.onLoad(host)
-    }
-  }
+  if (existing) await existing.onUnload('disable')
+  const manifest = loadExternalPluginManifest(id)
+  if (!manifest) throw new Error(`external plugin manifest missing: ${id}`)
+  const plugin = new ExternalPlugin(manifest)
+  loadedExternalPlugins.set(id, plugin)
+  await plugin.onLoad(host)
 }
 
 /** 列出全部 external 插件 manifest（供 IPC plugins:list） */

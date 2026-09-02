@@ -17,7 +17,7 @@ import {
   enableGeneratedBPlugin,
   listGeneratedBPluginsForApi,
   loadGeneratedBPluginManifest,
-  trustGeneratedBPlugin,
+  setBPluginTrusted,
   uninstallGeneratedBPlugin,
 } from '../plugins/generatedB'
 import {
@@ -25,9 +25,8 @@ import {
   enableExternalPlugin,
   listExternalPluginsForApi,
   loadExternalPluginManifest,
-  trustExternalPlugin,
+  setExternalPluginTrusted,
   uninstallExternalPlugin,
-  setTrustedExternalPlugin,
 } from '../plugins/external'
 import { skillHostManager } from '../plugins/skillHost'
 import { loadMcpConfig } from '../tools/mcp/config'
@@ -216,25 +215,14 @@ export function registerPluginsHandlers(): void {
     }
     const prefix = id.startsWith('generated_b/') ? 'generated_b/' : 'external/'
     const bare = id.slice(prefix.length)
-    if (trust) {
-      // userId 单用户固定 'local'（无登录无鉴权，仅作信任事实记录者）
-      if (prefix === 'generated_b/') {
-        await trustGeneratedBPlugin(pluginHost, bare, 'local')
-      } else {
-        await trustExternalPlugin(pluginHost, bare, 'local')
-      }
+    // userId 单用户固定 'local'（无登录无鉴权，仅作信任事实记录者）；
+    // 信任/取消信任统一走 set*PluginTrusted：写盘 trustedBy + 仅 enabled 时重载
+    // （disabled 只落盘，不动 registry，防 enabled 闸门旁路）
+    const trustedBy = trust ? { userId: 'local', ts: Date.now() } : null
+    if (prefix === 'generated_b/') {
+      await setBPluginTrusted(pluginHost, bare, trustedBy)
     } else {
-      // 取消信任：写 trustedBy=null + 重载回占位（untrusted 占位）
-      if (prefix === 'generated_b/') {
-        const { setTrustedBPlugin } = await import('../plugins/generatedB')
-        setTrustedBPlugin(bare, null)
-        await disableGeneratedBPlugin(bare)
-        await enableGeneratedBPlugin(pluginHost, bare)
-      } else {
-        setTrustedExternalPlugin(bare, null)
-        await disableExternalPlugin(bare)
-        await enableExternalPlugin(pluginHost, bare)
-      }
+      await setExternalPluginTrusted(pluginHost, bare, trustedBy)
     }
   })
 }

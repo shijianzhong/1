@@ -18,7 +18,7 @@ const ExecuteActionSchema = z.object({
     '判发目标动作（只读/检索白名单）：file_read/file_search/kb_search/web_search/glob/grep/skill_search/load_skill',
   ),
   params: z.record(z.string(), z.unknown()).optional().describe(
-    '固定参数（与运行时 args 合并后透传给目标动作）。须是该动作既有 schema 的 pick/subset，注册点强校验。',
+    '默认固定参数（与运行时 args 合并后透传给目标动作；同名键被 LLM 运行时入参覆盖——params 起默认值与注册点校验锚点作用）。须是该动作既有 schema 的 pick/subset，注册点强校验。',
   ),
 })
 
